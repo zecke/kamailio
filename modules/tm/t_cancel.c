@@ -71,17 +71,22 @@ void which_cancel( struct cell *t, branch_bm_t *cancel_bm )
 
 
 /* cancel branches scheduled for deletion */
-void cancel_uacs( struct cell *t, branch_bm_t cancel_bm )
+int cancel_uacs( struct cell *t, branch_bm_t cancel_bm )
 {
-	int i;
+	int i, result;
 
 	/* cancel pending client transactions, if any */
-	for( i=0 ; i<t->nr_of_outgoings ; i++ ) 
-		if (cancel_bm & (1<<i))
-           	cancel_branch(t, i);
+	result = 0;
+	for( i=0 ; i<t->nr_of_outgoings ; i++ ) {
+		if (cancel_bm & (1<<i)) {
+			result |= cancel_branch(t, i);
+		}
+	}
+	return result;
 }
 
-void cancel_branch( struct cell *t, int branch )
+/* Return 0 if everything was ok, a negative value on an error */
+int cancel_branch( struct cell *t, int branch )
 {
 	char *cancel;
 	unsigned int len;
@@ -90,23 +95,23 @@ void cancel_branch( struct cell *t, int branch )
 	crb=&t->uac[branch].local_cancel;
 	irb=&t->uac[branch].request;
 
-#	ifdef EXTRA_DEBUG
+#ifdef EXTRA_DEBUG
 	if (crb->buffer!=0 && crb->buffer!=BUSY_BUFFER) {
 		LOG(L_CRIT, "ERROR: attempt to rewrite cancel buffer\n");
 		abort();
 	}
-#	endif
+#endif
 
 	if (t->uac[branch].last_received < 100) {
 		DBG("DEBUG: cancel_branch: no response ever received: "
 		    "giving up on cancel\n");
-		return;
+		return 0;
 	}
 	
 	cancel = build_local(t, branch, &len, CANCEL, CANCEL_LEN, &t->to);
 	if (!cancel) {
 		LOG(L_ERR, "ERROR: attempt to build a CANCEL failed\n");
-		return;
+		return -1;
 	}
 
 	     /* install cancel now */
@@ -120,10 +125,14 @@ void cancel_branch( struct cell *t, int branch )
 	crb->activ_type = TYPE_LOCAL_CANCEL;
 
 	DBG("DEBUG: cancel_branch: sending cancel...\n");
-	SEND_BUFFER( crb );
+	if (SEND_BUFFER( crb ) < 0) {
+		LOG(L_ERR, "ERROR: Unable to send CANCEL request\n");
+		return -1;
+	}
 	
 	     /*sets and starts the FINAL RESPONSE timer */
 	start_retr( crb );
+	return 0;
 }
 
 

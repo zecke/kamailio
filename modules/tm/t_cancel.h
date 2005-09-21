@@ -51,8 +51,10 @@
 #define BUSY_BUFFER ((char *)-1)
 
 void which_cancel( struct cell *t, branch_bm_t *cancel_bm );
-void cancel_uacs( struct cell *t, branch_bm_t cancel_bm );
-void cancel_branch( struct cell *t, int branch );
+
+/* Return 0 if everything was ok, a negative value on an error */
+int cancel_uacs( struct cell *t, branch_bm_t cancel_bm );
+int  cancel_branch( struct cell *t, int branch );
 
 int fifo_uac_cancel( FILE* stream, char *response_file );
 
