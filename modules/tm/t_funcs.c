@@ -69,6 +69,11 @@ static int     fr_inv_timer_avp_type = 0;
 static int_str fr_inv_timer_avp = {0};
 static str     fr_inv_timer_str;
 
+/*
+ * sl_send_reply function pointer
+ */
+int (*sl_reply)(struct sip_msg* msg, char* s1, char* s2);
+
 
 /* ----------------------------------------------------- */
 int send_pr_buffer(	struct retr_buf *rb, void *buf, int len

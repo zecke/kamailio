@@ -310,6 +310,51 @@ error:
 	return ret;
 }
 
+
+static inline int process_cancel(struct cell* t, struct sip_msg* cancel_msg, struct proxy_l* proxy, int proto)
+{
+	branch_bm_t cancel_bm;
+	struct cell* t_invite;
+	int ret;
+
+	t_invite = t_lookupOriginalT(cancel_msg);
+	if (t_invite != T_NULL_CELL) {
+		     /* INVITE transaction found, send back 200 Canceling */
+		sl_reply(cancel_msg, (char*)200, CANCELING);
+		     /* And cancel the INVITE transaction */
+		which_cancel(t_invite, &cancel_bm);
+		cleanup_uac_timers(t_invite);
+		cancel_uacs(t_invite, cancel_bm);
+		UNREF(t_invite);
+	} else {
+		     /* No INVITE transaction found, forward statelessly */
+		DBG("tm:process_cancel: No matching INVITE transaction found for CANCEL, forwarding statelessly\n");
+		if (proxy == 0) {
+			proxy = uri2proxy(GET_NEXT_HOP(cancel_msg), proto);
+			if (proxy == 0) {
+				LOG(L_ERR, "tm:process_cancel: Invalid Request-URI in CANCEL\n");
+				ser_error = E_BAD_ADDRESS;
+				return -1;
+			}
+			proto = proxy->proto;
+			ret = forward_request(cancel_msg, proxy, proto);
+			free_proxy(proxy);
+			pkg_free(proxy);
+		} else {
+			proto = get_proto(proto, proxy->proto);
+			ret = forward_request(cancel_msg, proxy, proto);
+		}
+		
+		if (ret < 0) {
+			LOG(L_ERR, "tm:process_cancel: Error while forwarding CANCEL statelessly\n");
+			ser_error = E_SEND;
+			return -1;
+		}
+	}
+	return 1;
+}
+
+
 /* function returns:
  *       1 - forward successful
  *      -1 - error during forward
@@ -325,30 +370,18 @@ int t_forward_nonack( struct cell *t, struct sip_msg* p_msg ,
 	branch_bm_t	added_branches;
 	int first_branch;
 	int i, q;
-	struct cell *t_invite;
 	int success_branch;
 	int try_new;
 	str dst_uri;
 	struct socket_info* si, *backup_si;
-	branch_bm_t cancel_bm;
 
 	/* make -Wall happy */
 	current_uri.s=0;
 
 	set_kr(REQ_FWDED);
 
-	if (p_msg->REQ_METHOD==METHOD_CANCEL) {
-		t_invite=t_lookupOriginalT(  p_msg );
-		if (t_invite!=T_NULL_CELL) {
-			     /* INVITE transaction found, send back 200 Canceling */
-			t_reply(t, p_msg, 200, CANCELING);
-			     /* And cancel the INVITE transaction */
-			which_cancel(t_invite, &cancel_bm);
-			cleanup_uac_timers(t_invite);
-			cancel_uacs(t_invite, cancel_bm);
-			UNREF(t_invite);
-			return 1;
-		}
+	if (p_msg->REQ_METHOD == METHOD_CANCEL) {
+		return process_cancel(t, p_msg, proxy, proto);
 	}
 
 	/* backup current uri ... add_uac changes it */

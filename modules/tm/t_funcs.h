@@ -124,6 +124,10 @@ int fr_avp2timer(unsigned int* timer);
 int fr_inv_avp2timer(unsigned int* timer);
 
 
+/*
+ * sl_send_reply function pointer
+ */
+extern int (*sl_reply)(struct sip_msg* msg, char* s1, char* s2);
 
 static void inline _set_fr_retr( struct retr_buf *rb, int retr )
 {

@@ -174,7 +174,6 @@ inline static int t_check_status(struct sip_msg* msg, char *regexp, char *foo);
 static char *fr_timer_param = FR_TIMER_AVP;
 static char *fr_inv_timer_param = FR_INV_TIMER_AVP;
 
-
 static cmd_export_t cmds[]={
 	{"t_newtran",          w_t_newtran,             0, 0,
 			REQUEST_ROUTE},
@@ -452,6 +451,16 @@ static int mod_init(void)
 	if (MAX_BRANCHES+1>31) {
 		LOG(L_CRIT, "Too many max UACs for UAC branch_bm_t bitmap: %d\n",
 			MAX_BRANCHES );
+		return -1;
+	}
+
+             /*
+              * We will need sl_send_reply from stateless
+	      * module for sending replies
+	      */
+        sl_reply = find_export("sl_send_reply", 2, 0);
+	if (!sl_reply) {
+		LOG(L_ERR, "tm: This module requires sl module\n");
 		return -1;
 	}
 
