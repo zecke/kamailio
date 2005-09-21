@@ -83,13 +83,13 @@ enum kill_reason get_kr() {
 
 void lock_hash(int i) 
 {
-	lock(&tm_table->entrys[i].mutex);
+	lock(&tm_table->entries[i].mutex);
 }
 
 
 void unlock_hash(int i) 
 {
-	unlock(&tm_table->entrys[i].mutex);
+	unlock(&tm_table->entries[i].mutex);
 }
 
 
@@ -106,7 +106,7 @@ unsigned int transaction_count( void )
 
 	count=0;	
 	for (i=0; i<TABLE_ENTRIES; i++) 
-		count+=tm_table->entrys[i].cur_entries;
+		count+=tm_table->entries[i].cur_entries;
 	return count;
 }
 
@@ -302,9 +302,9 @@ void free_hash_table(  )
 		/* remove the data contained by each entry */
 		for( i = 0 ; i<TABLE_ENTRIES; i++)
 		{
-			release_entry_lock( (tm_table->entrys)+i );
+			release_entry_lock( (tm_table->entries)+i );
 			/* delete all synonyms at hash-collision-slot i */
-			p_cell=tm_table->entrys[i].first_cell;
+			p_cell=tm_table->entries[i].first_cell;
 			for( ; p_cell; p_cell = tmp_cell )
 			{
 				tmp_cell = p_cell->next_cell;
@@ -337,11 +337,11 @@ struct s_table* init_hash_table()
 	if (lock_initialize()==-1)
 		goto error1;
 
-	/* inits the entrys */
+	/* inits the entries */
 	for(  i=0 ; i<TABLE_ENTRIES; i++ )
 	{
-		init_entry_lock( tm_table, (tm_table->entrys)+i );
-		tm_table->entrys[i].next_label = rand();
+		init_entry_lock( tm_table, (tm_table->entries)+i );
+		tm_table->entries[i].next_label = rand();
 	}
 
 	return  tm_table;
@@ -364,7 +364,7 @@ void insert_into_hash_table_unsafe( struct cell * p_cell, unsigned int _hash )
 	p_cell->hash_index=_hash;
 
 	/* locates the appropriate entry */
-	p_entry = &tm_table->entrys[ _hash ];
+	p_entry = &tm_table->entries[ _hash ];
 
 	p_cell->label = p_entry->next_label++;
 	if ( p_entry->last_cell )
@@ -385,7 +385,7 @@ void insert_into_hash_table_unsafe( struct cell * p_cell, unsigned int _hash )
 /*  Un-link a  cell from hash_table, but the cell itself is not released */
 void remove_from_hash_table_unsafe( struct cell * p_cell)
 {
-	struct entry*  p_entry  = &(tm_table->entrys[p_cell->hash_index]);
+	struct entry*  p_entry  = &(tm_table->entries[p_cell->hash_index]);
 
 	/* unlink the cell from entry list */
 	/* lock( &(p_entry->mutex) ); */
@@ -427,8 +427,8 @@ int fifo_hash( FILE *stream, char *response_file )
 	fputs( "200 ok\n\tcurrent\ttotal\n", reply_file);
 	for (i=0; i<TABLE_ENTRIES; i++) {
 		fprintf(reply_file, "%d.\t%lu\t%lu\n", 
-			i, tm_table->entrys[i].cur_entries ,
-			tm_table->entrys[i].acc_entries );
+			i, tm_table->entries[i].cur_entries ,
+			tm_table->entries[i].acc_entries );
 	}
 	fclose(reply_file);
 	return 1;
@@ -444,8 +444,8 @@ int unixsock_hash(str* msg)
 
 	for (i = 0; i < TABLE_ENTRIES; i++) {
 		if (unixsock_reply_printf("%d.\t%lu\t%lu\n", 
-					  i, tm_table->entrys[i].cur_entries,
-					  tm_table->entrys[i].acc_entries
+					  i, tm_table->entries[i].cur_entries,
+					  tm_table->entries[i].acc_entries
 					  ) < 0) {
 			unixsock_reply_reset();
 			unixsock_reply_asciiz("500 Error while creating reply\n");

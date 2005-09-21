@@ -304,7 +304,7 @@ static int matching_3261( struct sip_msg *p_msg, struct cell **trans,
 	via1->tid.s=via1->branch->value.s+MCOOKIE_LEN;
 	via1->tid.len=via1->branch->value.len-MCOOKIE_LEN;
 
-	for ( p_cell = get_tm_table()->entrys[p_msg->hash_index].first_cell;
+	for ( p_cell = get_tm_table()->entries[p_msg->hash_index].first_cell;
 		p_cell; p_cell = p_cell->next_cell ) 
 	{
 		t_msg=p_cell->uas.request;
@@ -438,7 +438,7 @@ int t_lookup_request( struct sip_msg* p_msg , int leave_new_locked )
 	LOCK_HASH(p_msg->hash_index);
 
 	/* all the transactions from the entry are compared */
-	for ( p_cell = get_tm_table()->entrys[p_msg->hash_index].first_cell;
+	for ( p_cell = get_tm_table()->entries[p_msg->hash_index].first_cell;
 		  p_cell; p_cell = p_cell->next_cell ) 
 	{
 		t_msg = p_cell->uas.request;
@@ -596,7 +596,7 @@ struct cell* t_lookupOriginalT(  struct sip_msg* p_msg )
 	LOCK_HASH(hash_index);
 
 	/* all the transactions from the entry are compared */
-	for (p_cell=get_tm_table()->entrys[hash_index].first_cell;
+	for (p_cell=get_tm_table()->entries[hash_index].first_cell;
 		p_cell; p_cell = p_cell->next_cell )
 	{
 		t_msg = p_cell->uas.request;
@@ -778,7 +778,7 @@ int t_reply_matching( struct sip_msg *p_msg , int *p_branch )
 	is_cancel=cseq_method.len==CANCEL_LEN 
 		&& memcmp(cseq_method.s, CANCEL, CANCEL_LEN)==0;
 	LOCK_HASH(hash_index);
-	for (p_cell = get_tm_table()->entrys[hash_index].first_cell; p_cell; 
+	for (p_cell = get_tm_table()->entries[hash_index].first_cell; p_cell; 
 		p_cell=p_cell->next_cell) {
 
 		/* first look if branch matches */
@@ -1215,7 +1215,7 @@ int t_lookup_ident(struct cell ** trans, unsigned int hash_index, unsigned int l
     LOCK_HASH(hash_index);
 
     /* all the transactions from the entry are compared */
-    for ( p_cell = get_tm_table()->entrys[hash_index].first_cell;
+    for ( p_cell = get_tm_table()->entries[hash_index].first_cell;
 	  p_cell; p_cell = p_cell->next_cell ) 
     {
 		if(p_cell->label == label){
@@ -1295,7 +1295,7 @@ int t_lookup_callid(struct cell ** trans, str callid, str cseq) {
 	DBG("just locked hash index %u, looking for transactions there:\n", hash_index);
 
 	/* all the transactions from the entry are compared */
-	for ( p_cell = get_tm_table()->entrys[hash_index].first_cell;
+	for ( p_cell = get_tm_table()->entries[hash_index].first_cell;
 	  p_cell; p_cell = p_cell->next_cell ) {
 		
 		/* compare complete header fields, casecmp to make sure invite=INVITE */

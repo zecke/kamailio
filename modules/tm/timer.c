@@ -488,7 +488,7 @@ void unlink_timer_lists()
 		reset_timer_list( i );
 	DBG("DEBUG: unlink_timer_lists : emptying DELETE list\n");
 	/* deletes all cells from DELETE_LIST list 
-	   (they are no more accessible from entrys) */
+	   (they are no more accessible from entries) */
 	while (tl!=end) {
 		tmp=tl->next_tl;
 		free_cell( get_dele_timer_payload(tl) );
