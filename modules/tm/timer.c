@@ -253,26 +253,6 @@ static void fake_reply(struct cell *t, int branch, int code )
 	} else {
 		reply_status=relay_reply( t, FAKED_REPLY, branch, code,
 					  &cancel_bitmap );
-
-#if 0
-		if (reply_status==RPS_COMPLETED) {
-			     /* don't need to cleanup uac_timers -- they were cleaned
-				branch by branch and this last branch's timers are
-				reset now too
-			     */
-			     /* don't need to issue cancels -- local cancels have been
-				issued branch by branch and this last branch was
-				canceled now too
-			     */
-			     /* then the only thing to do now is to put the transaction
-				on FR/wait state 
-			     */
-			     /*
-			       set_final_timer(  t );
-			     */
-		}
-#endif
-
 	}
 	/* now when out-of-lock do the cancel I/O */
 	if (do_cancel_branch) cancel_branch(t, branch );
@@ -647,39 +627,6 @@ static void insert_timer_unsafe( struct timer *timer_list, struct timer_link *tl
 
 	DBG("DEBUG: add_to_tail_of_timer[%d]: %p\n",timer_list->id,tl);
 }
-
-
-
-#if 0  /* not used anymore */
-/* put a new cell into a list nr. list_id */
-static void add_timer_unsafe( struct timer *timer_list, struct timer_link *tl,
-	unsigned int time_out )
-{
-#ifdef EXTRA_DEBUG
-	if (timer_list->last_tl.prev_tl==0) {
-	LOG( L_CRIT,
-		"CRITICAL : Oh no, zero link in trailing timer element\n");
-		abort();
-	};
-#endif
-
-	tl->time_out = time_out;
-	tl->prev_tl = timer_list->last_tl.prev_tl;
-	tl->next_tl = & timer_list->last_tl;
-	timer_list->last_tl.prev_tl = tl;
-	tl->prev_tl->next_tl = tl;
-	tl->timer_list = timer_list;
-#ifdef EXTRA_DEBUG
-	if ( tl->tg != timer_group[ timer_list->id ] ) {
-		LOG( L_CRIT, "CRITICAL error: changing timer group\n");
-		abort();
-	}
-#endif
-	DBG("DEBUG: add_timer_unsafe[%d]: %p\n",timer_list->id,tl);
-}
-#endif
-
-
 
 /* detach items passed by the time from timer list */
 static struct timer_link  *check_and_split_time_list( struct timer *timer_list,
