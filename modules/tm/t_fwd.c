@@ -310,132 +310,6 @@ error:
 	return ret;
 }
 
-int e2e_cancel_branch( struct sip_msg *cancel_msg, struct cell *t_cancel, 
-	struct cell *t_invite, int branch )
-{
-	int ret;
-	char *shbuf;
-	unsigned int len;
-
-	if (t_cancel->uac[branch].request.buffer) {
-		LOG(L_CRIT, "ERROR: e2e_cancel_branch: buffer rewrite attempt\n");
-		ret=ser_error=E_BUG;
-		goto error;
-	}	
-
-	/* note -- there is a gap in proxy stats -- we don't update 
-	   proxy stats with CANCEL (proxy->ok, proxy->tx, etc.)
-	*/
-
-	/* print */
-	shbuf=print_uac_request( t_cancel, cancel_msg, branch, 
-		&t_invite->uac[branch].uri, &len, 
-		t_invite->uac[branch].request.dst.send_sock,
-		t_invite->uac[branch].request.dst.proto);
-	if (!shbuf) {
-		LOG(L_ERR, "ERROR: e2e_cancel_branch: printing e2e cancel failed\n");
-		ret=ser_error=E_OUT_OF_MEM;
-		goto error;
-	}
-	
-	/* install buffer */
-	t_cancel->uac[branch].request.dst=t_invite->uac[branch].request.dst;
-	t_cancel->uac[branch].request.buffer=shbuf;
-	t_cancel->uac[branch].request.buffer_len=len;
-	t_cancel->uac[branch].uri.s=t_cancel->uac[branch].request.buffer+
-		cancel_msg->first_line.u.request.method.len+1;
-	t_cancel->uac[branch].uri.len=t_invite->uac[branch].uri.len;
-	
-
-	/* success */
-	ret=1;
-
-
-error:
-	return ret;
-}
-
-void e2e_cancel( struct sip_msg *cancel_msg, 
-	struct cell *t_cancel, struct cell *t_invite )
-{
-	branch_bm_t cancel_bm, tmp_bm;
-	int i;
-	int lowest_error;
-	str backup_uri;
-	struct sip_uri backup_parsed_uri;
-	int backup_parsed_uri_ok;
-	int ret;
-
-	cancel_bm=0;
-	lowest_error=0;
-
-	backup_uri=cancel_msg->new_uri;
-	backup_parsed_uri_ok=cancel_msg->parsed_uri_ok;
-	backup_parsed_uri=cancel_msg->parsed_uri;
-	/* determine which branches to cancel ... */
-	which_cancel( t_invite, &cancel_bm );
-	t_cancel->nr_of_outgoings=t_invite->nr_of_outgoings;
-	/* fix label -- it must be same for reply matching */
-	t_cancel->label=t_invite->label;
-	/* ... and install CANCEL UACs */
-	for (i=0; i<t_invite->nr_of_outgoings; i++)
-		if (cancel_bm & (1<<i)) {
-			ret=e2e_cancel_branch(cancel_msg, t_cancel, t_invite, i);
-			if (ret<0) cancel_bm &= ~(1<<i);
-			if (ret<lowest_error) lowest_error=ret;
-		}
-	cancel_msg->new_uri=backup_uri;
-	cancel_msg->parsed_uri_ok=backup_parsed_uri_ok;
-	cancel_msg->parsed_uri=backup_parsed_uri;
-
-	/* send them out */
-	for (i = 0; i < t_cancel->nr_of_outgoings; i++) {
-		if (cancel_bm & (1 << i)) {
-			     /* Provisional reply received on this branch, send CANCEL */
-			     /* No need to stop timers as they have already been stopped by the reply */
-			if (SEND_BUFFER(&t_cancel->uac[i].request) == -1) {
-				LOG(L_ERR, "ERROR: e2e_cancel: send failed\n");
-			}
-			start_retr(&t_cancel->uac[i].request);
-		} else {
-			if (t_invite->uac[i].last_received < 100) {
-				     /* No provisional response received, stop
-				      * retransmission timers
-				      */
-				reset_timer(&t_invite->uac[i].request.retr_timer);
-				reset_timer(&t_invite->uac[i].request.fr_timer);
-
-				     /* Generate faked reply */
-				LOCK_REPLIES(t_invite);
-				if (relay_reply(t_invite, FAKED_REPLY, i, 487, &tmp_bm) == RPS_ERROR) {
-					lowest_error = -1;
-				}
-			}
-		}
-	}
-
-	/* if error occurred, let it know upstream (final reply
-	   will also move the transaction on wait state
-	*/
-	if (lowest_error<0) {
-		LOG(L_ERR, "ERROR: cancel error\n");
-		t_reply( t_cancel, cancel_msg, 500, "cancel error");
-	/* if there are pending branches, let upstream know we
-	   are working on it
-	*/
-	} else if (cancel_bm) {
-		DBG("DEBUG: e2e_cancel: e2e cancel proceeding\n");
-		t_reply( t_cancel, cancel_msg, 200, CANCELING );
-	/* if the transaction exists, but there is no more pending
-	   branch, tell upstream we're done
-	*/
-	} else {
-		DBG("DEBUG: e2e_cancel: e2e cancel -- no more pending branches\n");
-		t_reply( t_cancel, cancel_msg, 200, CANCEL_DONE );
-	}
-}
-
-
 /* function returns:
  *       1 - forward successful
  *      -1 - error during forward
@@ -456,6 +330,7 @@ int t_forward_nonack( struct cell *t, struct sip_msg* p_msg ,
 	int try_new;
 	str dst_uri;
 	struct socket_info* si, *backup_si;
+	branch_bm_t cancel_bm;
 
 	/* make -Wall happy */
 	current_uri.s=0;
@@ -465,7 +340,11 @@ int t_forward_nonack( struct cell *t, struct sip_msg* p_msg ,
 	if (p_msg->REQ_METHOD==METHOD_CANCEL) {
 		t_invite=t_lookupOriginalT(  p_msg );
 		if (t_invite!=T_NULL_CELL) {
-			e2e_cancel( p_msg, t, t_invite );
+			     /* INVITE transaction found, send back 200 Canceling */
+			t_reply(t, p_msg, 200, CANCELING);
+			     /* And cancel the INVITE transaction */
+			which_cancel(t_invite, &cancel_bm);
+			cancel_uacs(t_invite, cancel_bm);
 			UNREF(t_invite);
 			return 1;
 		}
