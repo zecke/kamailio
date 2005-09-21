@@ -344,6 +344,7 @@ int t_forward_nonack( struct cell *t, struct sip_msg* p_msg ,
 			t_reply(t, p_msg, 200, CANCELING);
 			     /* And cancel the INVITE transaction */
 			which_cancel(t_invite, &cancel_bm);
+			cleanup_uac_timers(t_invite);
 			cancel_uacs(t_invite, cancel_bm);
 			UNREF(t_invite);
 			return 1;
