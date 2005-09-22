@@ -36,6 +36,7 @@
 
 #include <stdio.h> /* just for FILE* for fifo_uac_cancel */
 #include "defs.h"
+#include "../../proxy.h"
 
 
 /* a buffer is empty but cannot be used by anyone else;
@@ -59,6 +60,8 @@ int  cancel_branch( struct cell *t, int branch );
 int fifo_uac_cancel( FILE* stream, char *response_file );
 
 int unixsock_uac_cancel(str* msg);
+
+int t_process_cancel(struct cell* t, struct sip_msg* cancel_msg, struct proxy_l* proxy, int proto);
 
 inline short static should_cancel_branch( struct cell *t, int b )
 {

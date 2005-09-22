@@ -230,3 +230,48 @@ int unixsock_uac_cancel(str* msg)
 	unixsock_reply_send();
 	return 0;
 }
+
+
+int t_process_cancel(struct cell* t_invite, struct sip_msg* cancel_msg, struct proxy_l* proxy, int proto)
+{
+	branch_bm_t cancel_bm;
+	int ret;
+
+	if (t_invite != T_UNDEFINED) {
+		t_invite->flags |= T_CANCELED_FLAG;
+		     /* INVITE transaction found, send back 200 Canceling */
+		if (sl_reply(cancel_msg, (char*)200, CANCELING) < 0) {
+			LOG(L_ERR, "tm:t_process_cancel: Error while sending 200 canceling\n");
+		}
+		     /* And cancel the INVITE transaction */
+		which_cancel(t_invite, &cancel_bm);
+		cleanup_uac_timers(t_invite);
+		cancel_uacs(t_invite, cancel_bm);
+		UNREF(t_invite);
+	} else {
+		     /* No INVITE transaction found, forward statelessly */
+		DBG("tm:t_process_cancel: No matching INVITE transaction found for CANCEL, forwarding statelessly\n");
+		if (proxy == 0) {
+			proxy = uri2proxy(GET_NEXT_HOP(cancel_msg), proto);
+			if (proxy == 0) {
+				LOG(L_ERR, "tm:t_process_cancel: Invalid Request-URI in CANCEL\n");
+				ser_error = E_BAD_ADDRESS;
+				return -1;
+			}
+			proto = proxy->proto;
+			ret = forward_request(cancel_msg, proxy, proto);
+			free_proxy(proxy);
+			pkg_free(proxy);
+		} else {
+			proto = get_proto(proto, proxy->proto);
+			ret = forward_request(cancel_msg, proxy, proto);
+		}
+		
+		if (ret < 0) {
+			LOG(L_ERR, "tm:t_process_cancel: Error while forwarding CANCEL statelessly\n");
+			ser_error = E_SEND;
+			return -1;
+		}
+	}
+	return 1;
+}
