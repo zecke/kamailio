@@ -593,7 +593,6 @@ int t_reply_matching( struct sip_msg *p_msg , int *p_branch )
 	int hashl, branchl;
 	int scan_space;
 	str cseq_method;
-	str req_method;
 
 	char *loopi;
 	int loopl;
@@ -668,15 +667,15 @@ int t_reply_matching( struct sip_msg *p_msg , int *p_branch )
 			: loopl!=MD5_LEN )
 	) {
 		DBG("DEBUG: t_reply_matching: poor reply labels %d label %d "
-			"branch %d\n",hash_index, entry_label, branch_id );
+		    "branch %d\n",hash_index, entry_label, branch_id );
 		goto nomatch2;
 	}
 
 
 	DBG("DEBUG: t_reply_matching: hash %d label %d branch %d\n",
-		hash_index, entry_label, branch_id );
-
-
+	    hash_index, entry_label, branch_id );
+	
+	
 	/* search the hash table list at entry 'hash_index'; lock the
 	   entry first 
 	*/
@@ -700,23 +699,6 @@ int t_reply_matching( struct sip_msg *p_msg , int *p_branch )
 		/* sanity check ... too high branch ? */
 		if ( branch_id>=p_cell->nr_of_outgoings )
 			continue;
-
-		/* does method match ? (remember -- CANCELs have the same branch
-		   as canceled transactions) */
-		req_method=p_cell->method;
-		if ( /* method match */
-			! ((cseq_method.len==req_method.len 
-			&& memcmp( cseq_method.s, req_method.s, cseq_method.len )==0)
-			/* or it is a local cancel */
-			|| (is_cancel && is_invite(p_cell)
-				/* commented out -- should_cancel_branch set it to
-				   BUSY_BUFFER to avoid collisions with replies;
-				   thus, we test here by buffer size
-				*/
-				/* && p_cell->uac[branch_id].local_cancel.buffer ))) */
-				&& p_cell->uac[branch_id].local_cancel.buffer_len ))) 
-			continue;
-
 
 		/* we passed all disqualifying factors .... the transaction has been
 		   matched !
@@ -811,18 +793,18 @@ int t_check( struct sip_msg* p_msg , int *param_branch )
 			/* if that is an INVITE, we will also need to-tag
 			   for later ACK matching
 			*/
-            if ( get_cseq(p_msg)->method.len==INVITE_LEN 
-				&& memcmp( get_cseq(p_msg)->method.s, INVITE, INVITE_LEN )==0 ) {
-					if (parse_headers(p_msg, HDR_TO_F, 0)==-1
-						|| !p_msg->to)  {
-						LOG(L_ERR, "ERROR: INVITE reply cannot be parsed\n");
-						return -1;
-					}
+			if ( get_cseq(p_msg)->method.len==INVITE_LEN 
+			     && memcmp( get_cseq(p_msg)->method.s, INVITE, INVITE_LEN )==0 ) {
+				if (parse_headers(p_msg, HDR_TO_F, 0)==-1
+				    || !p_msg->to)  {
+					LOG(L_ERR, "ERROR: INVITE reply cannot be parsed\n");
+					return -1;
+				}
 			}
 
 			t_reply_matching( p_msg ,
-				param_branch!=0?param_branch:&local_branch );
-
+					  param_branch!=0?param_branch:&local_branch );
+			
 		}
 #ifdef EXTRA_DEBUG
 		if ( T && T!=T_UNDEFINED && T->damocles) {
