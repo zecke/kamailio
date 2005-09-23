@@ -244,6 +244,7 @@ int t_process_cancel(struct cell* t_invite, struct sip_msg* cancel_msg, struct p
 			LOG(L_ERR, "tm:t_process_cancel: Error while sending 200 canceling\n");
 		}
 		     /* And cancel the INVITE transaction */
+		     /* FIXME: we should use reply lock here */
 		which_cancel(t_invite, &cancel_bm);
 		cleanup_uac_timers(t_invite);
 		cancel_uacs(t_invite, cancel_bm);
