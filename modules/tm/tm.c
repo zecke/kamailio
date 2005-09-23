@@ -571,6 +571,9 @@ static int mod_init(void)
 		return -1;
 	}
 
+	     /* Initialize the table containing status code priorities */
+	init_status_table();
+
 	return 0;
 }
 

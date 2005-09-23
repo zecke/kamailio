@@ -143,4 +143,6 @@ int fifo_t_reply( FILE *stream, char *response_file );
 
 int unixsock_t_reply(str* msg);
 
+void init_status_table(void);
+
 #endif
