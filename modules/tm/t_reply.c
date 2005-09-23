@@ -1272,25 +1272,23 @@ int reply_received( struct sip_msg  *p_msg )
 
 	uac=&t->uac[branch];
 	DBG("DEBUG: reply_received: org. status uas=%d, "
-		"uac[%d]=%d local=%d is_invite=%d)\n",
-		t->uas.status, branch, uac->last_received, 
-		is_local(t), is_invite(t));
+	    "uac[%d]=%d local=%d is_invite=%d)\n",
+	    t->uas.status, branch, uac->last_received, 
+	    is_local(t), is_invite(t));
 	last_uac_status=uac->last_received;
-
-	/* it's a cancel ... ? */
+	
+	     /* it's a cancel ... ? */
 	if (get_cseq(p_msg)->method.len==CANCEL_LEN 
-		&& memcmp( get_cseq(p_msg)->method.s, CANCEL, CANCEL_LEN)==0
-		/* .. which is not e2e ? ... */
-		&& is_invite(t) ) {
-			/* ... then just stop timers */
-			reset_timer( &uac->local_cancel.retr_timer);
-			if ( msg_status >= 200 )
-				reset_timer( &uac->local_cancel.fr_timer);
-			DBG("DEBUG: reply to local CANCEL processed\n");
-			goto done;
+	    && memcmp(get_cseq(p_msg)->method.s, CANCEL, CANCEL_LEN)==0) {
+		     /* ... then just stop timers */
+		reset_timer(&uac->local_cancel.retr_timer);
+		if ( msg_status >= 200 ) {
+			reset_timer( &uac->local_cancel.fr_timer);
+		}
+		DBG("DEBUG: reply to local CANCEL processed\n");
+		goto done;
 	}
-
-
+	
 	/* *** stop timers *** */
 	/* stop retransmission */
 	reset_timer( &uac->request.retr_timer);
