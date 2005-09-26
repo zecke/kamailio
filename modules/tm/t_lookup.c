@@ -376,7 +376,7 @@ static int matching_3261( struct sip_msg *p_msg, struct cell **trans,
 int t_lookup_request( struct sip_msg* p_msg , int leave_new_locked )
 {
 	struct cell *p_cell, *e2e_ack_trans;
-	unsigned int isACK, isCANCEL;
+	unsigned int isACK, isCANCEL, skip;
 	struct sip_msg *t_msg;
 	int ret, match_status;
 	struct via_param *branch;
@@ -418,10 +418,20 @@ int t_lookup_request( struct sip_msg* p_msg , int leave_new_locked )
 	    && memcmp(branch->value.s,MCOOKIE,MCOOKIE_LEN)==0) {
 		     /* huhuhu! the cookie is there -- let's proceed fast */
 		LOCK_HASH(p_msg->hash_index);
-		match_status = matching_3261(p_msg, &p_cell, 
-						  /* skip transactions with different method; otherwise CANCEL would 
-						   * match the previous INVITE trans.  */
-					     (isACK || isCANCEL) ? ~METHOD_INVITE: ~p_msg->REQ_METHOD);
+		if (isACK) {
+			     /* Match INVITE transactions only */
+			skip = ~METHOD_INVITE;
+		} else if (isCANCEL) {
+			     /* We assume CANCEL can cancel anything but ACK and CANCEL
+			      * transactions, to be on the safe side
+			      */
+			skip = METHOD_ACK | METHOD_CANCEL;
+		} else {
+			     /* Otherwise match only transactions with same method */
+			skip = ~p_msg->REQ_METHOD;
+		}
+		match_status = matching_3261(p_msg, &p_cell, skip);
+
 		switch(match_status) {
 		case 0:	goto notfound;	/* no match */
 		case 1:	goto found; 	/* match */
