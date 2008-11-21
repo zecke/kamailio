@@ -37,7 +37,7 @@
 #define DB_VAL_H
 
 #include <time.h>
-#include "../str.h"
+#include "../../str.h"
 
 
 /**
