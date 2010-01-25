@@ -67,8 +67,8 @@ typedef unsigned int branch_bm_t;
 /* reply export types */
 typedef int (*treply_f)(struct sip_msg * , unsigned int , char * );
 typedef int (*treply_wb_f)( struct cell* trans,
-	unsigned int code, char * text, char * body, 
-	char * new_header, char * to_tag);
+	unsigned int code, str * text, str * body, 
+	str * new_header, str * to_tag);
 
 /* wrapper function needed after changes in w_t_reply */
 int w_t_reply_wrp(struct sip_msg *m, unsigned int code, char *txt);
@@ -106,7 +106,7 @@ int t_retransmit_reply( /* struct sip_msg * */  );
 
 
 int t_reply_with_body( struct cell *trans, unsigned int code, 
-		       char * text, char * body, char * new_header, char * to_tag );
+		       str * text, str * body, str * new_header, str * to_tag );
 
 
 /* send a UAS reply

@@ -357,6 +357,25 @@ int new_dlg_uac(str* _cid, str* _ltag, unsigned int _lseq, str* _luri, str* _rur
 	return 0;
 }
 
+/*
+ * Store display names into a dialog
+ */
+
+int dlg_add_extra(dlg_t* _d, str* _ldname, str* _rdname)
+{
+        if(!_d || !_ldname || !_rdname)
+        {
+                LM_ERR("Invalid parameters\n");
+                return -1;
+        }
+
+        /* Make a copy of local Display Name */
+        if(shm_str_dup(&_d->loc_dname, _ldname) < 0) return -2;
+        /* Make a copy of remote Display Name */
+        if(shm_str_dup(&_d->rem_dname, _rdname) < 0) return -3;
+
+        return 0;
+}
 
 /*
  * Parse Contact header field body and extract URI

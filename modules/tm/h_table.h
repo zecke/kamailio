@@ -274,11 +274,15 @@ struct totag_elem {
 #ifdef WITH_AS_SUPPORT
 	/* don't generate automatically an ACK for local transaction */
 #	define T_NO_AUTO_ACK	(1<<7)
+       /* provisional replies must trigger callbacks for local transaction */
+#       define T_PASS_PROVISIONAL_FLAG (1<<10)
 #endif
 
 #define T_DISABLE_6xx (1<<8) /* treat 6xx as a normal reply */
 #define T_DISABLE_FAILOVER (1<<9) /* don't perform dns failover */
 #define T_DONT_FORK   (T_CANCELED|T_6xx)
+
+#define pass_provisional(_t_)    ((_t_)->flags&T_PASS_PROVISIONAL_FLAG)
 
 /* unsigned short should be enough for a retr. timer: max. 65535 ticks =>
  * max  retr. = 1023 s for tick = 15 ms, which should be more then enough and

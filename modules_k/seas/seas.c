@@ -234,8 +234,8 @@ static int w_as_relay_t(struct sip_msg *msg, char *entry, char *foo)
    char *buffer,processor_id;
    struct cell *mycel;
    struct as_entry *as;
-   static str msg100={"Your call is important to us",sizeof("Your call is important to us")-1};
-   static str msg500={"Server Internal Error!",sizeof("Server Internal Error!")-1};
+   char *msg100="Your call is important to us";
+   char *msg500="Server Internal Error!";
 
    buffer=(char*)0;
    my_as_ev=(as_msg_p)0;
@@ -259,7 +259,7 @@ static int w_as_relay_t(struct sip_msg *msg, char *entry, char *foo)
    if (msg->REQ_METHOD==METHOD_INVITE )
    {
       LM_DBG("new INVITE\n");
-      if(!seas_f.tmb.t_reply(msg,100,&msg100)){
+      if(!seas_f.tmb.t_reply(msg,100,msg100)){
 	 LM_DBG("t_reply (100)\n");
 	 goto error;
       }
@@ -271,7 +271,7 @@ static int w_as_relay_t(struct sip_msg *msg, char *entry, char *foo)
    }
    if(as->type==AS_TYPE){
       if((processor_id=get_processor_id(&msg->rcv,&(as->u.as)))<0){
-	 LM_ERR("no processor found for packet with dst port:%d\n",msg->rcv.dst_port);
+	 LM_ERR("no processor found for packet dst %s:%d\n",ip_addr2a(&msg->rcv.dst_ip),msg->rcv.dst_port);
 	 goto error;
       }
    }else if(as->type==CLUSTER_TYPE){
@@ -315,14 +315,14 @@ again:
 	 /** TODO handle this correctly !!!*/
       }
    }
-   seas_f.tmb.t_setkr(REQ_FWDED);
+   /*seas_f.tmb.t_setkr(REQ_FWDED);*/
    ret=0;
 done:
    return ret;
 error:
    mycel=seas_f.tmb.t_gett();
    if(mycel && mycel!=T_UNDEFINED){
-      if(!seas_f.tmb.t_reply(msg,500,&msg500)){
+      if(!seas_f.tmb.t_reply(msg,500,msg500)){
 	 LM_ERR("t_reply (500)\n");
       }
    }
@@ -390,7 +390,7 @@ again:
    // a wait timer will be put to run with WT_TIME_OUT (5 seconds, within which the AS should respond)      
    // this is a bug !!! I think this is why we lose calls at high load !!
    //t_release(msg, 0, 0);
-   seas_f.tmb.t_setkr(REQ_FWDED);
+   /*seas_f.tmb.t_setkr(REQ_FWDED);*/
 
    ret=0;
    return ret;
@@ -453,7 +453,7 @@ char * create_as_event_t(struct cell *t,struct sip_msg *msg,char processor_id,in
       flags|=E2E_ACK;
    }else if(msg->REQ_METHOD==METHOD_CANCEL){
       LM_DBG("new CANCEL\n");
-      originalT=seas_f.tmb.t_lookup_original_t(msg);
+      originalT=seas_f.tmb.t_lookup_original(msg);
       if(!originalT || originalT==T_UNDEFINED){
 	 /** we dont even pass the unknown CANCEL to JAIN*/
 	 LM_WARN("CANCEL does not match any existing transaction!!\n");
@@ -647,7 +647,7 @@ static int seas_init(void)
 	 }
 	 p++;
       }
-      if(!(he=resolvehost(seas_listen_socket,0)))
+      if(!(he=resolvehost(seas_listen_socket)))
 	 goto error;
       if(!(seas_listen_ip=pkg_malloc(sizeof(struct ip_addr))))
 	 goto error;

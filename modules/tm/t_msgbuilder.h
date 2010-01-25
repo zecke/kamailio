@@ -21,8 +21,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
- * along with this program; if not, write to the Free Software 
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * History:
@@ -60,9 +60,11 @@ char *build_local_reparse(struct cell *Trans, unsigned int branch,
 	unsigned int *len, char *method, int method_len, str *to);
 
 char *build_uac_request(  str msg_type, str dst, str from,
-	str fromtag, int cseq, str callid, str headers, 
+	str fromtag, int cseq, str callid, str headers,
 	str body, int branch,
 	struct cell *t, unsigned int *len);
+
+char *build_uac_cancel(str *headers,str *body,struct cell *cancelledT,unsigned int branch, unsigned int *len, struct dest_info* dst);
 
 
 /*
@@ -71,7 +73,7 @@ char *build_uac_request(  str msg_type, str dst, str from,
  * request should be send. The function is used by tm when it generates
  * local ACK to 200 OK (on behalf of applications using uac
  */
-char *build_dlg_ack(struct sip_msg* rpl, struct cell *Trans, 
+char *build_dlg_ack(struct sip_msg* rpl, struct cell *Trans,
 					unsigned int branch, str *hdrs, str *body,
 					unsigned int *len, struct dest_info* dst);
 
@@ -79,7 +81,7 @@ char *build_dlg_ack(struct sip_msg* rpl, struct cell *Trans,
 /*
  * Create a request
  */
-char* build_uac_req(str* method, str* headers, str* body, dlg_t* dialog, int branch, 
+char* build_uac_req(str* method, str* headers, str* body, dlg_t* dialog, int branch,
 		    struct cell *t, int* len, struct dest_info* dst);
 
 

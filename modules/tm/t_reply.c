@@ -2168,7 +2168,7 @@ trans_not_found:
 
 
 int t_reply_with_body( struct cell *trans, unsigned int code,
-		char * text, char * body, char * new_header, char * to_tag )
+		str * text, str * body, str * new_header, str * to_tag )
 {
 	struct lump_rpl *hdr_lump;
 	struct lump_rpl *body_lump;
@@ -2177,19 +2177,20 @@ int t_reply_with_body( struct cell *trans, unsigned int code,
 	int  ret;
 	struct bookmark bm;
 
-	s_to_tag.s = to_tag;
-	if(to_tag)
-		s_to_tag.len = strlen(to_tag);
-	else
+	if(to_tag){
+           s_to_tag.s = to_tag->s;
+           s_to_tag.len = to_tag->len;
+	}else{
 		s_to_tag.len = 0;
+        }
 
 	/* mark the transaction as replied */
 	if (code>=200) set_kr(REQ_RPLD);
 
 	/* add the lumps for new_header and for body (by bogdan) */
-	if (new_header && strlen(new_header)) {
-		hdr_lump = add_lump_rpl( trans->uas.request, new_header,
-					 strlen(new_header), LUMP_RPL_HDR );
+	if (new_header && new_header->len) {
+		hdr_lump = add_lump_rpl( trans->uas.request, new_header->s,
+					 new_header->len, LUMP_RPL_HDR );
 		if ( !hdr_lump ) {
 			LOG(L_ERR,"ERROR:tm:t_reply_with_body: cannot add hdr lump\n");
 			goto error;
@@ -2199,8 +2200,8 @@ int t_reply_with_body( struct cell *trans, unsigned int code,
 	}
 
 	/* body lump */
-	if(body && strlen(body)) {
-		body_lump = add_lump_rpl( trans->uas.request, body, strlen(body),
+	if(body && body->len) {
+		body_lump = add_lump_rpl( trans->uas.request, body->s, body->len,
 			LUMP_RPL_BODY );
 		if (body_lump==0) {
 			LOG(L_ERR,"ERROR:tm:t_reply_with_body: cannot add body lump\n");
@@ -2211,7 +2212,7 @@ int t_reply_with_body( struct cell *trans, unsigned int code,
 	}
 
 	rpl.s = build_res_buf_from_sip_req(
-			code, text, &s_to_tag,
+			code, text->s, &s_to_tag,
 			trans->uas.request, (unsigned int*)&rpl.len, &bm);
 
 	/* since the msg (trans->uas.request) is a clone into shm memory, to avoid
@@ -2234,7 +2235,7 @@ int t_reply_with_body( struct cell *trans, unsigned int code,
 
 	DBG("t_reply_with_body: buffer computed\n");
 	// frees 'res.s' ... no panic !
-	ret=_reply_light( trans, rpl.s, rpl.len, code, text,
+	ret=_reply_light( trans, rpl.s, rpl.len, code, text->s,
 		s_to_tag.s, s_to_tag.len, 1 /* lock replies */, &bm );
 	/* this is ugly hack -- the function caller may wish to continue with
 	 * transaction and I unref; however, there is now only one use from
@@ -2363,32 +2364,30 @@ void rpc_reply(rpc_t* rpc, void* c)
 	int ret;
 	struct cell *trans;
 	unsigned int hash_index, label, code;
-	str ti;
-	char* reason, *body, *headers, *tag;
+	str ti,reason, body, headers, tag;
 
 	if (rpc->scan(c, "d", &code) < 1) {
 		rpc->fault(c, 400, "Reply code expected");
 		return;
 	}
 
-	if (rpc->scan(c, "s", &reason) < 1) {
+	if (rpc->scan(c, "S", &reason) < 1) {
 		rpc->fault(c, 400, "Reason phrase expected");
 		return;
 	}
 
-	if (rpc->scan(c, "s", &ti.s) < 1) {
+	if (rpc->scan(c, "S", &ti) < 1) {
 		rpc->fault(c, 400, "Transaction ID expected");
 		return;
 	}
-	ti.len = strlen(ti.s);
 
-	if (rpc->scan(c, "s", &tag) < 1) {
+	if (rpc->scan(c, "S", &tag) < 1) {
 		rpc->fault(c, 400, "To tag expected");
 		return;
 	}
 
-	if (rpc->scan(c, "s", &headers) < 0) return;
-	if (rpc->scan(c, "s", &body) < 0) return;
+	if (rpc->scan(c, "S", &headers) < 0) return;
+	if (rpc->scan(c, "S", &body) < 0) return;
 
 	if(sscanf(ti.s,"%u:%u", &hash_index, &label) != 2) {
 		ERR("Invalid trans_id (%s)\n", ti.s);
@@ -2405,7 +2404,7 @@ void rpc_reply(rpc_t* rpc, void* c)
 
 	/* it's refcounted now, t_reply_with body unrefs for me -- I can
 	 * continue but may not use T anymore  */
-	ret = t_reply_with_body(trans, code, reason, body, headers, tag);
+	ret = t_reply_with_body(trans, code, &reason, &body, &headers, &tag);
 
 	if (ret < 0) {
 		ERR("Reply failed\n");

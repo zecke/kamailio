@@ -99,6 +99,7 @@ struct tm_binds {
 	reqout_t         t_request_outside;
 	req_t            t_request;
 	new_dlg_uac_f      new_dlg_uac;
+        dlg_add_extra_f    dlg_add_extra;
 	dlg_response_uac_f dlg_response_uac;
 	new_dlg_uas_f      new_dlg_uas;
 	update_dlg_uas_f   update_dlg_uas;
@@ -115,6 +116,7 @@ struct tm_binds {
 	run_failure_handlers_f run_failure_handlers;
 	cancel_uacs_f      cancel_uacs;
 	cancel_all_uacs_f  cancel_all_uacs;
+        tuaccancel_f       t_cancel_uac;
 	prepare_request_within_f  prepare_request_within;
 	send_prepared_request_f   send_prepared_request;
 	enum route_mode*   route_mode;

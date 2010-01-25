@@ -133,4 +133,12 @@ void rpc_cancel(rpc_t* rpc, void* c);
 int cancel_b_flags_fixup(void* handle, str* gname, str* name, void** val);
 int cancel_b_flags_get(unsigned int* f, int m);
 
+typedef unsigned int (*tuaccancel_f)( str *headers,str *body,
+        unsigned int cancelledIdx,unsigned int cancelledLabel,
+        transaction_cb cb, void* cbp);
+
+unsigned int t_uac_cancel(str *headers,str *body,
+        unsigned int cancelledIdx,unsigned int cancelledLabel,
+        transaction_cb cb, void* cbp);
+
 #endif

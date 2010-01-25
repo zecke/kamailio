@@ -196,6 +196,8 @@ int load_tm( struct tm_binds *tmb)
 		return -1;
 	}
 
+        tmb->dlg_add_extra = dlg_add_extra;
+        tmb->t_cancel_uac = t_uac_cancel;                                                                                                                                                                   
 	tmb->prepare_request_within = prepare_req_within;
 	tmb->send_prepared_request = send_prepared_request;
 	
