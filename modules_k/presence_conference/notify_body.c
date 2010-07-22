@@ -212,14 +212,10 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 				  * would then be declared redundant (libxml unfortunately cannot remove 
 				  * namespaces)
 				  */
-				LM_ERR("[unlink node %p]\n", node->next);
- 				xmlUnlinkNode(node);//don't mess around with modifying an iterating list
-				LM_ERR("[after unlink %p]\n", node->next);
-				if(xmlAddChild(root_node, node) == NULL) {
+				if(xmlAddChild(root_node, xmlCopyNode(node, 1)) == NULL) {
 					LM_ERR("while adding child\n");
 					goto error;
 				}
-				LM_ERR("[after adding unlinked node %p]\n", node->next);
 			}
 		}
 		}
