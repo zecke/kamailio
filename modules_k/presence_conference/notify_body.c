@@ -1,6 +1,7 @@
 /*
  * presence_conference module - mariusbucur
  *
+ * Copyright (C) 2010 Marius Bucur
  * Copyright (C) 2006 Voice Sistem S.R.L.
  * Copyright (C) 2008 Klaus Darilion, IPCom
  *

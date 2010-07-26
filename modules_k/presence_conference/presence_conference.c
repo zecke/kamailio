@@ -1,7 +1,7 @@
 /*
  * presence_conference module - Presence Handling of "conference" events (handling conference-info+xml doc)
  *
- * mariusbucur
+ * Copyright (C) 2010 Marius Bucur
  *
  * This file is part of Kamailio, a free SIP server.
  *

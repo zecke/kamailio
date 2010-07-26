@@ -1,6 +1,7 @@
 /*
  * add "conference" event to presence module - mariusbucur
- *
+ * 
+ * Copyright (C) 2010 Marius Bucur
  * Copyright (C) 2007 Juha Heinanen
  * Copyright (C) 2008 Klaus Darilion, IPCom
  *
