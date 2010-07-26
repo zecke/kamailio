@@ -37,6 +37,7 @@
 #include "../../data_lump_rpl.h"
 #include "../../parser/parse_expires.h"
 #include "../../parser/parse_event.h"
+#include "../../parser/parse_def.h"
 #include "../../parser/contact/parse_contact.h"
 #include "../../lib/kcore/hash_func.h"
 #include "../../lib/kcore/parser_helpers.h"
@@ -798,7 +799,8 @@ int extract_sdialog_info(subs_t* subs,struct sip_msg* msg, int mexp,
 	else
 	{
 		memset( &TO , 0, sizeof(TO) );
-		if( !parse_to(msg->to->body.s,msg->to->body.s + msg->to->body.len + 1, &TO))
+		parse_to(msg->to->body.s,msg->to->body.s + msg->to->body.len + 1, &TO);
+		if(TO.error == PARSE_ERROR)
 		{
 			LM_DBG("'To' header NOT parsed\n");
 			goto error;
