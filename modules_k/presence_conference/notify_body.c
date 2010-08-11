@@ -184,7 +184,7 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 	   use signed int as presence module stores "version" in DB as
 	   signed int) has max. 10 characters + 1 character for the sign
 	*/
-	xmlNewProp(root_node, BAD_CAST "version", BAD_CAST "00000000000");
+	xmlNewProp(root_node, BAD_CAST "version", BAD_CAST "0");
 	xmlNewProp(root_node, BAD_CAST "state", BAD_CAST "full" );
 	xmlNewProp(root_node, BAD_CAST "entity", BAD_CAST buf);
 
@@ -263,39 +263,27 @@ error:
 }
 
 str *conf_body_setversion(subs_t *subs, str *body) {
-	char *version_start=0;
-	char version[MAX_INT_LEN + 2]; /* +2 becasue of trailing " and \0 */
-	int version_len;
-
+	char version_str[MAX_INT_LEN + 2];
+	sprintf(version_str, "%d", subs->version);
 	if (!body) {
 		return NULL;
 	}
-
-	/* xmlDocDumpFormatMemory creates \0 terminated string */
-	/* version parameters starts at minimum at character 34 */
-	if (body->len < 41) {
-		LM_ERR("body string too short!\n");
-		return NULL;
+	
+	xmlDocPtr doc = xmlParseMemory(body->s, body->len);
+	if(!doc) {
+		goto error;
 	}
-	version_start = strstr(body->s + 34, "version=");
-	if (!version_start) {
-	    LM_ERR("version string not found!\n");
-		return NULL;
+	xmlNodePtr conf_info = xmlDocGetRootElement(doc);
+	if(!conf_info) {
+		goto error;
 	}
-	version_start += 9;
-
-	version_len = snprintf(version, MAX_INT_LEN + 2,"%d\"", subs->version);
-	if (version_len >= MAX_INT_LEN + 2) {
-		LM_ERR("failed to convert 'version' to string\n");
-		memcpy(version_start, "00000000000\"", 12);
-		return NULL;
+	if(!xmlSetProp(conf_info, BAD_CAST "version", BAD_CAST version_str)) {
+		goto error;
 	}
-	/* Replace the placeholder 00000000000 with the version.
-	 * Put the padding behind the ""
-	 */
-	LM_DBG("replace version with \"%s\n",version);
-	memcpy(version_start, version, version_len);
-	memset(version_start + version_len, ' ', 12 - version_len);
-
+	xmlDocDumpFormatMemory(doc,(xmlChar**)(void*)&body->s, 
+			&body->len, 1);
+	return NULL;
+error:
+	LM_ERR("error in presence_conference conf_body_setversion\n");
 	return NULL;
 }
