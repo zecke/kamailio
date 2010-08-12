@@ -52,13 +52,7 @@ add_event_t pres_add_event;
 int use_partial_states = 0;
 
 /* module mi command functions */
-
-//presence_conference reset mi command
-static struct mi_root* conference_reset(struct mi_root* cmd, void* param)
-{
-	LM_ERR("Conference received mi command [reason %*.s] [code %d]...\n", cmd->reason.len, cmd->reason.s, cmd->code);
-	return cmd;
-}
+static struct mi_root* conference_reset(struct mi_root* cmd, void* param);
 
 /* module exported commands */
 static cmd_export_t cmds[] =
@@ -77,6 +71,9 @@ static mi_export_t mi_cmds[] = {
 	{ "conference_reset", conference_reset, 0, 0, 0},
 	{ 0, 0, 0, 0, 0 }
 };
+
+/* presence api bind structure */
+presence_api_t pres;
 
 /* module exports */
 struct module_exports exports= {
@@ -99,7 +96,6 @@ struct module_exports exports= {
  */
 static int mod_init(void)
 {
-	presence_api_t pres;
 	bind_presence_t bind_presence;
 
 	bind_presence= (bind_presence_t)find_export("bind_presence", 1,0);
@@ -123,4 +119,15 @@ static int mod_init(void)
 	}	
     
     return 0;
+}
+
+
+/* module mi command functions */
+
+//presence_conference reset mi command
+static struct mi_root* conference_reset(struct mi_root* cmd, void* param)
+{
+	LM_ERR("Conference received mi command [reason %*.s] [code %d]...\n", cmd->reason.len, cmd->reason.s, cmd->code);
+	//reset subscriptions to the event package for some presentity (conference)
+	return cmd;
 }
