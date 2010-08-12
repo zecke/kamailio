@@ -45,7 +45,7 @@
 #include "notify_body.h"
 #include "pidf.h"
 
-str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n);
+str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n, int off_index);
 
 void free_xml_body(char* body)
 {
@@ -53,7 +53,6 @@ void free_xml_body(char* body)
 		return;
 
 	xmlFree(body);
-	//body= NULL; // useless
 }
 
 
@@ -67,7 +66,7 @@ str* conf_agg_nbody(str* pres_user, str* pres_domain, str** body_array, int n, i
 	if(body_array== NULL)
 		return NULL;
 
-	n_body = agregate_xmls(pres_user, pres_domain, body_array, n);
+	n_body = agregate_xmls(pres_user, pres_domain, body_array, n, off_index);
 	LM_DBG("[n_body]=%p\n", n_body);
 	if(n_body) {
 		LM_DBG("[*n_body]=%.*s\n",
@@ -247,8 +246,8 @@ error:
 }
 
 str *conf_body_setversion(subs_t *subs, str *body) {
-	char version_str[MAX_INT_LEN + 2];
-	sprintf(version_str, "%d", subs->version);
+	char version_str[MAX_INT_LEN + 2];//for the null terminating character \0
+	snprintf(version_str, MAX_INT_LEN, "%d", subs->version);
 	if (!body) {
 		return NULL;
 	}
