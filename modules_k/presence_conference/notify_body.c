@@ -84,7 +84,7 @@ str* conf_agg_nbody(str* pres_user, str* pres_domain, str** body_array, int n, i
 	return n_body;
 }	
 
-str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
+str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n, int off_index)
 {
 	if(body_array == NULL || n == 0)
 		return 0;
@@ -175,14 +175,8 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 	}
 	xmlSetNs(root_node, namespace);
 	/* The version must be increased for each new document and is a 32bit int.
-	   As the version is different for each watcher, we can not set here the
-	   correct value. Thus, we just put here a placeholder which will be 
-	   replaced by the correct value in the aux_body_processing callback.
-	   Thus we have CPU intensive XML aggregation only once and can use
-	   quick search&replace in the per-watcher aux_body_processing callback.
-	   We use 11 chracters as an signed int (although RFC says unsigned int we
-	   use signed int as presence module stores "version" in DB as
-	   signed int) has max. 10 characters + 1 character for the sign
+	   The aux_body_processing function will take care of setting the right attribute
+	   depending on the subscription for which the notify is being sent.
 	*/
 	xmlNewProp(root_node, BAD_CAST "version", BAD_CAST "0");
 	xmlNewProp(root_node, BAD_CAST "state", BAD_CAST "full" );
@@ -191,7 +185,6 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 	/* loop over all bodies and create the aggregated body */
 	for(i=0; i<j; i++)
 	{
-		LM_DBG("[n]=%d, [i]=%d, [j]=%d xml_array[i]=%p\n", n, i, j, xml_array[i]);
 		p_root= xmlDocGetRootElement(xml_array[i]);
 		if(unlikely(p_root == NULL)) {
 			LM_ERR("while geting the xml_tree root element\n");
@@ -205,21 +198,18 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n)
 		}
 		/* the root "conference-info" element should always have children */
 		if (p_root->children) {
-		for (node = p_root->children; node != NULL; node = node->next) {
-			/*if (node->type == XML_ELEMENT_NODE) */{
-				/* we do not copy the node, but unlink it and then add it to the new node.
-				  * This destroys the original document but we do not need it anyway.
-				  * using "copy" instead of "unlink" would also copy the namespace which 
-				  * would then be declared redundant (libxml unfortunately cannot remove 
-				  * namespaces)
-				  */
-				if(xmlAddChild(root_node, xmlCopyNode(node, 1)) == NULL) {
-					LM_ERR("while adding child\n");
-					goto error;
-				}
+			for (node = p_root->children; node != NULL; node = node->next) {
+					if(xmlAddChild(root_node, xmlCopyNode(node, 1)) == NULL) {
+						LM_ERR("while adding child\n");
+						goto error;
+					}
 			}
 		}
-		}
+		/* we only take the most recent subscription as
+		   in this phase non partial states will be sent
+		*/
+		if(i != off_index)
+			break;
 	}
 
 	body = (str*)pkg_malloc(sizeof(str));
