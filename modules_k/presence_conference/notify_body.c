@@ -78,9 +78,6 @@ str* conf_agg_nbody(str* pres_user, str* pres_domain, str** body_array, int n, i
 		LM_ERR("while aggregating body\n");
 	}
 
-	xmlCleanupParser();
-	xmlMemoryDump();
-
 	return n_body;
 }	
 
@@ -230,9 +227,6 @@ str* agregate_xmls(str* pres_user, str* pres_domain, str** body_array, int n, in
 	if(xml_array!=NULL)
 		pkg_free(xml_array);
     
-	xmlCleanupParser();
-	xmlMemoryDump();
-
 	return body;
 
 error:
