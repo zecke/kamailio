@@ -45,7 +45,7 @@
 #include "ul_callback.h"
 #include "urecord.h"
 #include "ucontact.h"
-
+#include "usrloc.h"
 
 /*!
  * \brief Create a new contact structure

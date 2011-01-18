@@ -46,7 +46,7 @@
 #include "../../lib/kcore/hash_func.h"
 #include "ul_mod.h"            /* usrloc module parameters */
 #include "utime.h"
-
+#include "usrloc.h"
 
 #ifdef STATISTICS
 static char *build_stat_name( str* domain, char *var_name)
