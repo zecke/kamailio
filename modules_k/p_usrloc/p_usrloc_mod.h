@@ -38,6 +38,7 @@
 #include "../../str.h"
 #include "../../lib/kmi/mi.h"
 #include "../usrloc/usrloc.h"
+#include "../../lib/kcore/consistent_hash.h"
 
 /*
  * Module parameters
@@ -51,6 +52,9 @@
 #define CONTACT_ONLY            (0)
 #define CONTACT_CALLID          (1)
 #define CONTACT_PATH		(2)
+
+#define ALG_CRC			(0)
+#define ALG_CHASH		(1)
 
 #define REG_TABLE   "locdb"
 #define URL_COL        "url"
@@ -130,7 +134,9 @@ extern str db_transaction_level;
 extern char * isolation_level;
 extern int connection_expires;
 extern int alg_location;
-
+extern int initial_loc_count;
+extern int replicas;
 extern int  max_loc_nr;
 
+extern hash_ring_t* hring;
 #endif /* UL_MOD_H */

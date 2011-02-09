@@ -368,6 +368,7 @@ int load_handles(db_func_t * dbf, db1_con_t * dbh) {
 		element->next = db_handles;
 		db_handles = element;
 	}
+
 	dbf->free_result (dbh, res);
 	return 0;
 errout:
@@ -548,14 +549,25 @@ static int compute_id(str* first, str* second){
 		aux[first->len] = '@';
 		memcpy(aux + first->len + 1, second->s, second->len);
 		tmp.s = aux;
-
-                crc32_uint(&tmp, &crc32_val);
-		return crc32_val % max_loc_nr + 1;
 	}else{
-		crc32_uint(first, &crc32_val);
-		LM_DBG("crc32 for %.*s is %u\n", first->len, first->s, crc32_val);
-		return crc32_val % max_loc_nr + 1;
+		tmp.s = first->s;
+		tmp.len = first->len;
 	}
+
+	switch(alg_location){
+		  case ALG_CRC :{
+			crc32_uint(&tmp, &crc32_val);
+			return crc32_val % max_loc_nr + 1;
+		  }
+		  case ALG_CHASH: {
+		    return ch_search_location(hring, &tmp)+1;
+		  }
+		  default:{
+		    LM_ERR("incorrect distribution algorithm\n");
+		    return -1;
+		  }
+	}
+
 }
 
 
@@ -585,7 +597,6 @@ int load_data(db_func_t * dbf, db1_con_t * dbh, ul_db_handle_t * handle, int id)
 	cols[6] = &risk_group_col;
 	
 	order = &num_col;
-
 	keys[0] = &id_col;
 	op[0] = OP_EQ;
 	key_vals[0].type = DB1_INT;

@@ -131,7 +131,7 @@ extern int ul_locks_no;
  * @param db_retry_interval defines in which intervals the module shall try to 
  * reconnect to a deactivated database
  * @param write_on_db defines if the module has write access on the databases or not
- * @param alg_location defines the algorithm for the location matching - based on crc32 for  now
+ * @param alg_location defines the algorithm for the location matching - based on crc32 for  now or consistent hashing
  */
 
 str user_col        = str_init(USER_COL); 		/*!< Name of column containing usernames */
@@ -174,7 +174,8 @@ int policy               = DB_DEFAULT_POLICY;
 int db_write             = 0;
 int db_master_write      = 0;
 int alg_location         = 0;
-
+int initial_loc_count    = 0;
+int replicas             = 0;
 int db_use_transactions  = 0;
 str db_transaction_level = {DB_DEFAULT_TRANSACTION_LEVEL, sizeof(DB_DEFAULT_TRANSACTION_LEVEL) -1};
 char * isolation_level;
@@ -192,6 +193,7 @@ str domain_db         = str_init(DEFAULT_DOMAIN_DB);
 int default_dbt       = 0;
 int expire            = 0;
 
+hash_ring_t* hring     = 0;
 
 /*! \brief
  * Exported functions
@@ -252,6 +254,8 @@ static param_export_t params[] = {
 	{"write_on_master_db",   INT_PARAM, &db_master_write     },
 	{"connection_expires",   INT_PARAM, &connection_expires  },
 	{"alg_location",         INT_PARAM, &alg_location },
+	{"loc_count",         	 INT_PARAM, &initial_loc_count },
+	{"replicas",             INT_PARAM, &replicas },
 	{0, 0, 0}
 };
 
@@ -439,6 +443,16 @@ static int mod_init(void)
  			LM_ERR("could not initialise database check.\n");
  			return -1;
  	}
+
+	if(alg_location == ALG_CHASH){
+	     hring = pkg_malloc(sizeof(hash_ring_t));
+	     if(!hring){
+			LM_ERR("no more free memory\n");
+			return -1;
+	     }
+	     ch_create(hring, replicas, initial_loc_count);
+	     print(hring);
+	}
 	return 0;
 }
 
