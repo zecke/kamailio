@@ -34,8 +34,8 @@
 typedef int (*regapi_save_f)(struct sip_msg *msg, char *table, int flags);
 int regapi_save(struct sip_msg *msg, char *table, int flags);
 
-typedef int (*regapi_lookup_f)(struct sip_msg *msg, char *table);
-int regapi_lookup(struct sip_msg *msg, char *table);
+typedef int (*regapi_lookup_f)(struct sip_msg *msg, char *table, int flags);
+int regapi_lookup(struct sip_msg *msg, char *table, int flags);
 
 /**
  * @brief REGISTRAR API structure

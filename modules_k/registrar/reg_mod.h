@@ -67,6 +67,9 @@
 #define REG_SAVE_REPL_FL    (1<<2)
 #define REG_SAVE_ALL_FL     ((1<<3)-1)
 
+#define REG_LOOKUP_RAND   (1<<0)
+#define REG_LOOKUP_RROB   (1<<1)
+
 extern int nat_flag;
 extern int tcp_persistent_flag;
 extern int received_avp;

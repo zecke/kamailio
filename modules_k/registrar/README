@@ -10,6 +10,10 @@ Daniel-Constantin Mierla
 
 Edited by
 
+Alexandr Dubovikov
+
+Edited by
+
 Jan Janak
 
 Edited by
@@ -60,11 +64,12 @@ Bogdan-Andre Iancu
               4.1. save(domain)
               4.2. save(domain,flags)
               4.3. lookup(domain)
-              4.4. registered(domain)
-              4.5. add_sock_hdr(hdr_name)
-              4.6. unregister(domain, uri)
-              4.7. reg_fetch_contacts(domain, uri, profile)
-              4.8. reg_free_contacts(profile)
+              4.4. lookup(domain,flags)
+              4.5. registered(domain)
+              4.6. add_sock_hdr(hdr_name)
+              4.7. unregister(domain, uri)
+              4.8. reg_fetch_contacts(domain, uri, profile)
+              4.9. reg_free_contacts(profile)
 
         5. Exported Statistics
 
@@ -105,12 +110,13 @@ Bogdan-Andre Iancu
    1.21. save usage
    1.22. save usage
    1.23. lookup usage
-   1.24. registered usage
-   1.25. add_sock_hdr usage
-   1.26. registered usage
+   1.24. lookup usage
+   1.25. registered usage
+   1.26. add_sock_hdr usage
    1.27. registered usage
    1.28. registered usage
-   1.29. $ulc(name) usage
+   1.29. registered usage
+   1.30. $ulc(name) usage
 
 Chapter 1. Admin Guide
 
@@ -153,11 +159,12 @@ Chapter 1. Admin Guide
         4.1. save(domain)
         4.2. save(domain,flags)
         4.3. lookup(domain)
-        4.4. registered(domain)
-        4.5. add_sock_hdr(hdr_name)
-        4.6. unregister(domain, uri)
-        4.7. reg_fetch_contacts(domain, uri, profile)
-        4.8. reg_free_contacts(profile)
+        4.4. lookup(domain,flags)
+        4.5. registered(domain)
+        4.6. add_sock_hdr(hdr_name)
+        4.7. unregister(domain, uri)
+        4.8. reg_fetch_contacts(domain, uri, profile)
+        4.9. reg_free_contacts(profile)
 
    5. Exported Statistics
 
@@ -560,11 +567,12 @@ modparam("registrar", "reg_callid_avp", "$avp(s:avp)")
    4.1. save(domain)
    4.2. save(domain,flags)
    4.3. lookup(domain)
-   4.4. registered(domain)
-   4.5. add_sock_hdr(hdr_name)
-   4.6. unregister(domain, uri)
-   4.7. reg_fetch_contacts(domain, uri, profile)
-   4.8. reg_free_contacts(profile)
+   4.4. lookup(domain,flags)
+   4.5. registered(domain)
+   4.6. add_sock_hdr(hdr_name)
+   4.7. unregister(domain, uri)
+   4.8. reg_fetch_contacts(domain, uri, profile)
+   4.9. reg_free_contacts(profile)
 
 4.1.  save(domain)
 
@@ -658,7 +666,27 @@ switch ($retcode) {
 };
 ...
 
-4.4.  registered(domain)
+4.4.  lookup(domain,flags)
+
+   Same as lookup() but it accepts a set of flags for controlling its
+   behaviour.
+
+   Meaning of the parameters is as follows:
+     * domain - Name of table that should be used for the lookup.
+     * flags - type of algorithm used to select destination contact. The
+       value may be a bitwise OR of the following flags:
+          + 0x01 - random (using rand());
+          + 0x02 - round robin (next destination)
+       The flags may be given in decimal or hexa format.
+
+   This function can be used from REQUEST_ROUTE, FAILURE_ROUTE.
+
+   Example 1.24. lookup usage
+...
+lookup("location","0x01");
+...
+
+4.5.  registered(domain)
 
    The function returns true if the AOR in the Request-URI is registered,
    false otherwise. The function does not modify the message being
@@ -670,7 +698,7 @@ switch ($retcode) {
 
    This function can be used from REQUEST_ROUTE, FAILURE_ROUTE.
 
-   Example 1.24. registered usage
+   Example 1.25. registered usage
 ...
 if (registered("location")) {
         sl_send_reply("100", "Trying");
@@ -678,7 +706,7 @@ if (registered("location")) {
 };
 ...
 
-4.5.  add_sock_hdr(hdr_name)
+4.6.  add_sock_hdr(hdr_name)
 
    Adds to the current REGISTER request a new header with “hdr_name” which
    contains the description of the received socket (proto:ip:port)
@@ -690,12 +718,12 @@ if (registered("location")) {
 
    This function can be used from REQUEST_ROUTE.
 
-   Example 1.25. add_sock_hdr usage
+   Example 1.26. add_sock_hdr usage
 ...
 add_sock_hdr("Sock-Info");
 ...
 
-4.6.  unregister(domain, uri)
+4.7.  unregister(domain, uri)
 
    The function remove all the contact associated to 'uri'.
 
@@ -708,13 +736,13 @@ add_sock_hdr("Sock-Info");
 
    This function can be used from REQUEST_ROUTE, FAILURE_ROUTE.
 
-   Example 1.26. registered usage
+   Example 1.27. registered usage
 ...
 unregister("location", "$ru");
 unregister("location", "sip:user@kamailio.org");
 ...
 
-4.7.  reg_fetch_contacts(domain, uri, profile)
+4.8.  reg_fetch_contacts(domain, uri, profile)
 
    The function fetches the contacts for 'uri' from table 'domain' to
    pseudo-variable $ulc(profile).
@@ -730,13 +758,13 @@ unregister("location", "sip:user@kamailio.org");
 
    This function can be used from REQUEST_ROUTE, FAILURE_ROUTE.
 
-   Example 1.27. registered usage
+   Example 1.28. registered usage
 ...
 reg_fetch_contacts("location", "$ru", "callee");
 reg_fetch_contacts("location", "sip:user@kamailio.org", "caller");
 ...
 
-4.8.  reg_free_contacts(profile)
+4.9.  reg_free_contacts(profile)
 
    The function frees the contacts from pseudo-variable $ulc(profile).
    Should be called to release the content of a profile. Anyhow, fetching
@@ -749,7 +777,7 @@ reg_fetch_contacts("location", "sip:user@kamailio.org", "caller");
 
    This function can be used from REQUEST_ROUTE, FAILURE_ROUTE.
 
-   Example 1.28. registered usage
+   Example 1.29. registered usage
 ...
 reg_free_contacts("callee");
 ...
@@ -815,7 +843,7 @@ reg_free_contacts("callee");
    The pseudo-variable accepts positive index value to access a specific
    contact record.
 
-   Example 1.29. $ulc(name) usage
+   Example 1.30. $ulc(name) usage
 ...
 if(reg_fetch_contacts("location", "$fu", "caller"))
 {

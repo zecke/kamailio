@@ -43,6 +43,7 @@
  *              nathelper module (bogdan)
  *  2009-12-09  Commented out tcp_persistent_flag param, because sr_3.0 tm
  *              does not support it (Juha)
+ *  2011-02-16  Added param flags for lookup (Alexandr Dubovikov)
  *
  */
 
@@ -94,6 +95,7 @@ static int w_lookup(struct sip_msg* _m, char* _d, char* _p2);
 /*! \brief Fixup functions */
 static int domain_fixup(void** param, int param_no);
 static int save_fixup(void** param, int param_no);
+static int lookup_fixup(void** param, int param_no);
 static int unreg_fixup(void** param, int param_no);
 static int fetchc_fixup(void** param, int param_no);
 /*! \brief Functions */
@@ -161,6 +163,8 @@ static cmd_export_t cmds[] = {
 			REQUEST_ROUTE | ONREPLY_ROUTE },
 	{"lookup",       (cmd_function)w_lookup,     1,  domain_fixup, 0,
 			REQUEST_ROUTE | FAILURE_ROUTE },
+	{"lookup",      (cmd_function)lookup,       2,   lookup_fixup, 0,
+                        REQUEST_ROUTE | FAILURE_ROUTE },			
 	{"registered",   (cmd_function)registered,   1,  domain_fixup, 0,
 			REQUEST_ROUTE | FAILURE_ROUTE },
 	{"add_sock_hdr", (cmd_function)add_sock_hdr, 1,fixup_str_null, 0,
@@ -401,9 +405,9 @@ static int w_save(struct sip_msg* _m, char* _d, char* _cflags)
 /*! \brief
  * Wrapper to lookup(location)
  */
-static int w_lookup(struct sip_msg* _m, char* _d, char* _p2)
+static int w_lookup(struct sip_msg* _m, char* _d, char* _cflags)
 {
-	return lookup(_m, (udomain_t*)_d);
+	return lookup(_m, (udomain_t*)_d, ((int)(unsigned long)_cflags));
 }
 
 /*! \brief
@@ -438,8 +442,30 @@ static int unreg_fixup(void** param, int param_no)
 	return 0;
 }
 
-
-
+ /*! \brief
+  * Fixup for "lookup" function - both domain and flags
+  */
+static int lookup_fixup(void** param, int param_no)
+{
+        unsigned int flags;
+        str s;
+ 
+        if (param_no == 1) {
+                return domain_fixup(param,param_no);
+        } else {
+                s.s = (char*)*param;
+                s.len = strlen(s.s);
+                flags = 0;
+                if ( strno2int(&s, &flags )<0 ) {
+                        LM_ERR("bad flags <%s>\n", (char *)(*param));
+                        return E_CFG;
+                }
+                pkg_free(*param);
+                *param = (void*)(unsigned long int)flags;
+                return 0;
+        }
+}
+ 
 /*! \brief
  * Fixup for "save" function - both domain and flags
  */

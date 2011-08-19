@@ -27,12 +27,19 @@
 		<email>miconda@gmail.com</email>
 		</author>
 		<editor>
+		<firstname>Alexandr</firstname>
+		<surname>Dubovikov</surname>
+		<address>
+			<email>alexandr.dubovikov@gmail.com</email>
+		</address>
+		</editor>
+		<editor>
 		<firstname>Jan</firstname>
 		<surname>Janak</surname>
 		<address>
 			<email>jan@iptel.org</email>
 		</address>
-		</editor>
+		</editor>		
 		<editor>
 		<firstname>Bogdan-Andre</firstname>
 		<surname>Iancu</surname>

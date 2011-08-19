@@ -24,6 +24,7 @@
  * History:
  * ---------
  * 2003-03-12 added support for zombie state (nils)
+ * 2011-02-16 added support for random and round robin lookup (Alexandr Dubovikov)
  */
 /*!
  * \file
@@ -50,20 +51,20 @@
 #define allowed_method(_msg, _c) \
 	( !method_filtering || ((_msg)->REQ_METHOD)&((_c)->methods) )
 
-
 /*! \brief
  * Lookup contact in the database and rewrite Request-URI
  * \return: -1 : not found
  *          -2 : found but method not allowed
  *          -3 : error
  */
-int lookup(struct sip_msg* _m, udomain_t* _d)
+#define is_cflag_set(_name) (((unsigned int)_cflags)&(_name)) 
+int lookup(struct sip_msg* _m, udomain_t* _d, int _cflags)
 {
 	urecord_t* r;
 	str aor, uri;
 	ucontact_t* ptr;
-	int res;
-	int ret;
+	int res, cnt_contacts = 0, sld_contact = 1;
+	int ret, extra_cflag = 100;
 	str path_dst;
 	flag_t old_bflags;
 
@@ -85,13 +86,41 @@ int lookup(struct sip_msg* _m, udomain_t* _d)
 		ul.unlock_udomain(_d, &aor);
 		return -1;
 	}
+	
+	if(is_cflag_set(REG_LOOKUP_RAND) || is_cflag_set(REG_LOOKUP_RROB)) {
+
+               ptr = r->contacts;
+               while (ptr) {
+                       if( VALID_CONTACT(ptr,act_time) && allowed_method(_m,ptr) ) {
+                               cnt_contacts++;
+                               /* If cflag is more then 99, this is our customer */
+                               if(is_cflag_set(REG_LOOKUP_RROB) && ptr->cflags > 99) {
+                                               ptr->cflags -= extra_cflag;
+                                               sld_contact = cnt_contacts;
+                               }
+                       }
+                       ptr = ptr->next;
+               }
+
+               /* Random contact */
+               if(is_cflag_set(REG_LOOKUP_RAND) && cnt_contacts) sld_contact = rand() % cnt_contacts;
+               /* Next round robin contact */
+               else if(is_cflag_set(REG_LOOKUP_RROB) && cnt_contacts > sld_contact ) sld_contact++;
+               /* If sld_contact == cnt_contact, we should use the first one */
+               else sld_contact = 1;
+        }
+
 
 	ptr = r->contacts;
 	ret = -1;
+	cnt_contacts = 0;
 	/* look first for an un-expired and suported contact */
-	while ( (ptr) &&
-	!(VALID_CONTACT(ptr,act_time) && (ret=-2) && allowed_method(_m,ptr)))
-		ptr = ptr->next;
+	while ( ptr) {
+               if(VALID_CONTACT(ptr,act_time) && (ret=-2) && allowed_method(_m,ptr)) cnt_contacts++;
+               if(cnt_contacts == sld_contact) break;
+               ptr = ptr->next;
+        }
+
 	if (ptr==0) {
 		/* nothing found */
 		goto done;
@@ -139,6 +168,9 @@ int lookup(struct sip_msg* _m, udomain_t* _d)
 		old_bflags = 0;
 		getbflagsval(0, &old_bflags);
 		setbflagsval(0, old_bflags|ptr->cflags);
+
+		/* Use flag for Round Robin lookup */
+                if(is_cflag_set(REG_LOOKUP_RROB)) ptr->cflags += extra_cflag;
 
 		if (ptr->sock)
 			set_force_socket(_m, ptr->sock);

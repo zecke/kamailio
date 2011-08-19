@@ -51,7 +51,7 @@ int regapi_save(struct sip_msg *msg, char *table, int flags)
 /**
  *
  */
-int regapi_lookup(struct sip_msg *msg, char *table)
+int regapi_lookup(struct sip_msg *msg, char *table, int flags)
 {
 	udomain_t* d;
 
@@ -60,7 +60,7 @@ int regapi_lookup(struct sip_msg *msg, char *table)
 		LM_ERR("usrloc domain [%s] not found\n", table);
 		return -1;
 	}
-	return lookup(msg, d);
+	return lookup(msg, d, flags);
 }
 
 /**

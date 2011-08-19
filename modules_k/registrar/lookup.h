@@ -39,7 +39,7 @@
 /*! \brief
  * Lookup a contact in usrloc and rewrite R-URI if found
  */
-int lookup(struct sip_msg* _m, udomain_t* _d);
+int lookup(struct sip_msg* _m, udomain_t* _d, int _cflags);
 
 
 /*! \brief
