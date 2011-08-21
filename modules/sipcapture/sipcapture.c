@@ -49,7 +49,6 @@
 #include "../../parser/digest/digest.h"
 #include "../../lib/kcore/parse_pai.h"
 #include "../../lib/kcore/parse_ppi.h"
-
 #include "../../pvar.h"
 #include "../../str.h"
 #include "../../onsend.h"
@@ -57,6 +56,11 @@
 #include "../../raw_listener.h"
 #include "../../resolve.h"
 #include "sipcapture.h"
+
+#ifdef __OS_linux
+	#include <sys/ioctl.h>       
+	#include <net/if.h>
+#endif
 
 #ifdef STATISTICS
 #include "../../lib/kcore/statistics.h"
@@ -177,8 +181,13 @@ int moni_port_end   = 0;
 int *capture_on_flag = NULL;
 int db_insert_mode = 0;
 int partitioning_mode = 1;
+int promisc_on = 0;
 
 str raw_socket_listen = { 0, 0 };
+str raw_interface = { 0, 0 };
+
+struct ifreq ifr; 	/* interface structure */
+
 
 db1_con_t *db_con = NULL; 		/*!< database connection */
 db_func_t db_funcs;      		/*!< Database functions */
@@ -244,7 +253,9 @@ static param_export_t params[] = {
         {"raw_ipip_capture_on",  	INT_PARAM, &ipip_capture_on  },	
         {"raw_moni_capture_on",  	INT_PARAM, &moni_capture_on  },	
         {"db_insert_mode",  		INT_PARAM, &db_insert_mode  },	
-        {"partitioning_mode",  		INT_PARAM, &partitioning_mode  },	
+        {"partitioning_mode",  		INT_PARAM, &partitioning_mode  },
+	{"raw_interface",     		STR_PARAM, &raw_interface.s   },
+        {"promiscious_on",  		INT_PARAM, &promisc_on   },		
 	{0, 0, 0}
 };
 
@@ -348,7 +359,11 @@ static int mod_init(void) {
 	node_column.len = strlen(node_column.s);  
 	msg_column.len = strlen(msg_column.s);   
 	capture_node.len = strlen(capture_node.s);     	
-	raw_socket_listen.len = strlen(raw_socket_listen.s);     	
+	
+	if(raw_socket_listen.s) 
+		raw_socket_listen.len = strlen(raw_socket_listen.s);     	
+	if(raw_interface.s)
+		raw_interface.len = strlen(raw_interface.s);     	
 
 	/* Find a database module */
 	if (db_bind_mod(&db_url, &db_funcs))
@@ -409,7 +424,8 @@ static int mod_init(void) {
 		}			
 
 		
-		raw_sock_desc = raw_socket(ipip_capture_on ? IPPROTO_IPIP : IPPROTO_UDP , raw_socket_listen.len ? ip : 0, 0, 0);
+		raw_sock_desc = raw_socket(ipip_capture_on ? IPPROTO_IPIP : IPPROTO_UDP , 
+				raw_socket_listen.len ? ip : 0, raw_interface.len ? &raw_interface : 0, 0);
 		
 		if(raw_sock_desc < 0) {
 			LM_ERR("could not initialize raw udp socket:"
@@ -423,9 +439,34 @@ static int mod_init(void) {
 		}
 
 		if(ipip_capture_on) raw_ipip = 1; /* IPIP mode for raw socket */
+
+		if(promisc_on && raw_interface.len) {
+
+			 memset(&ifr, 0, sizeof(ifr));
+			 memcpy(ifr.ifr_name, raw_interface.s, raw_interface.len);
+#ifdef __OS_linux			 			 
+			 if(ioctl(raw_sock_desc, SIOCGIFFLAGS, &ifr) < 0) {
+				LM_ERR("could not get flags from interface [%.*s]:"
+                                         " %s (%d)\n", raw_interface.len, raw_interface.s, strerror(errno), errno);			 			 				 
+				goto error;
+			 }
+			 
+	                 ifr.ifr_flags |= IFF_PROMISC; 
+	                 
+	                 if (ioctl(raw_sock_desc, SIOCSIFFLAGS, &ifr) < 0) {
+	                 	LM_ERR("could not set PROMISC flag to interface [%.*s]:"
+                                         " %s (%d)\n", raw_interface.len, raw_interface.s, strerror(errno), errno);			 			 				 
+				goto error;	                 
+	                 }
+#endif
+	                 
+		}		
 	}
 
 	return 0;
+error:
+	if(raw_sock_desc) close(raw_sock_desc);
+	return -1;	
 }
 
 int extract_host_port(void)
@@ -503,8 +544,19 @@ static void destroy(void)
 	if (capture_on_flag)
 		shm_free(capture_on_flag);
 		
-	if(raw_sock_desc) 
+	if(raw_sock_desc > 0) {
+		 if(promisc_on && raw_interface.len) {
+#ifdef __OS_linux
+                         ifr.ifr_flags &= ~(IFF_PROMISC);
+
+                         if (ioctl(raw_sock_desc, SIOCSIFFLAGS, &ifr) < 0) {
+                                LM_ERR("destroy: could not remove PROMISC flag from interface [%.*s]:"
+                                         " %s (%d)\n", raw_interface.len, raw_interface.s, strerror(errno), errno);
+                         }
+#endif                        
+                }                		
 		close(raw_sock_desc);
+	}
 }
 
 

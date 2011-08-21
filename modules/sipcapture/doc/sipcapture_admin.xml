@@ -134,7 +134,7 @@ modparam("sipcapture", "table_name", "homer_capture")
                 Default value is 1.
                 </para>
                 <example>
-                <title>db_insert_mode example</title>
+                <title>partitioning_mode</title>
                 <programlisting format="linespecific">
 modparam("sipcapture", "partitioning_mode", 0)
 </programlisting>
@@ -257,6 +257,25 @@ modparam("sipcapture", "raw_socket_listen", "10.0.0.1:5060")
 </programlisting>
                 </example>
         </section>
+       <section>
+                <title><varname>raw_interface</varname> (string)</title>
+		<para>
+		Name of the interface to bind on the raw socket.
+                </para>
+                <para>
+                <emphasis>
+                        Default value is "".
+                </emphasis>
+                </para>
+                <example>
+                <title>Set <varname>raw_socket_listen</varname> parameter</title>
+                <programlisting format="linespecific">
+...
+modparam("sipcapture", "raw_interface", "eth0")
+...
+</programlisting>
+                </example>
+        </section>
         <section>
                 <title><varname>raw_sock_children</varname> (integer)</title>
                 <para>
@@ -272,6 +291,26 @@ modparam("sipcapture", "raw_socket_listen", "10.0.0.1:5060")
                 <programlisting format="linespecific">
 ...
 modparam("sipcapture", "raw_sock_children", 6)
+...
+</programlisting>
+                </example>
+        </section>
+        <section>
+                <title><varname>promiscuous_on</varname> (integer)</title>
+                <para>
+                Parameter to enable/disable promiscuous mode on the raw socket.
+		Linux only.
+                </para>
+                <para>
+                <emphasis>
+                        Default value is "0".
+                </emphasis>
+                </para>
+                <example>
+                <title>Set <varname>hep_capture_on</varname> parameter</title>
+                <programlisting format="linespecific">
+...
+modparam("sipcapture", "promiscuous_on", 1)
 ...
 </programlisting>
                 </example>
@@ -355,6 +394,7 @@ modparam("sipcapture", "capture_node", "homer03")
 		   Don't activate both at the same time.
 		2. By default MySQL doesn't support INSERT DELAYED for partitioning table. You can patch MySQL 
 		  (http://bugs.mysql.com/bug.php?id=50393) or use separate tables (pseudo partitioning)
+		3. Promiscuous mode works only on Linux.
 	
         </para>
         </section>
