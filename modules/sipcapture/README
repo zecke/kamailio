@@ -35,11 +35,12 @@ Alexandr Dubovikov
               3.6. hep_capture_on (integer)
               3.7. raw_ipip_capture_on (integer)
               3.8. raw_moni_capture_on (integer)
-              3.9. raw_socket_listen (string)
-              3.10. raw_interface (string)
-              3.11. raw_sock_children (integer)
-              3.12. promiscuous_on (integer)
-              3.13. capture_node (str)
+              3.9. raw_moni_bpf_on (integer)
+              3.10. raw_socket_listen (string)
+              3.11. raw_interface (string)
+              3.12. raw_sock_children (integer)
+              3.13. promiscuous_on (integer)
+              3.14. capture_node (str)
 
         4. Exported MI Functions
 
@@ -58,11 +59,12 @@ Alexandr Dubovikov
    1.6. Set hep_capture_on parameter
    1.7. Set raw_ipip_capture_on parameter
    1.8. Set raw_moni_capture_on parameter
-   1.9. Set raw_socket_listen parameter
+   1.9. Set raw_bpf_capture_on parameter
    1.10. Set raw_socket_listen parameter
    1.11. Set raw_socket_listen parameter
-   1.12. Set hep_capture_on parameter
-   1.13. Set capture_node parameter
+   1.12. Set raw_socket_listen parameter
+   1.13. Set hep_capture_on parameter
+   1.14. Set capture_node parameter
 
 Chapter 1. Admin Guide
 
@@ -84,11 +86,12 @@ Chapter 1. Admin Guide
         3.6. hep_capture_on (integer)
         3.7. raw_ipip_capture_on (integer)
         3.8. raw_moni_capture_on (integer)
-        3.9. raw_socket_listen (string)
-        3.10. raw_interface (string)
-        3.11. raw_sock_children (integer)
-        3.12. promiscuous_on (integer)
-        3.13. capture_node (str)
+        3.9. raw_moni_bpf_on (integer)
+        3.10. raw_socket_listen (string)
+        3.11. raw_interface (string)
+        3.12. raw_sock_children (integer)
+        3.13. promiscuous_on (integer)
+        3.14. capture_node (str)
 
    4. Exported MI Functions
 
@@ -139,11 +142,12 @@ Chapter 1. Admin Guide
    3.6. hep_capture_on (integer)
    3.7. raw_ipip_capture_on (integer)
    3.8. raw_moni_capture_on (integer)
-   3.9. raw_socket_listen (string)
-   3.10. raw_interface (string)
-   3.11. raw_sock_children (integer)
-   3.12. promiscuous_on (integer)
-   3.13. capture_node (str)
+   3.9. raw_moni_bpf_on (integer)
+   3.10. raw_socket_listen (string)
+   3.11. raw_interface (string)
+   3.12. raw_sock_children (integer)
+   3.13. promiscuous_on (integer)
+   3.14. capture_node (str)
 
 3.1. db_url (str)
 
@@ -236,63 +240,75 @@ modparam("sipcapture", "raw_ipip_capture_on", 1)
 modparam("sipcapture", "raw_moni_capture_on", 1)
 ...
 
-3.9. raw_socket_listen (string)
+3.9. raw_moni_bpf_on (integer)
 
-   Parameter indicate an listen IP address of RAW socket. You can also
-   define a port or portrange, which make sense only in
-   monitoring/mirroring capture mode.
+   Parameter to enable/disable custom BPF (Berkeley Packet Filter) on
+   monitoring interface (on(1)/off(0)). See raw_socket_listen param.
+
+   Default value is "0".
+
+   Example 1.9. Set raw_bpf_capture_on parameter
+...
+modparam("sipcapture", "raw_moni_bpf_on", 1)
+...
+
+3.10. raw_socket_listen (string)
+
+   Parameter indicate an listen IP address of RAW socket (IPIP capture).
+   You can also define a port or portrange. The Port/Portrange will use in
+   the local BPF also, if param raw_bpf_capture_on set to 1.
 
    Default value is "".
 
-   Example 1.9. Set raw_socket_listen parameter
+   Example 1.10. Set raw_socket_listen parameter
 ...
 modparam("sipcapture", "raw_socket_listen", "10.0.0.1:5060-5090")
 ...
 modparam("sipcapture", "raw_socket_listen", "10.0.0.1:5060")
 ...
 
-3.10. raw_interface (string)
+3.11. raw_interface (string)
 
    Name of the interface to bind on the raw socket.
 
    Default value is "".
 
-   Example 1.10. Set raw_socket_listen parameter
+   Example 1.11. Set raw_socket_listen parameter
 ...
 modparam("sipcapture", "raw_interface", "eth0")
 ...
 
-3.11. raw_sock_children (integer)
+3.12. raw_sock_children (integer)
 
    Parameter define how much children must be created to listen the raw
    socket.
 
    Default value is "1".
 
-   Example 1.11. Set raw_socket_listen parameter
+   Example 1.12. Set raw_socket_listen parameter
 ...
 modparam("sipcapture", "raw_sock_children", 6)
 ...
 
-3.12. promiscuous_on (integer)
+3.13. promiscuous_on (integer)
 
    Parameter to enable/disable promiscuous mode on the raw socket. Linux
    only.
 
    Default value is "0".
 
-   Example 1.12. Set hep_capture_on parameter
+   Example 1.13. Set hep_capture_on parameter
 ...
 modparam("sipcapture", "promiscuous_on", 1)
 ...
 
-3.13. capture_node (str)
+3.14. capture_node (str)
 
    Name of the capture node.
 
    Default value is "homer01".
 
-   Example 1.13. Set capture_node parameter
+   Example 1.14. Set capture_node parameter
 ...
 modparam("sipcapture", "capture_node", "homer03")
 ...

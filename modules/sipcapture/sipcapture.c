@@ -130,6 +130,8 @@ static int sip_capture(struct sip_msg *msg, char *s1, char *s2);
 int hep_msg_received(void *data);
 int init_rawsock_children(void);
 int extract_host_port(void);
+int raw_moni_socket(str* iface, int port_start, int port_end);
+
 
 
 static struct mi_root* sip_capture_mi(struct mi_root* cmd, void* param );
@@ -189,6 +191,7 @@ int *capture_on_flag = NULL;
 int db_insert_mode = 0;
 int partitioning_mode = 1;
 int promisc_on = 0;
+int bpf_on = 0;
 
 str raw_socket_listen = { 0, 0 };
 str raw_interface = { 0, 0 };
@@ -263,6 +266,7 @@ static param_export_t params[] = {
         {"partitioning_mode",  		INT_PARAM, &partitioning_mode  },
 	{"raw_interface",     		STR_PARAM, &raw_interface.s   },
         {"promiscious_on",  		INT_PARAM, &promisc_on   },		
+        {"raw_moni_bpf_on",  		INT_PARAM, &bpf_on   },		
 	{0, 0, 0}
 };
 
@@ -428,12 +432,13 @@ static int mod_init(void) {
 		{		
 			LM_ERR("sipcapture mod_init: bad RAW IP: %.*s\n", raw_socket_listen.len, raw_socket_listen.s); 
 			return -1;
-		}			
-
-		
-		raw_sock_desc = raw_socket(ipip_capture_on ? IPPROTO_IPIP : IPPROTO_UDP , 
-				raw_socket_listen.len ? ip : 0, raw_interface.len ? &raw_interface : 0, 0);
-		
+		}		
+			
+		raw_sock_desc = ipip_capture_on ? raw_socket( IPPROTO_IPIP, raw_socket_listen.len ? ip : 0, 
+						raw_interface.len ? &raw_interface : 0, 0) : 
+						 raw_moni_socket(raw_interface.len ? &raw_interface : 0, 
+						         moni_port_start, moni_port_end ? moni_port_end : moni_port_start);				
+						
 		if(raw_sock_desc < 0) {
 			LM_ERR("could not initialize raw udp socket:"
                                          " %s (%d)\n", strerror(errno), errno);
@@ -446,11 +451,14 @@ static int mod_init(void) {
 		}
 
 		if(ipip_capture_on) raw_ipip = 1; /* IPIP mode for raw socket */
+		else if(moni_capture_on) raw_moni = 1; /* Monitoring mode for raw socket */
 
 		if(promisc_on && raw_interface.len) {
 
 			 memset(&ifr, 0, sizeof(ifr));
 			 memcpy(ifr.ifr_name, raw_interface.s, raw_interface.len);
+
+
 #ifdef __OS_linux			 			 
 			 if(ioctl(raw_sock_desc, SIOCGIFFLAGS, &ifr) < 0) {
 				LM_ERR("could not get flags from interface [%.*s]:"
@@ -731,6 +739,7 @@ static int sip_capture_store(struct _sipcapture_object *sco)
 	char tmptable[TABLE_LEN];
         int ret = 0;
         struct tm *t;
+        str dbtable;
 	               	
 	if(sco==NULL)
 	{
@@ -927,6 +936,7 @@ static int sip_capture_store(struct _sipcapture_object *sco)
 	db_vals[36].nul = 0;
 	db_vals[36].val.blob_val = sco->msg;	
 		
+	DBG("TABLE =====================: [%.*s]\n", table_name.len, table_name.s);		
 	if(!partitioning_mode) {
                 ret = snprintf(tmptable, TABLE_LEN, "%.*s_%02d_%02d",
                         table_name.len, table_name.s, (t->tm_wday == 0) ? 7 : t->tm_wday , t->tm_hour);
@@ -935,11 +945,14 @@ static int sip_capture_store(struct _sipcapture_object *sco)
                         goto error;
                 }
 
-                table_name.s = tmptable;
-                table_name.len = strlen(tmptable);
+                dbtable.s = tmptable;
+                dbtable.len = strlen(tmptable);
         }
-
-	db_funcs.use_table(db_con, &table_name);
+        else { 
+           dbtable =  table_name;
+        }
+        
+	db_funcs.use_table(db_con, &dbtable);
 
 	LM_DBG("storing info...\n");
 
@@ -1053,38 +1066,29 @@ static int sip_capture(struct sip_msg *msg, char *s1, char *s2)
         	EMPTY_STR(sco.to_tag);
         }
 	
+	/* Call-id */
+	if(msg->callid) sco.callid = msg->callid->body;
+	else { EMPTY_STR(sco.callid); }
+	
 	/* P-Asserted-Id */
-	if(msg->pai) {
-
-	     if(parse_pai_header(msg)==-1)
-             {
-		LM_DBG("no P-Asserted-Identity header\n");
-		return -1;
-	     }
+	if(msg->pai && (parse_pai_header(msg) == 0)) {
 
 	     if (parse_uri(get_pai(msg)->uri.s, get_pai(msg)->uri.len, &pai)<0){
-             	LOG(L_ERR, "ERROR: do_action: bad pai dropping"" packet\n");
-                return -1;
+             	LM_DBG("DEBUG: do_action: bad pai: method:[%.*s] CID: [%.*s]\n", sco.method.len, sco.method.s, sco.callid.len, sco.callid.s);
              }
-             
-             LM_DBG("PARSE PAI: (%.*s)\n",get_pai(msg)->uri.len, get_pai(msg)->uri.s);
-
-             sco.pid_user = pai.user;                          
+             else {
+	        LM_DBG("PARSE PAI: (%.*s)\n",get_pai(msg)->uri.len, get_pai(msg)->uri.s);
+	        sco.pid_user = pai.user;                          
+             }
 	}	
-	else if(msg->ppi) {
-
-	     if(parse_ppi_header(msg)==-1)
-             {
-		LM_DBG("no P-Preferred-Identity header\n");
-		return -1;
-	     }
+	else if(msg->ppi && (parse_ppi_header(msg) == 0)) {
 		
 	     if (parse_uri(get_ppi(msg)->uri.s, get_ppi(msg)->uri.len, &pai)<0){
-             	LOG(L_ERR, "ERROR: do_action: bad ppi dropping"" packet\n");
-                return -1;
+             	LM_DBG("DEBUG: do_action: bad ppi: method:[%.*s] CID: [%.*s]\n", sco.method.len, sco.method.s, sco.callid.len, sco.callid.s);
              }
-             
-             sco.pid_user = pai.user;
+             else {
+	        sco.pid_user = pai.user;
+             }
         }
         else { EMPTY_STR(sco.pid_user); }
 	
@@ -1114,11 +1118,6 @@ static int sip_capture(struct sip_msg *msg, char *s1, char *s2)
                   }
               }
         }
-
-	/* Call-id */
-	if(msg->callid) sco.callid = msg->callid->body;
-	else { EMPTY_STR(sco.callid); }
-	
 
 	/* get header x-cid: */
 	/* callid_aleg X-CID */
@@ -1167,7 +1166,6 @@ static int sip_capture(struct sip_msg *msg, char *s1, char *s2)
 	}
 	
 	/* X-OIP */	
-	//if(msg->xoip) {
 	if((tmphdr[2] = get_hdr_by_name(msg,"X-OIP", 5)) != NULL) {
 		sco.originator_ip = tmphdr[2]->body;
 		/* Originator port. Should be parsed from XOIP header as ":" param */
@@ -1291,5 +1289,72 @@ static struct mi_root* sip_capture_mi(struct mi_root* cmd_tree, void* param )
 	} else {
 		return init_mi_tree( 400, MI_SSTR(MI_BAD_PARM));
 	}
+}
+
+int raw_moni_socket(str* iface, int port_start, int port_end)
+{
+	int sock;
+	
+#if defined (SO_BINDTODEVICE)
+	char short_ifname[sizeof(int)];
+	int ifname_len;
+	char* ifname;
+#endif /* SO_BINDTODEVICE */
+ 
+	sock = socket(PF_PACKET, SOCK_RAW, htons(0x800));
+
+	if (sock==-1)
+		goto error;
+
+	/* set socket options */
+	if (iface && iface->s){
+#if defined (SO_BINDTODEVICE)
+		/* workaround for linux bug: arg to setsockopt must have at least
+		 * sizeof(int) size or EINVAL would be returned */
+		if (iface->len<sizeof(int)){
+			memcpy(short_ifname, iface->s, iface->len);
+			short_ifname[iface->len]=0; /* make sure it's zero term */
+			ifname_len=sizeof(short_ifname);
+			ifname=short_ifname;
+		}else{
+			ifname_len=iface->len;
+			ifname=iface->s;
+		}
+		if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ifname, ifname_len)
+						<0){
+				ERR("raw_socket: could not bind to %.*s: %s [%d]\n",
+							iface->len, ZSW(iface->s), strerror(errno), errno);
+				goto error;
+		}
+#else /* !SO_BINDTODEVICE */
+		/* SO_BINDTODEVICE is linux specific => cannot bind to a device */
+		ERR("raw_socket: bind to device supported only on linux\n");
+		goto error;
+#endif /* SO_BINDTODEVICE */
+	}
+
+	if(bpf_on) {
+	
+        	/* Start PORT */
+        	BPF_code[5]  = (struct my_sock_filter)BPF_JUMP(0x35, port_start, 0, 1);
+        	BPF_code[8] = (struct my_sock_filter)BPF_JUMP(0x35, port_start, 11, 13);
+        	BPF_code[16] = (struct my_sock_filter)BPF_JUMP(0x35, port_start, 0, 1);
+        	BPF_code[19] = (struct my_sock_filter)BPF_JUMP(0x35, port_start, 0, 2);
+	
+        	/* Stop PORT */
+        	BPF_code[6]  = (struct my_sock_filter)BPF_JUMP(0x25, port_end, 0, 14);
+        	BPF_code[17] = (struct my_sock_filter)BPF_JUMP(0x25, port_end, 0, 3);	
+        	BPF_code[20] = (struct my_sock_filter)BPF_JUMP(0x25, port_end, 1, 0);			                                                
+	
+        	/* Attach the filter to the socket */
+        	if(setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &Filter, sizeof(Filter)) < 0 ) {
+                        ERR(" setsockopt filter: [%s] [%d]\n", strerror(errno), errno);
+                }	
+        }
+	
+	return sock;
+error:
+	if (sock!=-1) close(sock);
+	return -1;
 }
 

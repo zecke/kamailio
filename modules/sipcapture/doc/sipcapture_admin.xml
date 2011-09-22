@@ -234,12 +234,33 @@ modparam("sipcapture", "raw_moni_capture_on", 1)
 		</programlisting>
                 </example>
         </section>
+        <section>
+                <title><varname>raw_moni_bpf_on</varname> (integer)</title>
+                <para>
+                Parameter to enable/disable custom BPF (Berkeley Packet Filter) on
+                monitoring interface (on(1)/off(0)). See raw_socket_listen
+                param.
+                </para>
+                <para>
+                <emphasis>
+                        Default value is "0".
+                </emphasis>
+                </para>
+                <example>
+                <title>Set <varname>raw_bpf_capture_on</varname> parameter</title>
+                <programlisting format="linespecific">
+...
+modparam("sipcapture", "raw_moni_bpf_on", 1)
+...
+		</programlisting>
+                </example>
+        </section>        
 	<section>
                 <title><varname>raw_socket_listen</varname> (string)</title>
                 <para>
-                Parameter indicate an listen IP address of RAW socket. You can also define
-		a port or portrange, which make sense only in monitoring/mirroring 
-		capture mode. 
+                Parameter indicate an listen IP address of RAW socket (IPIP
+                capture). You can also define a port or portrange. The Port/Portrange 
+                will use in the local BPF also, if param raw_bpf_capture_on set to 1.
                 </para>
                 <para>
                 <emphasis>
