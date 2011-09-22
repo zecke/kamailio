@@ -85,6 +85,8 @@
 #endif /* __OS_* */
 
 int raw_ipip = 0; /* set if raw socket is in capture mode for IPIP */
+int raw_moni = 0; /* set if raw socket is in capture mode for monitor port */
+#define ETHHDR 14 /* sizeof of ethhdr structure */
 
 
 /** create and return a raw socket.
@@ -244,13 +246,20 @@ int recvpkt4(int sock, char* buf, int len, union sockaddr_union* from,
 	rcv_msg.msg_iovlen=1;
 	ret=-2; /* no PKT_INFO or AF mismatch */
 retry:
-	n=recvmsg(sock, &rcv_msg, MSG_WAITALL);
+	n=recvmsg(sock, &rcv_msg, raw_moni ? 0 : MSG_WAITALL);
 	if (unlikely(n==-1)){
 		if (errno==EINTR)
 			goto retry;
 		ret=n;
 		goto end;
 	}
+	
+	/* RAW MONI */
+	if(raw_moni) {	
+	      ret = n;
+	      goto end;
+	}
+	
 	/* find the pkt info */
 	for (cmsg=CMSG_FIRSTHDR(&rcv_msg); cmsg; cmsg=CMSG_NXTHDR(&rcv_msg, cmsg)){
 #ifdef IP_PKTINFO
@@ -309,7 +318,7 @@ int raw_udp4_recv(int rsock, char** buf, int len, union sockaddr_union* from,
 	int n;
 	unsigned short dst_port;
 	unsigned short src_port;
-	struct ip_addr dst_ip;
+	struct ip_addr dst_ip, src_ip;
 	char* end;
 	char* udph_start;
 	char* udp_payload;
@@ -321,13 +330,15 @@ int raw_udp4_recv(int rsock, char** buf, int len, union sockaddr_union* from,
 	if (unlikely(n<0)) goto error;
 	
 	end=*buf+n;
-	if (unlikely(n<((sizeof(struct ip) * raw_ipip ? 2 : 1)+sizeof(struct udphdr)))) {
+	if (unlikely(n<((sizeof(struct ip) * raw_ipip ? 2 : 1)+sizeof(struct udphdr) + (raw_moni ? ETHHDR : 0)))) {
 		n=-3;
 		goto error;
 	}
 	
 	if(raw_ipip) 
-        	*buf = *buf + sizeof(struct ip);
+        	*buf = *buf + sizeof(struct ip);        	
+	else if(raw_moni) 
+        	*buf = *buf + ETHHDR;        	
 	
 	/* FIXME: if initial buffer is aligned, one could skip the memcpy
 	   and directly cast ip and udphdr pointer to the memory */
@@ -345,7 +356,7 @@ int raw_udp4_recv(int rsock, char** buf, int len, union sockaddr_union* from,
 			n=-3;
 			goto error;
 		}else{
-			ERR("udp length too small: %d/%d\n",
+			if(!raw_moni) ERR("udp length too small: %d/%d\n",
 					(int)udp_len, (int)(end-udph_start));
 			n=-3;
 			goto error;
@@ -363,8 +374,29 @@ int raw_udp4_recv(int rsock, char** buf, int len, union sockaddr_union* from,
 	ip_addr2su(to, &dst_ip, dst_port);
 	/* fill src_port */
 	src_port=ntohs(udph.uh_sport);
+	/* Need to fill from structure */
+	if(raw_moni) {
+	       src_ip.af=AF_INET;
+	       src_ip.len=4;
+               src_ip.u.addr32[0]=iph.ip_src.s_addr;
+	       ip_addr2su(from, &src_ip, src_port);           	
+	}
 	su_setport(from, src_port);
 	if (likely(rf)) {
+		
+		/* check moni mode */
+		if(raw_moni) {
+			if(dst_port && src_port && 
+				( ((dst_port >= rf->port1) && (dst_port <= rf->port2))  ||
+				  ((src_port >= rf->port1) && (src_port <= rf->port2))
+				)) {
+				/* match */
+				goto error;
+			}	
+			n=-4;
+			goto error;
+		}
+
 		su2ip_addr(&dst_ip, to);
 		if ( (dst_port && rf->port1 && ((dst_port<rf->port1) ||
 										(dst_port>rf->port2)) ) ||
