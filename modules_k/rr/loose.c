@@ -113,90 +113,6 @@ static inline int find_first_route(struct sip_msg* _m)
 
 
 /*!
- * \brief Find out if a URI contains r2 parameter which indicates that we put 2 record routes
- * \param _params URI
- * \return 1 if URI contains a r2 parameter, 0 otherwise
- */
-/*
-static inline int is_2rr(str* _params)
-{
-	str s;
-	int i, state = 0;
-
-	if (_params->len == 0) return 0;
-	s = *_params;
-
-	for(i = 0; i < s.len; i++) {
-		switch(state) {
-		case 0:
-			switch(s.s[i]) {
-			case ' ':
-			case '\r':
-			case '\n':
-			case '\t':           break;
-			case 'r':
-			case 'R': state = 1; break;
-			default:  state = 4; break;
-			}
-			break;
-
-		case 1:
-			switch(s.s[i]) {
-			case '2': state = 2; break;
-			default:  state = 4; break;
-			}
-			break;
-
-		case 2:
-			switch(s.s[i]) {
-			case ';':  return 1;
-			case '=':  return 1;
-			case ' ':
-			case '\r':
-			case '\n':
-			case '\t': state = 3; break;
-			default:   state = 4; break;
-			}
-			break;
-
-		case 3:
-			switch(s.s[i]) {
-			case ';':  return 1;
-			case '=':  return 1;
-			case ' ':
-			case '\r':
-			case '\n':
-			case '\t': break;
-			default:   state = 4; break;
-			}
-			break;
-
-		case 4:
-			switch(s.s[i]) {
-			case '\"': state = 5; break;
-			case ';':  state = 0; break;
-			default:              break;
-			}
-			break;
-			
-		case 5:
-			switch(s.s[i]) {
-			case '\\': state = 6; break;
-			case '\"': state = 4; break;
-			default:              break;
-			}
-			break;
-
-		case 6: state = 5; break;
-		}
-	}
-	
-	if ((state == 2) || (state == 3)) return 1;
-	else return 0;
-}
-*/
-
-/*!
  * \brief Check if URI is myself
  * \param _host host
  * \param _port port
@@ -581,6 +497,11 @@ static inline int after_strict(struct sip_msg* _m)
 	rt = (rr_t*)hdr->parsed;
 	uri = rt->nameaddr.uri;
 
+	/* reset rr handling static vars for safety in error case */
+	routed_msg_id = 0;
+	routed_params.s = NULL;
+	routed_params.len = 0;
+
 	if (parse_uri(uri.s, uri.len, &puri) < 0) {
 		LM_ERR("failed to parse the first route URI\n");
 		return RR_ERROR;
@@ -735,8 +656,9 @@ static inline int after_strict(struct sip_msg* _m)
 		}
 	}
 	
-	/* run RR callbacks */
-	run_rr_callbacks( _m, &routed_params );
+	/* run RR callbacks only if we have Route URI parameters */
+	if(routed_params.len > 0)
+		run_rr_callbacks( _m, &routed_params );
 
 	return RR_DRIVEN;
 }
@@ -764,6 +686,11 @@ static inline int after_loose(struct sip_msg* _m, int preloaded)
 	hdr = _m->route;
 	rt = (rr_t*)hdr->parsed;
 	uri = rt->nameaddr.uri;
+
+	/* reset rr handling static vars for safety in error case */
+	routed_msg_id = 0;
+	routed_params.s = NULL;
+	routed_params.len = 0;
 
 	if (parse_uri(uri.s, uri.len, &puri) < 0) {
 		LM_ERR("failed to parse the first route URI\n");
@@ -891,8 +818,9 @@ static inline int after_loose(struct sip_msg* _m, int preloaded)
 	status = RR_DRIVEN;
 
 done:
-	/* run RR callbacks */
-	run_rr_callbacks( _m, &routed_params );
+	/* run RR callbacks only if we have Route URI parameters */
+	if(routed_params.len > 0)
+		run_rr_callbacks( _m, &routed_params );
 	return status;
 }
 

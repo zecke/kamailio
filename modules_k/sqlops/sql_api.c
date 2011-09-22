@@ -522,6 +522,8 @@ int sql_do_xquery(struct sip_msg *msg, sql_con_t *con, pv_elem_t *query,
 			/* Add column to current row, under the column's name */
 			LM_DBG("Adding column: %.*s\n", RES_NAMES(db_res)[j]->len, RES_NAMES(db_res)[j]->s);
 			xavp_add_value(RES_NAMES(db_res)[j], &val, &row);
+			if (val.type == SR_XTYPE_STR && val.v.s.len > 0)
+				pkg_free(val.v.s.s);
 		}
 		/* Add row to result xavp */
 		val.type = SR_XTYPE_XAVP;
@@ -539,6 +541,62 @@ error:
 
 }
 #endif
+
+
+int sql_do_pvquery(struct sip_msg *msg, sql_con_t *con, pv_elem_t *query,
+		pvname_list_t *res)
+{
+	db1_res_t* db_res = NULL;
+	pvname_list_t* pv;
+	str sv;
+	int i, j;
+
+	if(msg==NULL || query==NULL || res==NULL)
+	{
+		LM_ERR("bad parameters\n");
+		return -1;
+	}
+	if(pv_printf_s(msg, query, &sv)!=0)
+	{
+		LM_ERR("cannot print the sql query\n");
+		return -1;
+	}
+
+	if(con->dbf.raw_query(con->dbh, &sv, &db_res)!=0)
+	{
+		LM_ERR("cannot do the query\n");
+		return -1;
+	}
+
+	if(db_res==NULL || RES_ROW_N(db_res)<=0 || RES_COL_N(db_res)<=0)
+	{
+		LM_DBG("no result after query\n");
+		con->dbf.free_result(con->dbh, db_res);
+		return 2;
+	}
+
+	for(i=RES_ROW_N(db_res)-1; i>=0; i--)
+	{
+		pv = res;
+		for(j=0; j<RES_COL_N(db_res); j++)
+		{
+			if (db_val2pv_spec(msg, &RES_ROWS(db_res)[0].values[j], &pv->sname) != 0) {
+				LM_ERR("Failed to convert value for column %.*s\n",
+				       RES_NAMES(db_res)[j]->len, RES_NAMES(db_res)[j]->s);
+				goto error;
+			}
+			pv = pv->next;
+		}
+	}
+
+	con->dbf.free_result(con->dbh, db_res);
+	return 1;
+
+error:
+	con->dbf.free_result(con->dbh, db_res);
+	return -1;
+}
+
 
 int sql_parse_param(char *val)
 {
@@ -586,7 +644,7 @@ int sql_parse_param(char *val)
 
 	return sql_init_con(&name, &tok);
 error:
-	LM_ERR("invalid htable parameter [%.*s] at [%d]\n", in.len, in.s,
+	LM_ERR("invalid sqlops parameter [%.*s] at [%d]\n", in.len, in.s,
 			(int)(p-in.s));
 	return -1;
 }
@@ -654,7 +712,7 @@ int sqlops_get_value(str *sres, int i, int j, sql_val_t **val)
 		LM_ERR("row index out of bounds [%d/%d]\n", i, res->nrows);
 		goto error;
 	}
-	if(i>=res->ncols)
+	if(j>=res->ncols)
 	{
 		LM_ERR("column index out of bounds [%d/%d]\n", j, res->ncols);
 		goto error;

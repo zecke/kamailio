@@ -1,5 +1,10 @@
 #!/usr/bin/perl
 
+<<<<<<< HEAD
+=======
+#DEPRICATED. USE Partitioning scripts.
+
+>>>>>>> master
 #Crontab script, to clear table/partition for the next day
 #set crontab at 23:50
 
@@ -7,7 +12,10 @@ my $mysqlstring = "/usr/bin/mysql -uhomer_user -phomer_password -hlocalhost home
 
 #homer node
 my $wday = (localtime())[6] + 1;
+<<<<<<< HEAD
 
+=======
+>>>>>>> master
 #uncomment if you use separate tables
 #Separate tables
 #for(my $i=0; $i < 24; $i++) {
@@ -26,3 +34,11 @@ $mon++;
 
 my $query = sprintf("DELETE FROM sip_capture WHERE `date` < '%d-%02d-%02d 00:00:00' ", $year, $mon, $mday);
 `echo \"$query\"| $mysqlstring`;
+<<<<<<< HEAD
+=======
+
+#
+#   TODAYS TABLE
+#
+#
+>>>>>>> master

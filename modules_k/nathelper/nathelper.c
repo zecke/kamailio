@@ -790,7 +790,7 @@ add_contact_alias_f(struct sip_msg* msg, char* str1, char* str2)
     struct lump *anchor;
     struct sip_uri uri;
     struct ip_addr *ip;
-    char *lt, *gt, *param, *at, *port, *start;
+    char *bracket, *lt, *param, *at, *port, *start;
 
     /* Do nothing if Contact header does not exist */
     if (!msg->contact) {
@@ -827,9 +827,10 @@ add_contact_alias_f(struct sip_msg* msg, char* str1, char* str2)
     }
 
     /* Check if Contact URI needs to be enclosed in <>s */
-    lt = gt = param = NULL;
-    at = memchr(msg->contact->body.s, '<', msg->contact->body.len);
-    if (at == NULL) {
+    lt = param = NULL;
+    bracket = memchr(msg->contact->body.s, '<', msg->contact->body.len);
+    if (bracket == NULL) {
+	/* add opening < */
 	lt = (char*)pkg_malloc(1);
 	if (!lt) {
 	    LM_ERR("no pkg memory left for lt sign\n");
@@ -845,33 +846,18 @@ add_contact_alias_f(struct sip_msg* msg, char* str1, char* str2)
 	    LM_ERR("insert_new_lump_before for \"<\" failed\n");
 	    goto err;
 	}
-	gt = (char*)pkg_malloc(1);
-	if (!gt) {
-	    LM_ERR("no pkg memory left for gt sign\n");
-	    goto err;
-	}
-	*gt = '>';
-	anchor = anchor_lump(msg, msg->contact->body.s +
-			     msg->contact->body.len - msg->buf, 0, 0);
-	if (anchor == NULL) {
-	    LM_ERR("anchor_lump for end of contact body failed\n");
-	    goto err;
-	}
-	if (insert_new_lump_before(anchor, gt, 1, 0) == 0) {
-	    LM_ERR("insert_new_lump_before for \">\" failed\n");
-	    goto err;
-	}
     }
 
     /* Create  ;alias param */
     param_len = SALIAS_LEN + IP6_MAX_STR_SIZE + 1 /* ~ */ + 5 /* port */ +
-	1 /* ~ */ + 1 /* proto */;
+	1 /* ~ */ + 1 /* proto */ + 1 /* closing > */;
     param = (char*)pkg_malloc(param_len);
     if (!param) {
 	LM_ERR("no pkg memory left for alias param\n");
 	goto err;
     }
     at = param;
+    /* ip address */
     append_str(at, SALIAS, SALIAS_LEN);
     ip_len = ip_addr2sbuf(&(msg->rcv.src_ip), at, param_len - SALIAS_LEN);
     if (ip_len <= 0) {
@@ -879,24 +865,30 @@ add_contact_alias_f(struct sip_msg* msg, char* str1, char* str2)
 	goto err;
     }
     at = at + ip_len;
+    /* port */
     append_chr(at, '~');
     port = int2str(msg->rcv.src_port, &len);
     append_str(at, port, len);
+    /* proto */
     append_chr(at, '~');
     if ((msg->rcv.proto < PROTO_UDP) || (msg->rcv.proto > PROTO_SCTP)) {
 	LM_ERR("invalid transport protocol\n");
 	goto err;
     }
     append_chr(at, msg->rcv.proto + '0');
+    /* closing > */
+    if (bracket == NULL) {
+	append_chr(at, '>');
+    }
     param_len = at - param;
+
+    /* Add  ;alias param */
     LM_DBG("adding param <%.*s>\n", param_len, param);
     if (uri.port.len > 0) {
 	start = uri.port.s + uri.port.len;
     } else {
 	start = uri.host.s + uri.host.len;
     }
-
-    /* Add  ;alias param */
     anchor = anchor_lump(msg, start - msg->buf, 0, 0);
     if (anchor == NULL) {
 	LM_ERR("anchor_lump for ;alias param failed\n");
@@ -910,7 +902,6 @@ add_contact_alias_f(struct sip_msg* msg, char* str1, char* str2)
 
  err:
     if (lt) pkg_free(lt);
-    if (gt) pkg_free(gt);
     if (param) pkg_free(param);
     return -1;
 }
@@ -1361,8 +1352,8 @@ fix_nated_sdp_f(struct sip_msg* msg, char* str1, char* str2)
 {
 	str body;
 	str ip;
-	int level;
-	char *buf;
+	int level, rest_len;
+	char *buf, *m_start, *m_end, *rest_s;
 	struct lump* anchor;
 
 	level = (int)(long)str1;
@@ -1375,28 +1366,48 @@ fix_nated_sdp_f(struct sip_msg* msg, char* str1, char* str2)
 	}
 
 	if (level & (ADD_ADIRECTION | ADD_ANORTPPROXY)) {
+
 		msg->msg_flags |= FL_FORCE_ACTIVE;
-		anchor = anchor_lump(msg, body.s + body.len - msg->buf, 0, 0);
-		if (anchor == NULL) {
-			LM_ERR("anchor_lump failed\n");
-			return -1;
-		}
+
 		if (level & ADD_ADIRECTION) {
+		    m_start = ser_memmem(body.s, "\r\nm=", body.len, 4);
+		    while (m_start != NULL) {
+			m_start = m_start + 2;
+			rest_len = body.len - (m_start - body.s);
+			m_end = ser_memmem(m_start, "\r\n", rest_len, 2);
+			if (m_end == NULL) {
+			    LM_ERR("m line is not crlf terminated\n");
+			    return -1;
+			}
+		        anchor = anchor_lump(msg, m_end - msg->buf, 0, 0);
+		        if (anchor == NULL) {
+			    LM_ERR("anchor_lump failed\n");
+			    return -1;
+		        }
 			buf = pkg_malloc((ADIRECTION_LEN + CRLF_LEN) * sizeof(char));
 			if (buf == NULL) {
-				LM_ERR("out of pkg memory\n");
-				return -1;
+			    LM_ERR("out of pkg memory\n");
+			    return -1;
 			}
 			memcpy(buf, CRLF, CRLF_LEN);
 			memcpy(buf + CRLF_LEN, ADIRECTION, ADIRECTION_LEN);
 			if (insert_new_lump_after(anchor, buf, ADIRECTION_LEN + CRLF_LEN, 0) == NULL) {
-				LM_ERR("insert_new_lump_after failed\n");
-				pkg_free(buf);
-				return -1;
+			    LM_ERR("insert_new_lump_after failed\n");
+			    pkg_free(buf);
+			    return -1;
 			}
+			rest_s = m_end + 2;
+			rest_len = body.len - (rest_s - body.s);
+			m_start = ser_memmem(rest_s, "\r\nm=", rest_len, 4);
+		    }
 		}
 
 		if ((level & ADD_ANORTPPROXY) && nortpproxy_str.len) {
+		        anchor = anchor_lump(msg, body.s + body.len - msg->buf, 0, 0);
+		        if (anchor == NULL) {
+			        LM_ERR("anchor_lump failed\n");
+			        return -1;
+		        }
 			buf = pkg_malloc((nortpproxy_str.len + CRLF_LEN) * sizeof(char));
 			if (buf == NULL) {
 				LM_ERR("out of pkg memory\n");

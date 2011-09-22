@@ -33,6 +33,8 @@
 #ifndef DB1_UT_H
 #define DB1_UT_H
 
+#include "../../pvar.h"
+
 /**
  * make strptime available
  * use 600 for 'Single UNIX Specification, Version 3'
@@ -203,5 +205,16 @@ int db_print_where(const db1_con_t* _c, char* _b, const int _l, const db_key_t* 
 int db_print_set(const db1_con_t* _c, char* _b, const int _l,
 	const db_key_t* _k, const db_val_t* _v, const int _n, int (*val2str)
 	(const db1_con_t*, const db_val_t*, char*, int*));
+
+
+/**
+ * Convert db_val_t to pv_spec_t
+ * 
+ * \param msg sip msg structure
+ * \param dbval database value
+ * \param pvs pv_spec where to put the database value
+ * \return 0 on success, -1 on failure
+ */
+int db_val2pv_spec(struct sip_msg* msg, db_val_t *dbval, pv_spec_t *pvs);
 
 #endif
