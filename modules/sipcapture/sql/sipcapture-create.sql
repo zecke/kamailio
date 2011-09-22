@@ -1,26 +1,11 @@
-<<<<<<< HEAD
--- MySQL dump 10.13  Distrib 5.1.41, for debian-linux-gnu (x86_64)
---
--- Host: localhost    Database: homer_data
--- ------------------------------------------------------
--- Server version	5.1.41-3ubuntu12.10
---
--- Table structure for table `sip_capture`
---
-=======
 
->>>>>>> master
 
 DROP TABLE IF EXISTS `sip_capture`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `sip_capture` (
   `id` int(20) NOT NULL AUTO_INCREMENT,
-<<<<<<< HEAD
-  `date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
-=======
   `date` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
->>>>>>> master
   `micro_ts` bigint(18) NOT NULL DEFAULT '0',
   `method` varchar(50) NOT NULL DEFAULT '',
   `reply_reason` varchar(100) NOT NULL,
@@ -67,22 +52,6 @@ CREATE TABLE `sip_capture` (
   KEY `date` (`date`),
   KEY `callid` (`callid`)
 ) ENGINE=MyISAM AUTO_INCREMENT=1 DEFAULT CHARSET=utf8
-<<<<<<< HEAD
-/*!50100 PARTITION BY RANGE ( DAYOFWEEK(`date`))
-SUBPARTITION BY HASH ( HOUR(`date`))
-SUBPARTITIONS 24
-(PARTITION p0 VALUES LESS THAN (2) ENGINE = MyISAM,
- PARTITION p1 VALUES LESS THAN (3) ENGINE = MyISAM,
- PARTITION p2 VALUES LESS THAN (4) ENGINE = MyISAM,
- PARTITION p3 VALUES LESS THAN (5) ENGINE = MyISAM,
- PARTITION p4 VALUES LESS THAN (6) ENGINE = MyISAM,
- PARTITION p5 VALUES LESS THAN (7) ENGINE = MyISAM,
- PARTITION p6 VALUES LESS THAN (8) ENGINE = MyISAM) */;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
-
--- Dump completed on 2011-08-18 13:54:21
-=======
 PARTITION BY RANGE ( TO_DAYS(`date`) ) (
 PARTITION p20110824 VALUES LESS THAN (734739) ENGINE = MyISAM,
 PARTITION p20110825 VALUES LESS THAN (734740) ENGINE = MyISAM,
@@ -101,4 +70,3 @@ PARTITION pmax VALUES LESS THAN (MAXVALUE)
 /* if your mysql < 5.5 drop maxvalue partition */
 /* alter table sip_capture drop partition pmax; */
 
->>>>>>> master
