@@ -669,7 +669,12 @@ switch ($retcode) {
 4.4.  lookup(domain,flags)
 
    Same as lookup() but it accepts a set of flags for controlling its
-   behaviour.
+   behaviour. This method allows you to make choose between different AOR
+   connnected to the same user id. Example: you can register the same user
+   multiple times and after lookup you will distribute incoming calls
+   between these AORs. If you have 4 registration, each AOR will receive
+   25% of all incoming calls. It can help to buid a cluster system based
+   on user registration.
 
    Meaning of the parameters is as follows:
      * domain - Name of table that should be used for the lookup.
