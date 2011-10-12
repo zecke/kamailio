@@ -366,6 +366,11 @@ struct cell*  build_cell( struct sip_msg* p_msg )
 		set_early_tmcb_list(p_msg, new_cell);
 		if(has_reqin_tmcbs())
 			run_reqin_callbacks( new_cell, p_msg, p_msg->REQ_METHOD);
+
+        /* if new pending callbacks were issued by any TMCB_REQUEST_IN
+         * callback, move them to the transaction as well (possibly
+         * extending the existing list of callbacks) */
+		extend_early_cbs(p_msg->id, new_cell);
 	}
 
 	if (p_msg) {

@@ -88,6 +88,27 @@ void set_early_tmcb_list(struct sip_msg *msg, struct cell *t)
 	}
 }
 
+static void extend_cb_list(struct tmcb_head_list *existing, struct tmcb_head_list *new)
+{
+    struct tm_callback *cbp;
+
+    if (existing->first == 0)
+        *existing = *new;
+    else {
+        for (cbp = (struct tm_callback*)new->first; cbp->next != NULL; cbp = cbp->next) ;
+        cbp->next = (struct tm_callback*)existing->first;
+        existing->first = new->first;
+        existing->reg_types |= new->reg_types;
+    }
+}
+
+void extend_early_cbs(int msgid, struct cell *new_cell) {
+        if (tmcb_early_hl.cb_list.first!=0 && msgid==tmcb_early_hl.msgid) {
+		    extend_cb_list(&new_cell->tmcb_hl, &tmcb_early_hl.cb_list);
+		    tmcb_early_hl.cb_list.first = 0;
+		}
+}
+
 int init_tmcb_lists()
 {
 	req_in_tmcb_hl = (struct tmcb_head_list*)shm_malloc
