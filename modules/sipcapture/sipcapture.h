@@ -97,3 +97,98 @@ struct hep_ip6hdr {
         struct in6_addr hp6_dst;        /* destination address */
 };
 #endif
+
+/* HEPv3 types */
+
+struct hep_chunk {
+       u_int16_t vendor_id;
+       u_int16_t type_id;
+       u_int16_t length;
+} __attribute__((packed));
+
+typedef struct hep_chunk hep_chunk_t;
+
+struct hep_chunk_uint8 {
+       hep_chunk_t chunk;
+       u_int8_t data;
+} __attribute__((packed));
+
+typedef struct hep_chunk_uint8 hep_chunk_uint8_t;
+
+struct hep_chunk_uint16 {
+       hep_chunk_t chunk;
+       u_int16_t data;
+} __attribute__((packed));
+
+typedef struct hep_chunk_uint16 hep_chunk_uint16_t;
+
+struct hep_chunk_uint32 {
+       hep_chunk_t chunk;
+       u_int32_t data;
+} __attribute__((packed));
+
+typedef struct hep_chunk_uint32 hep_chunk_uint32_t;
+
+struct hep_chunk_str {
+       hep_chunk_t chunk;
+       char *data;
+} __attribute__((packed));
+
+typedef struct hep_chunk_str hep_chunk_str_t;
+
+struct hep_chunk_ip4 {
+       hep_chunk_t chunk;
+       struct in_addr data;
+} __attribute__((packed));
+
+typedef struct hep_chunk_ip4 hep_chunk_ip4_t;
+
+#ifdef USE_IPV6
+struct hep_chunk_ip6 {
+       hep_chunk_t chunk;
+       struct in6_addr data;
+} __attribute__((packed));
+#endif
+
+typedef struct hep_chunk_ip6 hep_chunk_ip6_t;
+
+struct hep_chunk_payload {
+    hep_chunk_t chunk;
+    char *data;
+} __attribute__((packed));
+
+typedef struct hep_chunk_payload hep_chunk_payload_t;
+
+
+struct hep_ctrl {
+    char id[4];
+    u_int16_t length;
+} __attribute__((packed));
+
+typedef struct hep_ctrl hep_ctrl_t;
+
+
+/* Structure of HEP */
+
+struct hep_generic_recv {
+        hep_ctrl_t         *header;
+        hep_chunk_uint8_t  *ip_family;
+        hep_chunk_uint8_t  *ip_proto;
+        hep_chunk_uint16_t *src_port;
+        hep_chunk_uint16_t *dst_port;
+        hep_chunk_uint32_t *time_sec;
+        hep_chunk_uint32_t *time_usec;
+        hep_chunk_ip4_t    *hep_src_ip4;
+        hep_chunk_ip4_t	    *hep_dst_ip4;
+#ifdef USE_IPV6
+        hep_chunk_ip6_t    *hep_src_ip6;
+        hep_chunk_ip6_t    *hep_dst_ip6;
+#endif                
+        hep_chunk_uint8_t  *proto_t;
+        hep_chunk_uint32_t *capt_id;
+        hep_chunk_uint16_t *keep_tm;
+        hep_chunk_str_t    *auth_key;        
+        hep_chunk_t   *payload_chunk;
+} __attribute__((packed));
+
+typedef struct hep_generic_recv hep_generic_recv_t;
