@@ -1,6 +1,6 @@
 /*
  *
- * Permissions MI functions
+ * Permissions MI and RPC functions
  *
  * Copyright (C) 2006 Juha Heinanen
  *
@@ -47,6 +47,23 @@ struct mi_root* mi_trusted_reload(struct mi_root *cmd_tree, void *param)
     } else {
 	return init_mi_tree( 400, MI_SSTR("Trusted table reload failed"));
     }
+}
+
+/*! \brief
+ * RPC function to reload trusted table
+ */
+void rpc_trusted_reload(rpc_t* rpc, void* c) {
+	if (hash_table==NULL) {
+		rpc->fault(c, 500, "Reload failed. No hash table");
+		return;
+	}
+	if (reload_trusted_table () != 1) {
+		rpc->fault(c, 500, "Reload failed.");
+		return;
+	}
+
+	rpc->printf(c, "Reload OK");
+	return;
 }
 
 

@@ -42,6 +42,8 @@
 #include "../../globals.h"
 #include "../../mod_fix.h"
 #include "../../ut.h"
+#include "../../rpc.h"
+#include "../../rpc_lookup.h"
 
 MODULE_VERSION
 
@@ -116,6 +118,8 @@ static void mod_exit(void);
 static int child_init(int rank);
 static int mi_trusted_child_init();
 static int mi_addr_child_init();
+static int permissions_init_rpc(void);
+
 
 
 /* Exported functions */
@@ -588,6 +592,12 @@ static int mod_init(void)
 		return -1;
 	}
 
+	if(permissions_init_rpc()!=0)
+	{
+		LM_ERR("failed to register RPC commands\n");
+		return -1;
+	}
+
 	if (db_url.s)
 		db_url.len = strlen(db_url.s);
 	trusted_table.len = strlen(trusted_table.s);
@@ -971,5 +981,25 @@ static int fixup_allow_address(void** param, int param_no)
 		return fixup_spve_null(param, 1);
 	if(param_no==3)
 		return fixup_igp_null(param, 1);
+	return 0;
+}
+
+static const char* rpc_trusted_reload_doc[2] = {
+	"Reload permissions trusted table",
+	0
+};
+
+rpc_export_t permissions_rpc[] = {
+	{"permissions.trustedreload", rpc_trusted_reload, rpc_trusted_reload_doc, 0},
+	{0, 0, 0, 0}
+};
+
+static int permissions_init_rpc(void)
+{
+	if (rpc_register_array(permissions_rpc)!=0)
+	{
+		LM_ERR("failed to register RPC commands\n");
+		return -1;
+	}
 	return 0;
 }

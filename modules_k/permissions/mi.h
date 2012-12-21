@@ -27,6 +27,7 @@
 
 
 #include "../../lib/kmi/mi.h"
+#include "../../rpc.h"
 
 
 #define MI_TRUSTED_RELOAD "trusted_reload"
@@ -39,6 +40,7 @@
 #define MI_ALLOW_URI "allow_uri"
 
 struct mi_root* mi_trusted_reload(struct mi_root *cmd, void *param);
+void rpc_trusted_reload(rpc_t* rpc, void* c);
 
 struct mi_root* mi_trusted_dump(struct mi_root *cmd, void *param);
 
