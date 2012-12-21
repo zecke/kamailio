@@ -45,6 +45,7 @@ void rpc_trusted_reload(rpc_t* rpc, void* c);
 struct mi_root* mi_trusted_dump(struct mi_root *cmd, void *param);
 
 struct mi_root* mi_address_reload(struct mi_root *cmd, void *param);
+void rpc_address_reload(rpc_t* rpc, void* c);
 
 struct mi_root* mi_address_dump(struct mi_root *cmd, void *param);
 

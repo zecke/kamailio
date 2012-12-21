@@ -989,8 +989,14 @@ static const char* rpc_trusted_reload_doc[2] = {
 	0
 };
 
+static const char* rpc_address_reload_doc[2] = {
+	"Reload permissions address table",
+	0
+};
+
 rpc_export_t permissions_rpc[] = {
 	{"permissions.trustedreload", rpc_trusted_reload, rpc_trusted_reload_doc, 0},
+	{"permissions.addressreload", rpc_address_reload, rpc_address_reload_doc, 0},
 	{0, 0, 0, 0}
 };
 

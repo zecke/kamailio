@@ -102,6 +102,18 @@ struct mi_root* mi_address_reload(struct mi_root *cmd_tree, void *param)
     }
 }
 
+/*! \brief
+ * RPC function to reload address table
+ */
+void rpc_address_reload(rpc_t* rpc, void* c) {
+	if (reload_address_table () != 1) {
+		rpc->fault(c, 500, "Reload failed.");
+		return;
+	}
+
+	rpc->printf(c, "Reload OK");
+	return;
+}
 
 /*
  * MI function to print address entries from current hash table
