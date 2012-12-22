@@ -39,14 +39,15 @@
  */
 struct mi_root* mi_trusted_reload(struct mi_root *cmd_tree, void *param)
 {
-	if (hash_table==NULL)
+	if (hash_table==NULL) {
 		return init_mi_tree( 200, MI_SSTR(MI_OK));
+	}
 
-    if (reload_trusted_table () == 1) {
-	return init_mi_tree( 200, MI_SSTR(MI_OK));
-    } else {
-	return init_mi_tree( 400, MI_SSTR("Trusted table reload failed"));
-    }
+	if (reload_trusted_table () == 1) {
+		return init_mi_tree( 200, MI_SSTR(MI_OK));
+	} else {
+		return init_mi_tree( 400, MI_SSTR("Trusted table reload failed"));
+	}
 }
 
 /*! \brief
@@ -67,7 +68,7 @@ void rpc_trusted_reload(rpc_t* rpc, void* c) {
 }
 
 
-/*
+/*! \brief
  * MI function to print trusted entries from current hash table
  */
 struct mi_root* mi_trusted_dump(struct mi_root *cmd_tree, void *param)
@@ -89,8 +90,26 @@ struct mi_root* mi_trusted_dump(struct mi_root *cmd_tree, void *param)
 	return rpl_tree;
 }
 
+/*! \brief
+ * RPC function to dump trusted table
+ */
+void rpc_trusted_dump(rpc_t* rpc, void* c) {
 
-/*
+	if (hash_table==NULL) {
+		rpc->fault(c, 500, "Reload failed. No trusted table");
+		return;
+	}
+
+	if(hash_table_rpc_print(*hash_table, rpc, c) < 0) {
+		LM_DBG("failed to print a hash_table dump\n");
+		return;
+	}
+
+	return;
+}
+
+
+/*! \brief
  * MI function to reload address table
  */
 struct mi_root* mi_address_reload(struct mi_root *cmd_tree, void *param)
@@ -134,6 +153,18 @@ struct mi_root* mi_address_dump(struct mi_root *cmd_tree, void *param)
     return rpl_tree;
 }
 
+/*! \brief
+ * RPC function to dump address table
+ */
+void rpc_address_dump(rpc_t* rpc, void* c) {
+
+	if(addr_hash_table_rpc_print(*addr_hash_table, rpc, c) < 0 ) {
+		LM_DBG("failed to print a subnet_table dump\n");
+	}
+	return;
+}
+
+
 
 /*
  * MI function to print subnets from current subnet table
@@ -152,6 +183,17 @@ struct mi_root* mi_subnet_dump(struct mi_root *cmd_tree, void *param)
     }
 
     return rpl_tree;
+}
+
+/*! \brief
+ * RPC function to dump subnet table
+ */
+void rpc_subnet_dump(rpc_t* rpc, void* c) {
+	if(subnet_table_rpc_print(*subnet_table, rpc, c) < 0) {
+		LM_DBG("failed to print a subnet_table dump\n");
+	}
+
+	return;
 }
 
 #define MAX_FILE_LEN 128

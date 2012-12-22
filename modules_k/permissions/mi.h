@@ -43,13 +43,16 @@ struct mi_root* mi_trusted_reload(struct mi_root *cmd, void *param);
 void rpc_trusted_reload(rpc_t* rpc, void* c);
 
 struct mi_root* mi_trusted_dump(struct mi_root *cmd, void *param);
+void rpc_trusted_dump(rpc_t* rpc, void* c);
 
 struct mi_root* mi_address_reload(struct mi_root *cmd, void *param);
 void rpc_address_reload(rpc_t* rpc, void* c);
 
 struct mi_root* mi_address_dump(struct mi_root *cmd, void *param);
+void rpc_address_dump(rpc_t* rpc, void* c);
 
 struct mi_root* mi_subnet_dump(struct mi_root *cmd_tree, void *param);
+void rpc_subnet_dump(rpc_t* rpc, void* c);
 
 struct mi_root* mi_allow_uri(struct mi_root *cmd, void *param);
 
