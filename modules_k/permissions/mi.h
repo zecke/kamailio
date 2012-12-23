@@ -55,5 +55,6 @@ struct mi_root* mi_subnet_dump(struct mi_root *cmd_tree, void *param);
 void rpc_subnet_dump(rpc_t* rpc, void* c);
 
 struct mi_root* mi_allow_uri(struct mi_root *cmd, void *param);
+void rpc_test_uri(rpc_t* rpc, void* c);
 
 #endif

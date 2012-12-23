@@ -455,7 +455,7 @@ static int load_fixup(void** param, int param_no)
 		if (table[rules_num].rules) {
 			LM_DBG("file (%s) parsed\n", pathname);
 		} else {
-			LM_INFO("file (%s) not found => empty rule set\n", pathname);
+			LM_INFO("file (%s) not parsed properly => empty rule set\n", pathname);
 		}
 		*param = (void*)(long)rules_num;
 		if (param_no == 2) rules_num++;
@@ -1009,12 +1009,18 @@ static const char* rpc_subnet_dump_doc[2] = {
 	0
 };
 
+static const char* rpc_test_uri_doc[2] = {
+	"Tests if (URI, Contact) pair is allowed according to allow/deny files",
+	0
+};
+
 rpc_export_t permissions_rpc[] = {
 	{"permissions.trustedReload", rpc_trusted_reload, rpc_trusted_reload_doc, 0},
 	{"permissions.addressReload", rpc_address_reload, rpc_address_reload_doc, 0},
 	{"permissions.trustedDump", rpc_trusted_dump, rpc_trusted_dump_doc, 0},
 	{"permissions.addressDump", rpc_address_dump, rpc_address_dump_doc, 0},
 	{"permissions.subnetDump", rpc_subnet_dump, rpc_subnet_dump_doc, 0},
+	{"permissions.testUri", rpc_test_uri, rpc_test_uri_doc, 0},
 	{0, 0, 0, 0}
 };
 

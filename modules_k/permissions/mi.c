@@ -198,7 +198,7 @@ void rpc_subnet_dump(rpc_t* rpc, void* c) {
 
 #define MAX_FILE_LEN 128
 
-/*
+/*! \brief
  * MI function to make allow_uri query.
  */
 struct mi_root* mi_allow_uri(struct mi_root *cmd, void *param)
@@ -248,4 +248,58 @@ struct mi_root* mi_allow_uri(struct mi_root *cmd, void *param)
     } else {
 	return init_mi_tree(403, MI_SSTR("Forbidden"));
     }
+}
+
+/*! \brief
+ * RPC function to make allow_uri query.
+ */
+void rpc_test_uri(rpc_t* rpc, void* c)
+{
+    	str *basenamep, *urip, *contactp;
+	char basename[MAX_FILE_LEN + 1];
+	char uri[MAX_URI_SIZE + 1], contact[MAX_URI_SIZE + 1]; 
+	unsigned int allow_suffix_len;
+	int i;
+
+	if (rpc->scan(c, ".S", &basenamep) != 1) {
+		rpc->fault(c, 500, "Not enough parameters (basename, URI and contact)");
+		return;
+	}
+	//LM_DBG("Basename %s length %d \n", basenamep, basenamep->len);
+	if (rpc->scan(c, ".S", &urip) != 1) {
+		rpc->fault(c, 500, "Not enough parameters (basename, URI and contact)");
+		return;
+	}
+	 //LM_DBG("URI %s length %d \n", urip, urip->len);
+	if (rpc->scan(c, ".S", &contactp) != 1) {
+		rpc->fault(c, 500, "Not enough parameters (basename, URI and contact)");
+		return;
+	}
+	//LM_DBG("Contact %s length %d size %d\n", contactp, contactp->len, sizeof(contactp->s) - 1);
+
+	/* For some reason, rtp->scan doesn't set the length properly */
+    	if (contactp->len > MAX_URI_SIZE) {
+		rpc->fault(c, 500, "Contact is too long");
+		return;
+	}
+	allow_suffix_len = strlen(allow_suffix);
+	if (basenamep->len + allow_suffix_len + 1 > MAX_FILE_LEN) {
+		rpc->fault(c, 500, "Basename is too long");
+		return;
+	}
+
+	memcpy(basename, basenamep->s, basenamep->len);
+	memcpy(basename + basenamep->len, allow_suffix, allow_suffix_len);
+	basename[basenamep->len + allow_suffix_len] = 0;
+    	memcpy(uri, urip->s, urip->len);
+	memcpy(contact, contactp->s, contactp->len);
+	contact[contactp->len] = 0;
+    	uri[urip->len] = 0;
+
+	if (allow_test(basename, uri, contact) == 1) {
+		rpc->printf(c, "Allowed");
+		return;
+	}
+	rpc->printf(c, "Denied");
+	return;
 }
