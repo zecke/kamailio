@@ -261,21 +261,21 @@ void rpc_test_uri(rpc_t* rpc, void* c)
 	unsigned int allow_suffix_len;
 	int i;
 
-	if (rpc->scan(c, ".S", &basenamep) != 1) {
+	if (rpc->scan(c, "S", &basenamep) != 1) {
 		rpc->fault(c, 500, "Not enough parameters (basename, URI and contact)");
 		return;
 	}
-	//LM_DBG("Basename %s length %d \n", basenamep, basenamep->len);
-	if (rpc->scan(c, ".S", &urip) != 1) {
+	LM_DBG("Basename %s length %d strlen(%d)\n", basenamep, basenamep->len, strlen(basenamep));
+	if (rpc->scan(c, "S", &urip) != 1) {
 		rpc->fault(c, 500, "Not enough parameters (basename, URI and contact)");
 		return;
 	}
-	 //LM_DBG("URI %s length %d \n", urip, urip->len);
-	if (rpc->scan(c, ".S", &contactp) != 1) {
+	LM_DBG("URI %s length %d \n", urip, urip->len);
+	if (rpc->scan(c, "S", &contactp) != 1) {
 		rpc->fault(c, 500, "Not enough parameters (basename, URI and contact)");
 		return;
 	}
-	//LM_DBG("Contact %s length %d size %d\n", contactp, contactp->len, sizeof(contactp->s) - 1);
+	LM_DBG("Contact %s length %d size %d\n", contactp, contactp->len, sizeof(contactp->s) - 1);
 
 	/* For some reason, rtp->scan doesn't set the length properly */
     	if (contactp->len > MAX_URI_SIZE) {
