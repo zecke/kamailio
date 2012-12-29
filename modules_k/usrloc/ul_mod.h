@@ -64,6 +64,15 @@ extern str instance_col;
 extern str reg_id_col;
 extern str last_mod_col;
 
+extern str ulattrs_user_col;
+extern str ulattrs_domain_col;
+extern str ulattrs_ruid_col;
+extern str ulattrs_aname_col;
+extern str ulattrs_atype_col;
+extern str ulattrs_avalue_col;
+extern str ulattrs_last_mod_col;
+
+
 extern str db_url;
 extern int timer_interval;
 extern int db_mode;
@@ -81,6 +90,7 @@ extern unsigned int nat_bflag;
 /*! flag to protect against wrong initialization */
 extern unsigned int init_flag;
 
+extern str ul_xavp_contact_name;
 
 extern db1_con_t* ul_dbh;   /* Database connection handle */
 extern db_func_t ul_dbf;

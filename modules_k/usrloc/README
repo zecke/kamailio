@@ -66,6 +66,7 @@ Bogdan-Andrei Iancu
               3.28. db_update_as_insert (string)
               3.29. db_check_update (string)
               3.30. timer_procs (string)
+              3.31. xavp_contact (string)
 
         4. Functions
         5. MI Commands
@@ -140,6 +141,7 @@ Bogdan-Andrei Iancu
    1.28. Set db_update_as_insert parameter
    1.29. Set db_check_update parameter
    1.30. Set timer_procs parameter
+   1.31. Set xavp_contact parameter
 
 Chapter 1. Admin Guide
 
@@ -186,6 +188,7 @@ Chapter 1. Admin Guide
         3.28. db_update_as_insert (string)
         3.29. db_check_update (string)
         3.30. timer_procs (string)
+        3.31. xavp_contact (string)
 
    4. Functions
    5. MI Commands
@@ -292,6 +295,7 @@ Chapter 1. Admin Guide
    3.28. db_update_as_insert (string)
    3.29. db_check_update (string)
    3.30. timer_procs (string)
+   3.31. xavp_contact (string)
 
 3.1. nat_bflag (integer)
 
@@ -699,6 +703,18 @@ modparam("usrloc", "db_check_update", 1)
    Example 1.30. Set timer_procs parameter
 ...
 modparam("usrloc", "timer_procs", 4)
+...
+
+3.31. xavp_contact (string)
+
+   The name of XAVP storring the attributes per contact. They are saved in
+   location record and restored at lookup.
+
+   Default value is "NULL".
+
+   Example 1.31. Set xavp_contact parameter
+...
+modparam("usrloc", "xavp_contact", "ulattrs")
 ...
 
 4. Functions

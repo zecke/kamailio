@@ -91,6 +91,14 @@ MODULE_VERSION
 #define REG_ID_COL     "reg_id"
 #define LAST_MOD_COL   "last_modified"
 
+#define ULATTRS_USER_COL       "username"
+#define ULATTRS_DOMAIN_COL     "domain"
+#define ULATTRS_RUID_COL       "ruid"
+#define ULATTRS_ANAME_COL      "aname"
+#define ULATTRS_ATYPE_COL      "atype"
+#define ULATTRS_AVALUE_COL     "avalue"
+#define ULATTRS_LAST_MOD_COL   "last_modified"
+
 static int mod_init(void);                          /*!< Module initialization function */
 static void destroy(void);                          /*!< Module destroy function */
 static void ul_core_timer(unsigned int ticks, void* param);  /*!< Core timer handler */
@@ -109,6 +117,8 @@ int ul_db_update_as_insert = 0;
 int ul_timer_procs = 0;
 int ul_db_check_update = 0;
 int ul_keepalive_timeout = 0;
+
+str ul_xavp_contact_name = {0};
 
 /* sruid to get internal uid for mi/rpc commands */
 sruid_t _ul_sruid;
@@ -135,6 +145,15 @@ str methods_col     = str_init(METHODS_COL);	/*!< Name of column containing the 
 str instance_col    = str_init(INSTANCE_COL);	/*!< Name of column containing the SIP instance value */
 str reg_id_col      = str_init(REG_ID_COL);		/*!< Name of column containing the reg-id value */
 str last_mod_col    = str_init(LAST_MOD_COL);	/*!< Name of column containing the last modified date */
+
+str ulattrs_user_col   = str_init(ULATTRS_USER_COL);   /*!< Name of column containing username */
+str ulattrs_domain_col = str_init(ULATTRS_DOMAIN_COL); /*!< Name of column containing domain */
+str ulattrs_ruid_col   = str_init(ULATTRS_RUID_COL);   /*!< Name of column containing record unique id */
+str ulattrs_aname_col  = str_init(ULATTRS_ANAME_COL);  /*!< Name of column containing attribute name */
+str ulattrs_atype_col  = str_init(ULATTRS_ATYPE_COL);  /*!< Name of column containing attribute type */
+str ulattrs_avalue_col = str_init(ULATTRS_AVALUE_COL); /*!< Name of column containing attribute value */
+str ulattrs_last_mod_col = str_init(ULATTRS_LAST_MOD_COL);	/*!< Name of column containing the last modified date */
+
 str db_url          = str_init(DEFAULT_DB_URL);	/*!< Database URL */
 int timer_interval  = 60;				/*!< Timer interval in seconds */
 int db_mode         = 0;				/*!< Database sync scheme: 0-no db, 1-write through, 2-write back, 3-only db */
@@ -197,6 +216,7 @@ static param_export_t params[] = {
 	{"db_update_as_insert", INT_PARAM, &ul_db_update_as_insert},
 	{"timer_procs",         INT_PARAM, &ul_timer_procs},
 	{"db_check_update",     INT_PARAM, &ul_db_check_update},
+	{"xavp_contact",        STR_PARAM, &ul_xavp_contact_name.s},
 	{0, 0, 0}
 };
 
@@ -291,6 +311,9 @@ static int mod_init(void)
 	reg_id_col.len = strlen(reg_id_col.s);
 	last_mod_col.len = strlen(last_mod_col.s);
 	db_url.len = strlen(db_url.s);
+
+	if(ul_xavp_contact_name.s!=NULL)
+		ul_xavp_contact_name.len = strlen(ul_xavp_contact_name.s);
 
 	if(ul_hash_size<=1)
 		ul_hash_size = 512;
@@ -417,6 +440,7 @@ static int child_init(int _rank)
 						_rank, ptr->name.len, ZSW(ptr->name.s));
 				return -1;
 			}
+			uldb_preload_attrs(ptr->d);
 		}
 	}
 
