@@ -194,7 +194,7 @@ module_group_stable=cpl-c dbtext jabber osp sms pdb
 # Modules in this group are either not complete, untested, or without enough
 # reports of usage to allow the module into the stable group. They may or may
 # not have dependencies
-module_group_experimental=tls oracle iptrtpproxy ndb_redis async websocket
+module_group_experimental=tls oracle iptrtpproxy ndb_redis async websocket outbound
 
 # For cassandra
 module_group_cassandra_driver=db_cassandra
@@ -267,6 +267,9 @@ module_group_ktls=tls
 # K websocket module
 module_group_kwebsocket=websocket
 
+# K outbound module
+module_group_koutbound=outbound
+
 # K presence modules
 module_group_kpresence=presence presence_dialoginfo presence_mwi presence_xml presence_profile\
 						pua pua_bla pua_dialoginfo pua_mi pua_usrloc pua_xmpp \
@@ -294,6 +297,11 @@ module_group_kredis=ndb_redis
 # K mono module
 module_group_kmono=app_mono
 
+# For IMS
+# kamailio modules
+module_group_kims=auth_ims cdp cdp_avp dialog2 ims_qos isc icscf ipsec\
+                        registrar_pcscf registrar_scscf usrloc_pcscf usrloc_scscf
+
 # if not set on the cmd. line, env or in the modules.lst (cfg_group_include)
 # exclude the below modules.
 ifneq ($(group_include)$(cfg_group_include),)
@@ -317,7 +325,7 @@ else
 							presence_dialoginfo presence_xml pua pua_bla \
 							pua_dialoginfo pua_usrloc pua_xmpp \
 							regex xcap_client xcap_server presence_conference \
-							presence_reginfo pua_reginfo websocket
+							presence_reginfo pua_reginfo websocket outbound
 	#excluded because they depend on external *.h files
 	exclude_modules+= h350
 	# excluded because they do not compile (remove them only after they are
@@ -864,6 +872,17 @@ deb:
 		rm debian; \
 	else \
 		ln -s pkg/$(MAIN_NAME)/deb/debian debian; \
+		dpkg-buildpackage -rfakeroot -tc; \
+		rm debian; \
+	fi
+
+.PHONY: deb-stable
+deb-stable:
+	-@if [ -d debian ]; then \
+		dpkg-buildpackage -rfakeroot -tc; \
+		rm debian; \
+	else \
+		ln -s pkg/$(MAIN_NAME)/deb/squeeze debian; \
 		dpkg-buildpackage -rfakeroot -tc; \
 		rm debian; \
 	fi
