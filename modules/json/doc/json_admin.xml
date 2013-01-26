@@ -10,72 +10,126 @@
 <!-- Module User's Guide -->
 
 <chapter>
-	<title>&adminguide;</title>
-	<section>
-	<title>Overview</title>
-	<para>
-		This module provides operations on json strings.
-	</para>
-	</section>
+    
+    <title>&adminguide;</title>
+    
+    <section>
+    <title>Overview</title>
+    <para>
+        This module provides operations on json strings.
+    </para>
+    </section>
 
-	<section>
-	<title>Dependencies</title>
-	<section>
-		<title>&kamailio; Modules</title>
-		<para>
-		The following modules must be loaded before this module:
-			<itemizedlist>
-			<listitem>
-			<para>
-				<emphasis>None</emphasis>
-			</para>
-			</listitem>
-			</itemizedlist>
-		</para>
-	</section>
-	<section>
-		<title>External Libraries or Applications</title>
-		<para>
-		The following libraries or applications must be installed before running
-		&kamailio; with this module loaded:
-			<itemizedlist>
-			<listitem>
-			<para>
-				<emphasis>libjson (https://github.com/json-c/json-c/wiki)</emphasis>
-			</para>
-			</listitem>
-			</itemizedlist>
-		</para>
-	</section>
-	</section>
-	<section>
-	<title>Parameters</title>
-	<section>
-		<para>
-			<emphasis>None</emphasis>
-		</para>
-	</section>
-	</section>
+    <section>
+    <title>Dependencies</title>
+    <section>
+        <title>&kamailio; Modules</title>
+        <para>
+        The following modules must be loaded before this module:
+            <itemizedlist>
+            <listitem>
+            <para>
+                <emphasis>None</emphasis>
+            </para>
+            </listitem>
+            </itemizedlist>
+        </para>
+    </section>
+    <section>
+        <title>External Libraries or Applications</title>
+        <para>
+        The following libraries or applications must be installed before running
+        &kamailio; with this module loaded:
+            <itemizedlist>
+            <listitem>
+            <para>
+                <emphasis>jansson (http://www.digip.org/jansson/)</emphasis>, tested with: 2.2+
+            </para>
+            </listitem>
+            </itemizedlist>
+        </para>
+    </section>
+    </section>
+    <section>
+    <title>Parameters</title>
+    <section>
+        <para>
+            <emphasis>None</emphasis>
+        </para>
+    </section>
+    </section>
 
-	<section>
-	<title>Functions</title>
-	<section>
-	    <title>
-		<function moreinfo="none">json_get_field(json_string, field_name, destination)</function>
-	    </title>
-	    <para>
-		Copy field 'field_name' from json object 'json_string' and store it in pvar 'destination'.
-		</para>
-		<example>
-		<title><function>json_get_field</function> usage</title>
-		<programlisting format="linespecific">
+    <section>
+    <title>Functions</title>
+    <section>
+        <title>
+            <function moreinfo="none">json_path_get(json_string, json_path, destination)</function>
+        </title>
+        <para>
+            Copy the value at the path from json object 'json_string' and store it in pvar 'destination'.
+        </para>
+        <para>
+            The path string supports dot delimited notation (e.g. foo.bar.baz), array notation (e.g. list[0]), or a combination of the two (e.g. foo.bar[0][1].baz).
+        </para>
+        <para>
+            The function can put a string, integer, null, or new json string into destination.
+        </para>
+        <example>
+        <title><function>json_path_get</function> usage</title>
+        <programlisting format="linespecific">
+...
+json_path_get($var(myjson), "inner.deep.num", "$var(n)");
+xlog("foo is $var(n)");
+...
+        </programlisting>
+        </example>
+    </section>
+    <section>
+        <title>
+            <function moreinfo="none">json_array_size(json_string, json_path, destination)</function>
+        </title>
+        <para>
+            Puts size of the array in 'json_string' at 'json_path' into the pvar 'destination'.
+        </para>
+        <para>
+            This is particularly useful for looping through an array. See example.
+        </para>
+        <example>
+        <title><function>json_array_size</function> usage</title>
+        <programlisting format="linespecific">
+...
+$var(array) = "{\"loopme\":[0,1,2,3,4,5]}";
+$var(count) = 0;
+json_array_size($var(array), "loopme", "$var(size)");
+while($var(count) &lt; $var(size)) {
+    json_path_get($var(array), "loopme[$var(count)]", "$var(v)");
+    xlog("loopme[$var(count)] == $var(v)\n");
+    $var(count) = $var(count) + 1;
+}
+...
+        </programlisting>
+        </example>
+    </section>
+    <section>
+        <title>
+            <function moreinfo="none">json_get_field(json_string, field_name, destination)</function>
+        </title>
+        <para>
+            Copy field 'field_name' from json object 'json_string' and store it in pvar 'destination'.
+        </para>
+        <para>
+            <emphasis>This function is deprecated</emphasis> but kept for backwards compatibility. Right now it is just a wrapper around <function>json_path_get</function>, and its functionality is the same.
+        </para>
+        <example>
+        <title><function>json_get_field</function> usage</title>
+        <programlisting format="linespecific">
 ...
 json_get_field("{'foo':'bar'}", "foo", "$var(foo)");
 xlog("foo is $var(foo)");
 ...
-		</programlisting>
-	    </example>
-	</section>
-	</section>
+        </programlisting>
+        </example>
+    </section>
+    </section>
 </chapter>
 

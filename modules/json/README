@@ -1,8 +1,8 @@
 JSON Module
 
-Matthew Williams
+Joe Hillenbrand
 
-   <matthew@flowroute.com>
+   <joe@flowroute.com>
 
 Edited by
 
@@ -10,7 +10,7 @@ Matthew Williams
 
    <matthew@flowroute.com>
 
-   Copyright © 2011 Flowroute LLC (flowroute.com)
+   Copyright © 2013 Flowroute LLC (flowroute.com)
      __________________________________________________________________
 
    Table of Contents
@@ -29,11 +29,15 @@ Matthew Williams
 
         4. Functions
 
-              4.1. json_get_field(json_string, field_name, destination)
+              4.1. json_path_get(json_string, json_path, destination)
+              4.2. json_array_size(json_string, json_path, destination)
+              4.3. json_get_field(json_string, field_name, destination)
 
    List of Examples
 
-   1.1. json_get_field usage
+   1.1. json_path_get usage
+   1.2. json_array_size usage
+   1.3. json_get_field usage
 
 Chapter 1. Admin Guide
 
@@ -51,7 +55,9 @@ Chapter 1. Admin Guide
 
    4. Functions
 
-        4.1. json_get_field(json_string, field_name, destination)
+        4.1. json_path_get(json_string, json_path, destination)
+        4.2. json_array_size(json_string, json_path, destination)
+        4.3. json_get_field(json_string, field_name, destination)
 
 1. Overview
 
@@ -71,7 +77,7 @@ Chapter 1. Admin Guide
 
    The following libraries or applications must be installed before
    running Kamailio with this module loaded:
-     * libjson (https://github.com/json-c/json-c/wiki)
+     * jansson (http://www.digip.org/jansson/), tested with: 2.2+
 
 3. Parameters
 
@@ -81,14 +87,57 @@ Chapter 1. Admin Guide
 
 4. Functions
 
-   4.1. json_get_field(json_string, field_name, destination)
+   4.1. json_path_get(json_string, json_path, destination)
+   4.2. json_array_size(json_string, json_path, destination)
+   4.3. json_get_field(json_string, field_name, destination)
 
-4.1.  json_get_field(json_string, field_name, destination)
+4.1.  json_path_get(json_string, json_path, destination)
+
+   Copy the value at the path from json object 'json_string' and store it
+   in pvar 'destination'.
+
+   The path string supports dot delimited notation (e.g. foo.bar.baz),
+   array notation (e.g. list[0]), or a combination of the two (e.g.
+   foo.bar[0][1].baz).
+
+   The function can put a string, integer, null, or new json string into
+   destination.
+
+   Example 1.1. json_path_get usage
+...
+json_path_get($var(myjson), "inner.deep.num", "$var(n)");
+xlog("foo is $var(n)");
+...
+
+4.2.  json_array_size(json_string, json_path, destination)
+
+   Puts size of the array in 'json_string' at 'json_path' into the pvar
+   'destination'.
+
+   This is particularly useful for looping through an array. See example.
+
+   Example 1.2. json_array_size usage
+...
+$var(array) = "{\"loopme\":[0,1,2,3,4,5]}";
+$var(count) = 0;
+json_array_size($var(array), "loopme", "$var(size)");
+while($var(count) < $var(size)) {
+    json_path_get($var(array), "loopme[$var(count)]", "$var(v)");
+    xlog("loopme[$var(count)] == $var(v)\n");
+    $var(count) = $var(count) + 1;
+}
+...
+
+4.3.  json_get_field(json_string, field_name, destination)
 
    Copy field 'field_name' from json object 'json_string' and store it in
    pvar 'destination'.
 
-   Example 1.1. json_get_field usage
+   This function is deprecated but kept for backwards compatibility. Right
+   now it is just a wrapper around json_path_get, and its functionality is
+   the same.
+
+   Example 1.3. json_get_field usage
 ...
 json_get_field("{'foo':'bar'}", "foo", "$var(foo)");
 xlog("foo is $var(foo)");

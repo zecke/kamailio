@@ -24,45 +24,141 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <json.h>
+#include <jansson.h>
 
 #include "../../mod_fix.h"
 #include "../../lvalue.h"
 
+#include "json_path.h"
 #include "json_funcs.h"
 
-int json_get_field(struct sip_msg* msg, char* json, char* field, char* dst)
+int jsonmod_fail(json_t* json) {
+    json_decref(json);
+    return -1;
+}
+
+int jsonmod_path_get(struct sip_msg* msg, char* json_in, char* path_in, char* dst)
 {
-  str json_s;
-  str field_s;
-  pv_spec_t *dst_pv;
-  pv_value_t dst_val;
+    str json_s;
+    str path_s;
+    pv_spec_t *dst_pv;
+    pv_value_t dst_val;
 
-	if (fixup_get_svalue(msg, (gparam_p)json, &json_s) != 0) {
-		LM_ERR("cannot get json string value\n");
-		return -1;
-	}
+    if (fixup_get_svalue(msg, (gparam_p)json_in, &json_s) != 0) {
+        ERR("cannot get json string value\n");
+        return -1;
+    }
 
-	if (fixup_get_svalue(msg, (gparam_p)field, &field_s) != 0) {
-		LM_ERR("cannot get field string value\n");
-		return -1;
-	}
-	
-	dst_pv = (pv_spec_t *)dst;
-	
-	struct json_object *j = json_tokener_parse(json_s.s);
+    if (fixup_get_svalue(msg, (gparam_p)path_in, &path_s) != 0) {
+        ERR("cannot get path string value\n");
+        return -1;
+    }
 
-	if (is_error(j)) {
-		LM_ERR("empty or invalid JSON\n");
-		return -1;
-	}
+    dst_pv = (pv_spec_t *)dst;
 
-	char *value = (char*)json_object_to_json_string(json_object_object_get(j, field_s.s));
+    json_t* json;
+    json_error_t parsing_error;
 
-	dst_val.rs.s = value;
-	dst_val.rs.len = strlen(value);
-	dst_val.flags = PV_VAL_STR;
-	dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+    json = json_loads(json_s.s, json_s.len, &parsing_error);
 
-	return 1;
+    if(!json) {
+        ERR("json error at line %d: %s\n", 
+                parsing_error.line, parsing_error.text);
+        return jsonmod_fail(json);
+    }
+
+    char* path = path_s.s;
+
+    json_t* v = json_path_get(json, path);
+    if(!v) {
+        ERR("failed to find %s in json\n", path);
+        return jsonmod_fail(json);
+    }
+
+    char* freeme = NULL;
+
+    if(json_is_object(v)) {
+        const char* value = json_dumps(v, JSON_COMPACT);
+        freeme = (char*)value;
+        dst_val.rs.s = (char*)value;
+        dst_val.rs.len = strlen(value);
+        dst_val.flags = PV_VAL_STR;
+    } else if(json_is_string(v)) {
+        const char* value = json_string_value(v);
+        dst_val.rs.s = (char*)value;
+        dst_val.rs.len = strlen(value);
+        dst_val.flags = PV_VAL_STR;
+    }else if(json_is_integer(v)) {
+        int value = json_integer_value(v);
+        dst_val.ri = value;
+        dst_val.flags |= PV_TYPE_INT|PV_VAL_INT;
+    } else if(json_is_null(v)) {
+        dst_val.flags = PV_VAL_NULL;
+    } else {
+        ERR("unrecognized json value: %d\n", json_typeof(v));
+        return jsonmod_fail(json);
+    }
+
+    dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+
+    if(freeme!=NULL) {
+        free(freeme);
+    }
+
+    json_decref(json);
+    return 1;
+
+}
+
+int jsonmod_array_size(struct sip_msg* msg, char* json_in, char* path_in, char* dst)
+{
+    str json_s;
+    str path_s;
+    pv_spec_t *dst_pv;
+    pv_value_t dst_val;
+
+    if (fixup_get_svalue(msg, (gparam_p)json_in, &json_s) != 0) {
+        ERR("cannot get json string value\n");
+        return -1;
+    }
+
+    if (fixup_get_svalue(msg, (gparam_p)path_in, &path_s) != 0) {
+        ERR("cannot get path string value\n");
+        return -1;
+    }
+
+    dst_pv = (pv_spec_t *)dst;
+
+    json_t* json;
+    json_error_t parsing_error;
+
+    json = json_loads(json_s.s, json_s.len, &parsing_error);
+
+    if(!json) {
+        ERR("json error at line %d: %s\n", 
+                parsing_error.line, parsing_error.text);
+        return jsonmod_fail(json);
+    }
+
+    char* path = path_s.s;
+
+    json_t* v = json_path_get(json, path);
+    if(!v) {
+        ERR("failed to find %s in json\n", path);
+        return jsonmod_fail(json);
+    }
+
+    if(!json_is_array(v)) {
+        ERR("%s is not an array\n", path);
+        return jsonmod_fail(json);
+    }
+
+    int size = json_array_size(v);
+    dst_val.ri = size;
+    dst_val.flags |= PV_TYPE_INT|PV_VAL_INT;
+
+    dst_pv->setf(msg, &dst_pv->pvp, (int)EQ_T, &dst_val);
+
+    json_decref(json);
+    return 1;
 }

@@ -27,6 +27,7 @@
 
 #include "../../parser/msg_parser.h"
 
-int json_get_field(struct sip_msg* msg, char* json, char* field, char* dst);
+int jsonmod_path_get(struct sip_msg* msg, char* json_in, char* path_in, char* dst);
+int jsonmod_array_size(struct sip_msg* msg, char* json_in, char* path_in, char* dst);
 
 #endif
