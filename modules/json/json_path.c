@@ -60,6 +60,11 @@ json_t *json_path_get(const json_t *json, const char *path)
     cursor = json;
     expect = path_delims;
 
+    if (*token == array_open) {
+        expect = array_close;
+        token++;
+    }
+
     while (peek && *peek && cursor)
     {
         char *last_peek = peek;

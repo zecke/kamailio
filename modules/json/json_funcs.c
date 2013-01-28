@@ -77,7 +77,7 @@ int jsonmod_path_get(struct sip_msg* msg, char* json_in, char* path_in, char* ds
 
     char* freeme = NULL;
 
-    if(json_is_object(v)) {
+    if(json_is_object(v) || json_is_array(v)) {
         const char* value = json_dumps(v, JSON_COMPACT);
         freeme = (char*)value;
         dst_val.rs.s = (char*)value;
@@ -88,6 +88,9 @@ int jsonmod_path_get(struct sip_msg* msg, char* json_in, char* path_in, char* ds
         dst_val.rs.s = (char*)value;
         dst_val.rs.len = strlen(value);
         dst_val.flags = PV_VAL_STR;
+    }else if(json_is_boolean(v)) {
+        dst_val.ri = json_is_true(v) ? 0 : 1;
+        dst_val.flags |= PV_TYPE_INT|PV_VAL_INT;
     }else if(json_is_integer(v)) {
         int value = json_integer_value(v);
         dst_val.ri = value;

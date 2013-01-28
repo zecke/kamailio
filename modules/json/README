@@ -97,7 +97,7 @@ Chapter 1. Admin Guide
    in pvar 'destination'.
 
    The path string supports dot delimited notation (e.g. foo.bar.baz),
-   array notation (e.g. list[0]), or a combination of the two (e.g.
+   array notation (e.g. [0]), or a combination of the two (e.g.
    foo.bar[0][1].baz).
 
    The function can put a string, integer, null, or new json string into
