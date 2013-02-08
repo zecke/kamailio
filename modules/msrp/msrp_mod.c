@@ -61,6 +61,9 @@ static int w_msrp_reply_flags(sip_msg_t* msg, char *tflags, char* str2);
 static int w_msrp_cmap_save(sip_msg_t* msg, char* str1, char* str2);
 static int w_msrp_cmap_lookup(sip_msg_t* msg, char* str1, char* str2);
 static int w_msrp_report(sip_msg_t* msg, char* code, char* text);
+static int w_msrp_tmap_save(sip_msg_t* msg, char* str1, char* str2);
+static int w_msrp_tmap_lookup(sip_msg_t* msg, char* str1, char* str2);
+static int w_msrp_tmap_del(sip_msg_t* msg, char* str1, char* str2);
 
 static void msrp_local_timer(unsigned int ticks, void* param); /*!< Local timer handler */
 
@@ -70,6 +73,7 @@ int msrp_auth_min_expires = 60;
 int msrp_auth_max_expires = 3600;
 int msrp_timer_interval = 60;
 str msrp_use_path_addr = { 0 };
+int msrp_tmap_size = 10;
 
 static int msrp_frame_received(void *data);
 sip_msg_t *msrp_fake_sipmsg(msrp_frame_t *mf);
@@ -111,6 +115,12 @@ static cmd_export_t cmds[]={
 		0, ANY_ROUTE},
 	{"msrp_report", (cmd_function)w_msrp_report, 2, fixup_spve_spve,
 		0, ANY_ROUTE},
+	{"msrp_tmap_save", (cmd_function)w_msrp_tmap_save, 0, 0,
+		0, ANY_ROUTE},
+	{"msrp_tmap_lookup", (cmd_function)w_msrp_tmap_lookup, 0, 0,
+		0, ANY_ROUTE},
+	{"msrp_tmap_del", (cmd_function)w_msrp_tmap_del, 0, 0,
+		0, ANY_ROUTE},
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -121,6 +131,7 @@ static param_export_t params[]={
 	{"auth_max_expires",  PARAM_INT,   &msrp_auth_max_expires},
 	{"timer_interval",    PARAM_INT,   &msrp_timer_interval},
 	{"use_path_addr",     PARAM_STR,   &msrp_use_path_addr},
+	{"tmap_size",         PARAM_INT,   &msrp_tmap_size},
 	{0, 0, 0}
 };
 
@@ -164,10 +175,23 @@ static int mod_init(void)
 			LM_ERR("Cannot init internal cmap\n");
 			return -1;
 		}
+	}
+
+	if(msrp_tmap_size>0) {
+		if(msrp_tmap_size>16)
+			msrp_tmap_size = 16;
+//		if(msrp_tmap_init(1<<msrp_tmap_size)<0) {
+//			LM_ERR("Cannot init tmap\n");
+//			return -1;
+//		}
+	}
+
+	if (msrp_cmap_size> 0 || msrp_tmap_size> 0) {
 		if(msrp_timer_interval<=0)
 			msrp_timer_interval = 60;
 		register_sync_timers(1);
 	}
+
 	sr_event_register_cb(SREV_TCP_MSRP_FRAME, msrp_frame_received);
 	return 0;
 }
@@ -184,7 +208,7 @@ static int child_init(int rank)
 
 	if (rank!=PROC_MAIN)
 		return 0;
-	if(msrp_cmap_size>0) {
+	if(msrp_cmap_size>0 || msrp_tmap_size>0) {
 		if(fork_sync_timer(PROC_TIMER, "MSRP Timer", 1 /*socks flag*/,
 				msrp_local_timer, NULL, msrp_timer_interval /*sec*/)<0) {
 			LM_ERR("failed to start timer routine as process\n");
@@ -455,6 +479,30 @@ static int w_msrp_cmap_lookup(sip_msg_t* msg, char* str1, char* str2)
 	ret = msrp_cmap_lookup(mf);
 	if(ret==0) ret = 1;
 	return ret;
+}
+
+/**
+ *
+ */
+static int w_msrp_tmap_save(sip_msg_t* msg, char* str1, char* str2)
+{
+	return 1;
+}
+
+/**
+ *
+ */
+static int w_msrp_tmap_lookup(sip_msg_t* msg, char* str1, char* str2)
+{
+	return 1;
+}
+
+/**
+ *
+ */
+static int w_msrp_tmap_del(sip_msg_t* msg, char* str1, char* str2)
+{
+	return 1;
 }
 
 /**
