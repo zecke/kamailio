@@ -33,30 +33,101 @@
 #include "../../tcp_server.h"
 #include "../../forward.h"
 
+#include "../../lib/srutils/sruid.h"
+
 #include "msrp_env.h"
 #include "msrp_netio.h"
+
+extern sruid_t _msrp_sruid;
 
 /**
  *
  */
-int msrp_forward_frame(msrp_frame_t *mf, int flags)
+static int send_frame_forwards(char *buffer, int len, struct dest_info *dst)
 {
-#if 0
-	if ((msrp_uri_to_dstinfo(0, &dst, uac_r->dialog->send_sock, snd_flags,
-						uac_r->dialog->hooks.next_hop, PROTO_NONE)==0) ||
-				(dst.send_sock==0)){
-			LOG(L_ERR, "no send socket found\n");
+	if (dst->send_flags.f & SND_F_FORCE_CON_REUSE)
+	{
+		struct tcp_connection *con = NULL;
+		int port = su_getport(&dst->to);
+
+		if (likely(port))
+		{
+			ticks_t con_lifetime;
+			struct ip_addr ip;
+
+			con_lifetime = cfg_get(tcp, tcp_cfg, con_lifetime);
+			su2ip_addr(&ip, &dst->to);
+			con = tcpconn_get(dst->id, &ip, port, NULL, con_lifetime);
+		}
+		else if (likely(dst->id))
+		{
+			con = tcpconn_get(dst->id, 0, 0, 0, 0);
+		}
+
+		if (con == NULL)
+		{
+			LM_WARN("TCP/TLS connection not found\n");
 			return -1;
 		}
-#endif
+	
+		if (unlikely((con->rcv.proto == PROTO_WS || con->rcv.proto == PROTO_WSS)
+				&& sr_event_enabled(SREV_TCP_WS_FRAME_OUT))) {
+			ws_event_info_t wsev;
+
+			memset(&wsev, 0, sizeof(ws_event_info_t));
+			wsev.type = SREV_TCP_WS_FRAME_OUT;
+			wsev.buf = buffer;
+			wsev.len = len;
+			wsev.id = con->id;
+			return sr_event_exec(SREV_TCP_WS_FRAME_OUT, (void *) &wsev);
+		}
+		else if (tcp_send(dst, 0, buffer, len) < 0) {
+			LM_ERR("forwarding frame failed\n");
+			return -1;
+		}
+	}
+	else if (tcp_send(dst, 0, buffer, len) < 0) {
+			LM_ERR("forwarding frame failed\n");
+			return -1;
+	}
+
 	return 0;
 }
 
 /**
  *
  */
-int msrp_send_buffer(str *buf, str *addr, int flags)
+static int send_frame_backwards(char *buffer, int len)
 {
+	msrp_env_t *env = msrp_get_env();
+
+	if (unlikely((env->srcinfo.proto == PROTO_WS
+			|| env->srcinfo.proto == PROTO_WSS)
+			&& sr_event_enabled(SREV_TCP_WS_FRAME_OUT))) {
+		struct tcp_connection *con = tcpconn_get(env->srcinfo.id, 0, 0,
+								0, 0);
+		ws_event_info_t wsev;
+
+		if (con == NULL)
+		{
+			LM_WARN("TCP/TLS connection for WebSocket could not be"
+				"found\n");
+			return -1;
+		}
+
+		memset(&wsev, 0, sizeof(ws_event_info_t));
+		wsev.type = SREV_TCP_WS_FRAME_OUT;
+		wsev.buf = buffer;
+		wsev.len = len;
+		wsev.id = con->id;
+		return sr_event_exec(SREV_TCP_WS_FRAME_OUT, (void *) &wsev);
+	}
+	else 
+	if (tcp_send(&env->srcinfo, 0, buffer, len) < 0) {
+		LM_ERR("sending reply failed\n");
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -66,7 +137,6 @@ int msrp_send_buffer(str *buf, str *addr, int flags)
 int msrp_relay(msrp_frame_t *mf)
 {
 	struct dest_info *dst;
-	struct tcp_connection *con = NULL;
 	char reqbuf[MSRP_MAX_FRAME_SIZE];
 	msrp_hdr_t *tpath;
 	msrp_hdr_t *fpath;
@@ -74,7 +144,10 @@ int msrp_relay(msrp_frame_t *mf)
 	str_array_t *sar;
 	char *p;
 	char *l;
-	int port;
+
+	/* replies are hop-by-hop */
+	if(mf->fline.msgtypeid==MSRP_REPLY)
+		return 0;
 
 	if(mf->buf.len>=MSRP_MAX_FRAME_SIZE-1)
 		return -1;
@@ -137,51 +210,7 @@ int msrp_relay(msrp_frame_t *mf)
 	}
 	dst = &env->dstinfo;
 done:
-	if (dst->send_flags.f & SND_F_FORCE_CON_REUSE)
-	{
-		port = su_getport(&dst->to);
-		if (likely(port))
-		{
-			ticks_t con_lifetime;
-			struct ip_addr ip;
-
-			con_lifetime = cfg_get(tcp, tcp_cfg, con_lifetime);
-			su2ip_addr(&ip, &dst->to);
-			con = tcpconn_get(dst->id, &ip, port, NULL, con_lifetime);
-		}
-		else if (likely(dst->id))
-		{
-			con = tcpconn_get(dst->id, 0, 0, 0, 0);
-		}
-
-		if (con == NULL)
-		{
-			LM_WARN("TCP/TLS connection not found\n");
-			return -1;
-		}
-	
-		if (unlikely((con->rcv.proto == PROTO_WS || con->rcv.proto == PROTO_WSS)
-				&& sr_event_enabled(SREV_TCP_WS_FRAME_OUT))) {
-			ws_event_info_t wsev;
-
-			memset(&wsev, 0, sizeof(ws_event_info_t));
-			wsev.type = SREV_TCP_WS_FRAME_OUT;
-			wsev.buf = reqbuf;
-			wsev.len = p - reqbuf;
-			wsev.id = con->id;
-			return sr_event_exec(SREV_TCP_WS_FRAME_OUT, (void *) &wsev);
-		}
-		else if (tcp_send(dst, 0, reqbuf, p - reqbuf) < 0) {
-			LM_ERR("forwarding frame failed\n");
-			return -1;
-		}
-	}
-	else if (tcp_send(dst, 0, reqbuf, p - reqbuf) < 0) {
-			LM_ERR("forwarding frame failed\n");
-			return -1;
-	}
-
-	return 0;
+	return send_frame_forwards(reqbuf, p - reqbuf, dst);
 }
 
 /**
@@ -191,7 +220,6 @@ int msrp_reply(msrp_frame_t *mf, str *code, str *text, str *xhdrs)
 {
 	char rplbuf[MSRP_MAX_FRAME_SIZE];
 	msrp_hdr_t *hdr;
-	msrp_env_t *env;
 	char *p;
 	char *l;
 
@@ -278,38 +306,119 @@ int msrp_reply(msrp_frame_t *mf, str *code, str *text, str *xhdrs)
 	p += mf->endline.len;
 	*(p-3) = '$';
 
-	env = msrp_get_env();
 
-	if (unlikely((env->srcinfo.proto == PROTO_WS
-			|| env->srcinfo.proto == PROTO_WSS)
-			&& sr_event_enabled(SREV_TCP_WS_FRAME_OUT))) {
-		struct tcp_connection *con = tcpconn_get(env->srcinfo.id, 0, 0,
-								0, 0);
-		ws_event_info_t wsev;
+	return send_frame_backwards(rplbuf, p - rplbuf);
+}
 
-		if (con == NULL)
-		{
-			LM_WARN("TCP/TLS connection for WebSocket could not be"
-				"found\n");
-			return -1;
-		}
+/**
+ *
+ */
+static int msrp_report_send(msrp_frame_t *mf, str *code, str *text)
+{
+	char rptbuf[MSRP_MAX_FRAME_SIZE];
+	msrp_hdr_t *hdr;
+	char *p;
+	char *l;
 
-		memset(&wsev, 0, sizeof(ws_event_info_t));
-		wsev.type = SREV_TCP_WS_FRAME_OUT;
-		wsev.buf = rplbuf;
-		wsev.len = p - rplbuf;
-		wsev.id = con->id;
-		return sr_event_exec(SREV_TCP_WS_FRAME_OUT, (void *) &wsev);
-	}
-	else 
-	if (tcp_send(&env->srcinfo, 0, rplbuf, p - rplbuf) < 0) {
-		LM_ERR("sending reply failed\n");
+	if (sruid_next(&_msrp_sruid)<0)
+	{
+		LM_ERR("cannot get next msrp uid\n");
 		return -1;
 	}
 
+	p = rptbuf;
+	memcpy(p, mf->fline.protocol.s, mf->fline.protocol.len);
+	p += mf->fline.protocol.len;
+	*p = ' '; p++;
+	memcpy(p, _msrp_sruid.uid.s, _msrp_sruid.uid.len);
+	p += _msrp_sruid.uid.len;
+	memcpy(p, " REPORT", 7);
+	p += 7;
+	memcpy(p, "\r\n", 2);
+	p += 2;
+	memcpy(p, "To-Path: ", 9);
+	p += 9;
+	hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_FROM_PATH);
+	if(hdr==NULL)
+	{
+		LM_ERR("From-Path header not found\n");
+		return -1;
+	}
+	memcpy(p, hdr->body.s, hdr->body.len + 2);
+	p += hdr->body.len + 2;
+	hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_TO_PATH);
+	if(hdr==NULL)
+	{
+		LM_ERR("To-Path header not found\n");
+		return -1;
+	}
+	memcpy(p, "From-Path: ", 11);
+	p += 11;
+	l = q_memchr(hdr->body.s, ' ', hdr->body.len);
+	if(l==NULL) {
+		memcpy(p, hdr->body.s, hdr->body.len + 2);
+		p += hdr->body.len + 2;
+	} else {
+		memcpy(p, hdr->body.s, l - hdr->body.s);
+		p += l - hdr->body.s;
+		memcpy(p, "\r\n", 2);
+		p += 2;
+	}
+	hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_MESSAGE_ID);
+	if(hdr!=NULL)
+	{
+		memcpy(p, hdr->buf.s, hdr->buf.len);
+		p += hdr->buf.len;
+	}
+	hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_BYTE_RANGE);
+	if(hdr!=NULL)
+	{
+		memcpy(p, hdr->buf.s, hdr->buf.len);
+		p += hdr->buf.len;
+	}
+	memcpy(p, "Status: 000 ", 12);
+	p += 12;
+	memcpy(p, code->s, code->len);
+	p += code->len;
+	*p = ' '; p++;
+	memcpy(p, text->s, text->len);
+	p += text->len;
+	memcpy(p, "\r\n", 2);
+	p += 2;
+	memcpy(p, "-------", 7);
+	p += 7;
+	memcpy(p, _msrp_sruid.uid.s, _msrp_sruid.uid.len);
+	p += _msrp_sruid.uid.len;
+	*p = '$'; p++;
+	memcpy(p, "\r\n", 2);
+	p += 2;
+
+	return send_frame_backwards(rptbuf, p - rptbuf);
+}
+
+/**
+ *
+ */
+static int msrp_report_reply(msrp_frame_t *mf, str *code, str *text)
+{
 	return 0;
 }
 
+/**
+ *
+ */
+int msrp_report(msrp_frame_t *mf, str *code, str *text)
+{
+	switch(mf->fline.msgtypeid)
+	{
+	case MSRP_REQ_SEND:
+		return msrp_report_send(mf, code, text);
+	case MSRP_REPLY:
+		return msrp_report_reply(mf, code, text);
+	default:
+		return 0;
+	}
+}
 
 /**
  *

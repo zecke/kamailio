@@ -60,6 +60,7 @@ static int w_msrp_relay_flags(sip_msg_t* msg, char *tflags, char* str2);
 static int w_msrp_reply_flags(sip_msg_t* msg, char *tflags, char* str2);
 static int w_msrp_cmap_save(sip_msg_t* msg, char* str1, char* str2);
 static int w_msrp_cmap_lookup(sip_msg_t* msg, char* str1, char* str2);
+static int w_msrp_report(sip_msg_t* msg, char* code, char* text);
 
 static void msrp_local_timer(unsigned int ticks, void* param); /*!< Local timer handler */
 
@@ -107,6 +108,8 @@ static cmd_export_t cmds[]={
 	{"msrp_cmap_save",   (cmd_function)w_msrp_cmap_save, 0, 0,
 		0, ANY_ROUTE},
 	{"msrp_cmap_lookup", (cmd_function)w_msrp_cmap_lookup, 0, 0,
+		0, ANY_ROUTE},
+	{"msrp_report", (cmd_function)w_msrp_report, 2, fixup_spve_spve,
 		0, ANY_ROUTE},
 	{0, 0, 0, 0, 0, 0}
 };
@@ -279,6 +282,37 @@ static int w_msrp_reply3(sip_msg_t* msg, char* code, char* text,
 		char *hdrs)
 {
 	return w_msrp_reply(msg, code, text, hdrs);
+}
+
+/**
+ *
+ */
+static int w_msrp_report(struct sip_msg* msg, char* code, char* text)
+{
+	str rcode;
+	str rtext;
+	msrp_frame_t *mf;
+	int ret;
+
+	if(fixup_get_svalue(msg, (gparam_t*)code, &rcode)!=0)
+	{
+		LM_ERR("no reply status code\n");
+		return -1;
+	}
+
+	if(fixup_get_svalue(msg, (gparam_t*)text, &rtext)!=0)
+	{
+		LM_ERR("no reply status phrase\n");
+		return -1;
+	}
+
+	mf = msrp_get_current_frame();
+	if(mf==NULL)
+		return -1;
+
+	ret = msrp_report(mf, &rcode, &rtext);
+	if(ret==0) ret = 1;
+	return ret;
 }
 
 /**

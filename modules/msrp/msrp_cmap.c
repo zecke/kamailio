@@ -38,7 +38,7 @@
 
 static msrp_cmap_t *_msrp_cmap_head = NULL;
 
-static sruid_t _msrp_sruid;
+sruid_t _msrp_sruid;
 
 extern int msrp_auth_min_expires;
 extern int msrp_auth_max_expires;

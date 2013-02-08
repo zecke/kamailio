@@ -29,11 +29,9 @@
 
 #include "msrp_parser.h"
 
-int msrp_forward_frame(msrp_frame_t *mf, int flags);
-int msrp_send_buffer(str *buf, str *addr, int flags);
-
 int msrp_relay(msrp_frame_t *mf);
 int msrp_reply(msrp_frame_t *mf, str *code, str *text, str *xhdrs);
+int msrp_report(msrp_frame_t *mf, str *code, str *text);
 
 struct dest_info *msrp_uri_to_dstinfo(struct dns_srv_handle* dns_h,
 		struct dest_info* dst, struct socket_info *force_send_socket,
