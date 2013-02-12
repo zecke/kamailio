@@ -1,8 +1,6 @@
 /**
  * $Id$
  *
- * Copyright (C) 2013 Daniel-Constantin Mierla (asipto.com)
- *
  * This file is part of Kamailio, a free SIP server.
  *
  * This file is free software; you can redistribute it and/or modify
@@ -22,8 +20,8 @@
  *
  */
 
-#ifndef _MSRP_CMAP_H_
-#define _MSRP_CMAP_H_
+#ifndef _MSRP_TMAP_H_
+#define _MSRP_TMAP_H_
 
 #include <time.h>
 
@@ -32,44 +30,38 @@
 
 #include "msrp_parser.h"
 
-typedef struct _msrp_citem
+typedef struct _msrp_titem
 {
-    unsigned int citemid;
-	str sessionid;
-	str peer;
-	str addr;
-	str sock;
-	int conid;
-	int cflags;
+    unsigned int titemid;
+	str transactionid;
+	msrp_req_cache_t req_cache;
 	time_t  expires;
-    struct _msrp_citem *prev;
-    struct _msrp_citem *next;
-} msrp_citem_t;
+    struct _msrp_titem *prev;
+    struct _msrp_titem *next;
+} msrp_titem_t;
 
-typedef struct _msrp_centry
+typedef struct _msrp_tentry
 {
 	unsigned int lsize;
-	msrp_citem_t *first;
+	msrp_titem_t *first;
 	gen_lock_t lock;	
-} msrp_centry_t;
+} msrp_tentry_t;
 
-typedef struct _msrp_cmap
+typedef struct _msrp_tmap
 {
 	unsigned int mapexpire;
 	unsigned int mapsize;
-	msrp_centry_t *cslots;
-	struct _msrp_cmap *next;
-} msrp_cmap_t;
+	msrp_tentry_t *tslots;
+	struct _msrp_tmap *next;
+} msrp_tmap_t;
 
-int msrp_cmap_init(int msize);
-int msrp_cmap_destroy(void);
-int msrp_cmap_clean(void);
+int msrp_tmap_init(int msize);
+int msrp_tmap_destroy(void);
+int msrp_tmap_clean(void);
 
-int msrp_cmap_save(msrp_frame_t *mf);
-int msrp_cmap_lookup_session(msrp_frame_t *mf, str *sessionid);
-int msrp_cmap_lookup(msrp_frame_t *mf);
+int msrp_tmap_save(msrp_frame_t *mf);
+int msrp_tmap_lookup(msrp_frame_t *mf);
+int msrp_tmap_del(msrp_frame_t *mf);
 
-int msrp_sruid_init(void);
-
-int msrp_cmap_init_rpc(void);
+int msrp_tmap_init_rpc(void);
 #endif

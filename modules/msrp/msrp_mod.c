@@ -43,6 +43,7 @@
 #include "msrp_vars.h"
 #include "msrp_env.h"
 #include "msrp_cmap.h"
+#include "msrp_tmap.h"
 
 MODULE_VERSION
 
@@ -180,10 +181,10 @@ static int mod_init(void)
 	if(msrp_tmap_size>0) {
 		if(msrp_tmap_size>16)
 			msrp_tmap_size = 16;
-//		if(msrp_tmap_init(1<<msrp_tmap_size)<0) {
-//			LM_ERR("Cannot init tmap\n");
-//			return -1;
-//		}
+		if(msrp_tmap_init(1<<msrp_tmap_size)<0) {
+			LM_ERR("Cannot init tmap\n");
+			return -1;
+		}
 	}
 
 	if (msrp_cmap_size> 0 || msrp_tmap_size> 0) {
@@ -486,7 +487,16 @@ static int w_msrp_cmap_lookup(sip_msg_t* msg, char* str1, char* str2)
  */
 static int w_msrp_tmap_save(sip_msg_t* msg, char* str1, char* str2)
 {
-	return 1;
+	msrp_frame_t *mf;
+	int ret;
+
+	mf = msrp_get_current_frame();
+	if(mf==NULL)
+		return -1;
+
+	ret = msrp_tmap_save(mf);
+	if(ret==0) ret = 1;
+	return ret;
 }
 
 /**
@@ -494,7 +504,16 @@ static int w_msrp_tmap_save(sip_msg_t* msg, char* str1, char* str2)
  */
 static int w_msrp_tmap_lookup(sip_msg_t* msg, char* str1, char* str2)
 {
-	return 1;
+	msrp_frame_t *mf;
+	int ret;
+
+	mf = msrp_get_current_frame();
+	if(mf==NULL)
+		return -1;
+
+	ret = msrp_tmap_lookup(mf);
+	if(ret==0) ret = 1;
+	return ret;
 }
 
 /**
@@ -502,7 +521,16 @@ static int w_msrp_tmap_lookup(sip_msg_t* msg, char* str1, char* str2)
  */
 static int w_msrp_tmap_del(sip_msg_t* msg, char* str1, char* str2)
 {
-	return 1;
+	msrp_frame_t *mf;
+	int ret;
+
+	mf = msrp_get_current_frame();
+	if(mf==NULL)
+		return -1;
+
+	ret = msrp_tmap_del(mf);
+	if(ret==0) ret = 1;
+	return ret;
 }
 
 /**
@@ -565,4 +593,5 @@ static int msrp_frame_received(void *data)
 static void msrp_local_timer(unsigned int ticks, void* param)
 {
 	msrp_cmap_clean();
+	msrp_tmap_clean();
 }

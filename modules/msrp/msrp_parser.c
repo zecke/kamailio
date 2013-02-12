@@ -376,6 +376,8 @@ void msrp_destroy_frame(msrp_frame_t *mf)
 		hdr = NULL;
 		hdr = nxt;
 	}
+	if (mf->req_cache != NULL)
+		pkg_free(mf->req_cache);
 
 	return;
 }
@@ -738,6 +740,27 @@ int msrp_frame_get_first_from_path(msrp_frame_t *mf, str *sres)
 	if(msrp_parse_hdr_from_path(mf)<0)
 		return -1;
 	hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_FROM_PATH);
+	if(hdr==NULL)
+		return -1;
+	sar = (str_array_t*)hdr->parsed.data;
+	s = sar->list[sar->size-1];
+	trim(&s);
+	*sres = s;
+	return 0;
+}
+
+/**
+ *
+ */
+int msrp_frame_get_first_to_path(msrp_frame_t *mf, str *sres)
+{
+	str s = {0};
+	msrp_hdr_t *hdr;
+	str_array_t *sar;
+
+	if(msrp_parse_hdr_to_path(mf)<0)
+		return -1;
+	hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_TO_PATH);
 	if(hdr==NULL)
 		return -1;
 	sar = (str_array_t*)hdr->parsed.data;

@@ -37,6 +37,7 @@
 
 #include "msrp_env.h"
 #include "msrp_netio.h"
+#include "msrp_cmap.h"
 
 extern sruid_t _msrp_sruid;
 
@@ -227,7 +228,7 @@ int msrp_reply(msrp_frame_t *mf, str *code, str *text, str *xhdrs)
 	if(mf->fline.msgtypeid==MSRP_REPLY)
 		return 0;
 
-	if(mf->fline.msgtypeid==MSRP_REQ_REPORT)
+	if(mf->fline.rtypeid==MSRP_REQ_REPORT)
 	{
 		/* it does not take replies */
 		return 0;
@@ -255,7 +256,7 @@ int msrp_reply(msrp_frame_t *mf, str *code, str *text, str *xhdrs)
 		LM_ERR("From-Path header not found\n");
 		return -1;
 	}
-	if(mf->fline.msgtypeid==MSRP_REQ_SEND)
+	if(mf->fline.rtypeid==MSRP_REQ_SEND)
 	{
 		l = q_memchr(hdr->body.s, ' ', hdr->body.len);
 		if(l==NULL) {
@@ -401,7 +402,101 @@ static int msrp_report_send(msrp_frame_t *mf, str *code, str *text)
  */
 static int msrp_report_reply(msrp_frame_t *mf, str *code, str *text)
 {
-	return 0;
+	struct dest_info *dst;
+	char rptbuf[MSRP_MAX_FRAME_SIZE];
+	char *p;
+	char *l;
+	str next_hop;
+	msrp_env_t *env;
+
+	if (mf->req_cache == NULL)
+	{
+		LM_ERR("no data cached from original request\n");
+		return -1;
+	}
+
+	if (sruid_next(&_msrp_sruid)<0)
+	{
+		LM_ERR("cannot get next msrp uid\n");
+		return -1;
+	}
+
+	p = rptbuf;
+	memcpy(p, "MSRP ", 5);
+	p += 5;
+	memcpy(p, _msrp_sruid.uid.s, _msrp_sruid.uid.len);
+	p += _msrp_sruid.uid.len;
+	memcpy(p, " REPORT", 7);
+	p += 7;
+	memcpy(p, "\r\n", 2);
+	p += 2;
+	memcpy(p, "To-Path: ", 9);
+	p += 9;
+	memcpy(p, mf->req_cache->from_path.s, mf->req_cache->from_path.len);
+	p += mf->req_cache->from_path.len;
+	memcpy(p, "From-Path: ", 11);
+	p += 11;
+	memcpy(p, mf->req_cache->local_uri.s, mf->req_cache->local_uri.len);
+	p += mf->req_cache->local_uri.len;
+	memcpy(p, "Message-ID: ", 12);
+	p += 12;
+	memcpy(p, mf->req_cache->message_id.s, mf->req_cache->message_id.len);
+	p += mf->req_cache->message_id.len;
+	if (mf->req_cache->byte_range.len > 0)
+	{
+		memcpy(p, "Byte-Range: ", 12);
+		p += 12;
+		memcpy(p, mf->req_cache->byte_range.s, mf->req_cache->byte_range.len);
+		p += mf->req_cache->byte_range.len;
+	}
+	memcpy(p, "Status: 000 ", 12);
+	p += 12;
+	memcpy(p, code->s, code->len);
+	p += code->len;
+	*p = ' '; p++;
+	memcpy(p, text->s, text->len);
+	p += text->len;
+	memcpy(p, "\r\n", 2);
+	p += 2;
+	memcpy(p, "-------", 7);
+	p += 7;
+	memcpy(p, _msrp_sruid.uid.s, _msrp_sruid.uid.len);
+	p += _msrp_sruid.uid.len;
+	*p = '$'; p++;
+	memcpy(p, "\r\n", 2);
+	p += 2;
+
+	env = msrp_get_env();
+	l = q_memchr(mf->req_cache->from_path.s, ' ', mf->req_cache->from_path.len);
+	if (l == NULL)
+	{
+		msrp_uri_t uri;
+
+		if (msrp_parse_uri(mf->req_cache->from_path.s,
+				mf->req_cache->from_path.len, &uri) < 0)
+		{
+			LM_ERR("parsing MSRP URI\n");
+			return -1;
+		}
+
+		msrp_cmap_lookup_session(mf, &uri.session);
+		if(env->envflags&MSRP_ENV_DSTINFO)
+		{
+			dst = &env->dstinfo;
+			goto done;
+		}
+	}
+
+	next_hop.s = mf->req_cache->from_path.s;
+	next_hop.len = l - mf->req_cache->from_path.s;
+	if(msrp_env_set_dstinfo(mf, &next_hop, NULL, 0)<0)
+	{
+		LM_ERR("unable to set destination address\n");
+		return -1;
+	}
+	dst = &env->dstinfo;
+done:
+	return send_frame_forwards(rptbuf, p - rptbuf, dst);
 }
 
 /**
@@ -409,15 +504,13 @@ static int msrp_report_reply(msrp_frame_t *mf, str *code, str *text)
  */
 int msrp_report(msrp_frame_t *mf, str *code, str *text)
 {
-	switch(mf->fline.msgtypeid)
-	{
-	case MSRP_REQ_SEND:
+	if (mf->fline.msgtypeid == MSRP_REQUEST
+			&& mf->fline.rtypeid == MSRP_REQ_SEND)
 		return msrp_report_send(mf, code, text);
-	case MSRP_REPLY:
+	else if (mf->fline.msgtypeid == MSRP_REPLY)
 		return msrp_report_reply(mf, code, text);
-	default:
+	else
 		return 0;
-	}
 }
 
 /**

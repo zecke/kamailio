@@ -322,16 +322,49 @@ int msrp_cmap_save(msrp_frame_t *mf)
 /**
  *
  */
-int msrp_cmap_lookup(msrp_frame_t *mf)
+int msrp_cmap_lookup_session(msrp_frame_t *mf, str *sessionid)
 {
 	unsigned int idx;
 	unsigned int hid;
-	str sesid;
 	msrp_citem_t *itb;
 	int ret;
 
 	if(_msrp_cmap_head==NULL || mf==NULL)
 		return -1;
+
+	LM_DBG("searching for session [%.*s]\n", sessionid->len, sessionid->s);
+
+	hid = msrp_get_hashid(sessionid);	
+	idx = msrp_get_slot(hid, _msrp_cmap_head->mapsize);
+
+	ret = 0;
+	lock_get(&_msrp_cmap_head->cslots[idx].lock);
+	for(itb=_msrp_cmap_head->cslots[idx].first; itb; itb=itb->next)
+	{
+		if(itb->citemid>hid) {
+			break;
+		} else {
+			if(itb->sessionid.len == sessionid->len
+					&& memcmp(itb->sessionid.s, sessionid->s, sessionid->len)==0) {
+				LM_DBG("found session [%.*s]\n", sessionid->len, sessionid->s);
+				ret = msrp_env_set_dstinfo(mf, &itb->addr, &itb->sock, 0);
+				break;
+			}
+		}
+	}
+	lock_release(&_msrp_cmap_head->cslots[idx].lock);
+	if(itb==NULL)
+		return -4;
+	return (ret<0)?-5:0;
+}
+
+/**
+ *
+ */
+int msrp_cmap_lookup(msrp_frame_t *mf)
+{
+	str sesid;
+
 	if(mf->fline.rtypeid==MSRP_REQ_AUTH)
 	{
 		LM_DBG("save cannot be used for AUTH\n");
@@ -343,30 +376,7 @@ int msrp_cmap_lookup(msrp_frame_t *mf)
 		return -3;
 	}
 
-	LM_DBG("searching for session [%.*s]\n", sesid.len, sesid.s);
-
-	hid = msrp_get_hashid(&sesid);	
-	idx = msrp_get_slot(hid, _msrp_cmap_head->mapsize);
-
-	ret = 0;
-	lock_get(&_msrp_cmap_head->cslots[idx].lock);
-	for(itb=_msrp_cmap_head->cslots[idx].first; itb; itb=itb->next)
-	{
-		if(itb->citemid>hid) {
-			break;
-		} else {
-			if(itb->sessionid.len == sesid.len
-					&& memcmp(itb->sessionid.s, sesid.s, sesid.len)==0) {
-				LM_DBG("found session [%.*s]\n", sesid.len, sesid.s);
-				ret = msrp_env_set_dstinfo(mf, &itb->addr, &itb->sock, 0);
-				break;
-			}
-		}
-	}
-	lock_release(&_msrp_cmap_head->cslots[idx].lock);
-	if(itb==NULL)
-		return -4;
-	return (ret<0)?-5:0;
+	return msrp_cmap_lookup_session(mf, &sesid);
 }
 
 /**

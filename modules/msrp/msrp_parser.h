@@ -110,6 +110,14 @@ typedef struct msrp_hdr {
 	struct msrp_hdr *next;
 } msrp_hdr_t;
 
+typedef struct msrp_req_cache
+{
+    str local_uri;
+    str from_path;
+    str message_id;
+    str byte_range;
+} msrp_req_cache_t;
+
 typedef struct msrp_frame {
 	str buf;             /* the whole message */
 	msrp_fline_t fline;  /* first line parsed */
@@ -118,6 +126,7 @@ typedef struct msrp_frame {
 	str endline;         /* end line of the */
 	msrp_hdr_t *headers; /* list of parsed headers */
 	tcp_event_info_t *tcpinfo;
+	msrp_req_cache_t *req_cache;
 } msrp_frame_t;
 
 int msrp_parse_frame(msrp_frame_t *mf);
@@ -141,5 +150,6 @@ typedef struct str_array {
 
 int msrp_frame_get_sessionid(msrp_frame_t *mf, str *sres);
 int msrp_frame_get_first_from_path(msrp_frame_t *mf, str *sres);
+int msrp_frame_get_first_to_path(msrp_frame_t *mf, str *sres);
 int msrp_frame_get_expires(msrp_frame_t *mf, int *expires);
 #endif
