@@ -367,7 +367,7 @@ int msrp_cmap_lookup(msrp_frame_t *mf)
 
 	if(mf->fline.rtypeid==MSRP_REQ_AUTH)
 	{
-		LM_DBG("save cannot be used for AUTH\n");
+		LM_DBG("lookup cannot be used for AUTH\n");
 		return -2;
 	}
 	if(msrp_frame_get_sessionid(mf, &sesid)<0)
