@@ -112,6 +112,7 @@ typedef struct msrp_hdr {
 
 typedef struct msrp_req_cache
 {
+    str transaction_id;
     str local_uri;
     str from_path;
     str message_id;

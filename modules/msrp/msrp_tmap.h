@@ -33,7 +33,6 @@
 typedef struct _msrp_titem
 {
     unsigned int titemid;
-	str transactionid;
 	msrp_req_cache_t req_cache;
 	time_t  expires;
     struct _msrp_titem *prev;

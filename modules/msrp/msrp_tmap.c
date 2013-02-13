@@ -195,12 +195,12 @@ int msrp_tmap_save(msrp_frame_t *mf)
 	memset(it, 0, msize);
 	it->titemid = hid;
 
-	it->transactionid.s = (char*)it +  + sizeof(msrp_titem_t);
-	it->transactionid.len = mf->fline.transaction.len;
-	memcpy(it->transactionid.s, mf->fline.transaction.s, mf->fline.transaction.len);
-	it->transactionid.s[it->transactionid.len] = '\0';
+	it->req_cache.transaction_id.s = (char*)it +  + sizeof(msrp_titem_t);
+	it->req_cache.transaction_id.len = mf->fline.transaction.len;
+	memcpy(it->req_cache.transaction_id.s, mf->fline.transaction.s, mf->fline.transaction.len);
+	it->req_cache.transaction_id.s[it->req_cache.transaction_id.len] = '\0';
 
-	it->req_cache.local_uri.s = it->transactionid.s + it->transactionid.len + 1;
+	it->req_cache.local_uri.s = it->req_cache.transaction_id.s + it->req_cache.transaction_id.len + 1;
 	it->req_cache.local_uri.len = local_uri.len;
 	memcpy(it->req_cache.local_uri.s, local_uri.s, local_uri.len);
 	it->req_cache.local_uri.s[it->req_cache.local_uri.len] = '\0';
@@ -336,7 +336,7 @@ int msrp_tmap_lookup(msrp_frame_t *mf)
 		return -2;
 	}
 
-	LM_DBG("searching for transaction [%.*s]\n", tid->len, tid->s);
+	LM_ERR("searching for transaction [%.*s]\n", tid->len, tid->s);
 
 	hid = msrp_get_hashid(tid);
 	idx = msrp_get_slot(hid, _msrp_tmap_head->mapsize);
@@ -347,9 +347,9 @@ int msrp_tmap_lookup(msrp_frame_t *mf)
 		if(itb->titemid>hid) {
 			break;
 		} else {
-			if(itb->transactionid.len == tid->len
-					&& memcmp(itb->transactionid.s, tid->s, tid->len)==0) {
-				LM_DBG("found transaction [%.*s]\n", tid->len, tid->s);
+			if(itb->req_cache.transaction_id.len == tid->len
+					&& memcmp(itb->req_cache.transaction_id.s, tid->s, tid->len)==0) {
+				LM_ERR("found transaction [%.*s]\n", tid->len, tid->s);
 				mf->req_cache = pkg_copy_req_cache(&itb->req_cache);
 				break;
 			}
@@ -375,11 +375,11 @@ int msrp_tmap_del(msrp_frame_t *mf)
 		return -1;
 	if(mf->fline.msgtypeid==MSRP_REQUEST)
 	{
-		LM_DBG("lookup cannot be used for requests\n");
+		LM_DBG("del cannot be used for requests\n");
 		return -2;
 	}
 
-	LM_DBG("searching for transaction [%.*s]\n", tid->len, tid->s);
+	LM_ERR("searching for transaction [%.*s]\n", tid->len, tid->s);
 
 	hid = msrp_get_hashid(tid);
 	idx = msrp_get_slot(hid, _msrp_tmap_head->mapsize);
@@ -390,9 +390,9 @@ int msrp_tmap_del(msrp_frame_t *mf)
 		if(itb->titemid>hid) {
 			break;
 		} else {
-			if(itb->transactionid.len == tid->len
-					&& memcmp(itb->transactionid.s, tid->s, tid->len)==0) {
-				LM_DBG("found transaction [%.*s]\n", tid->len, tid->s);
+			if(itb->req_cache.transaction_id.len == tid->len
+					&& memcmp(itb->req_cache.transaction_id.s, tid->s, tid->len)==0) {
+				LM_ERR("found transaction [%.*s]\n", tid->len, tid->s);
 				msrp_titem_free(itb);
 				break;
 			}
@@ -539,7 +539,7 @@ static void msrp_tmap_rpc_list(rpc_t* rpc, void* ctx)
 			edate.len = 24;
 			if(rpc->struct_add(vh, "dSSSSSS",
 						"TITEMID", it->titemid,
-						"TRANSACTIONID", &it->transactionid,
+						"TRANSACTIONID", &it->req_cache.transaction_id,
 						"LOCALURI", &it->req_cache.local_uri,
 						"FROMPATH", &it->req_cache.from_path,
 						"MESSAGEID", &it->req_cache.message_id,
