@@ -69,12 +69,12 @@ static int w_msrp_tmap_del(sip_msg_t* msg, char* str1, char* str2);
 static void msrp_local_timer(unsigned int ticks, void* param); /*!< Local timer handler */
 
 int msrp_param_sipmsg = 1;
-int msrp_cmap_size = 0;
+int msrp_cmap_size = 8;
 int msrp_auth_min_expires = 60;
 int msrp_auth_max_expires = 3600;
 int msrp_timer_interval = 60;
 str msrp_use_path_addr = { 0 };
-int msrp_tmap_size = 10;
+int msrp_tmap_size = 8;
 
 static int msrp_frame_received(void *data);
 sip_msg_t *msrp_fake_sipmsg(msrp_frame_t *mf);
@@ -169,29 +169,29 @@ static int mod_init(void)
 		return -1;
 	}
 
-	if(msrp_cmap_size>0) {
-		if(msrp_cmap_size>16)
-			msrp_cmap_size = 16;
-		if(msrp_cmap_init(1<<msrp_cmap_size)<0) {
-			LM_ERR("Cannot init internal cmap\n");
-			return -1;
-		}
+	if(msrp_tmap_init_rpc()<0)
+	{
+		LM_ERR("failed to register tmap RPC commands\n");
+		return -1;
 	}
 
-	if(msrp_tmap_size>0) {
-		if(msrp_tmap_size>16)
-			msrp_tmap_size = 16;
-		if(msrp_tmap_init(1<<msrp_tmap_size)<0) {
-			LM_ERR("Cannot init tmap\n");
-			return -1;
-		}
+	if(msrp_cmap_size<=0) msrp_cmap_size = 8;
+	else if(msrp_cmap_size>16) msrp_cmap_size = 16;
+	if(msrp_cmap_init(1<<msrp_cmap_size)<0) {
+		LM_ERR("Cannot init internal cmap\n");
+		return -1;
 	}
 
-	if (msrp_cmap_size> 0 || msrp_tmap_size> 0) {
-		if(msrp_timer_interval<=0)
-			msrp_timer_interval = 60;
-		register_sync_timers(1);
+	if(msrp_tmap_size<=0) msrp_tmap_size = 8;
+	else if(msrp_tmap_size>16) msrp_tmap_size = 16;
+	if(msrp_tmap_init(1<<msrp_tmap_size)<0) {
+		LM_ERR("Cannot init tmap\n");
+		return -1;
 	}
+
+	if(msrp_timer_interval<=0)
+		msrp_timer_interval = 60;
+	register_sync_timers(1);
 
 	sr_event_register_cb(SREV_TCP_MSRP_FRAME, msrp_frame_received);
 	return 0;
@@ -209,12 +209,11 @@ static int child_init(int rank)
 
 	if (rank!=PROC_MAIN)
 		return 0;
-	if(msrp_cmap_size>0 || msrp_tmap_size>0) {
-		if(fork_sync_timer(PROC_TIMER, "MSRP Timer", 1 /*socks flag*/,
-				msrp_local_timer, NULL, msrp_timer_interval /*sec*/)<0) {
-			LM_ERR("failed to start timer routine as process\n");
-			return -1; /* error */
-		}
+
+	if(fork_sync_timer(PROC_TIMER, "MSRP Timer", 1 /*socks flag*/,
+			msrp_local_timer, NULL, msrp_timer_interval /*sec*/)<0) {
+		LM_ERR("failed to start timer routine as process\n");
+		return -1; /* error */
 	}
 
 	return 0;
