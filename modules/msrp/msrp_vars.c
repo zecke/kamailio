@@ -65,6 +65,7 @@ int pv_parse_msrp_name(pv_spec_t *sp, str *in)
 			else if(strncmp(in->s, "conid", 5)==0)
 				sp->pvp.pvn.u.isname.name.n = 21;
 			else goto error;
+		break;
 		case 6:
 			if(strncmp(in->s, "method", 6)==0)
 				sp->pvp.pvn.u.isname.name.n = 6;
@@ -162,11 +163,15 @@ int pv_get_msrp(sip_msg_t *msg,  pv_param_t *param, pv_value_t *res)
 			s.len = mf->hbody.len;
 			return pv_get_strval(msg, param, res, &s);
 		case 5:
-			hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_MESSAGE_ID);
-			if(hdr==NULL)
-				return pv_get_null(msg, param, res);
-			s.s   = hdr->body.s;
-			s.len = hdr->body.len;
+			if (unlikely(mf->req_cache)) {
+				s = mf->req_cache->message_id;
+			} else {
+				hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_MESSAGE_ID);
+				if(hdr==NULL)
+					return pv_get_null(msg, param, res);
+				s.s   = hdr->body.s;
+				s.len = hdr->body.len;
+			}
 			trim(&s);
 			return pv_get_strval(msg, param, res, &s);
 		case 6:
@@ -177,13 +182,17 @@ int pv_get_msrp(sip_msg_t *msg,  pv_param_t *param, pv_value_t *res)
 		case 7:
 			return pv_get_uintval(msg, param, res, mf->buf.len);
 		case 8:
-			if(msrp_parse_hdr_to_path(mf)<0)
-				return pv_get_null(msg, param, res);
-			hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_TO_PATH);
-			if(hdr==NULL)
-				return pv_get_null(msg, param, res);
-			sar = (str_array_t*)hdr->parsed.data;
-			s = sar->list[0];
+			if (unlikely(mf->req_cache)) {
+				s = mf->req_cache->local_uri;
+			} else {
+				if(msrp_parse_hdr_to_path(mf)<0)
+					return pv_get_null(msg, param, res);
+				hdr = msrp_get_hdr_by_id(mf, MSRP_HDR_TO_PATH);
+				if(hdr==NULL)
+					return pv_get_null(msg, param, res);
+				sar = (str_array_t*)hdr->parsed.data;
+				s = sar->list[0];
+			}
 			trim(&s);
 			if(msrp_parse_uri(s.s, s.len, &uri)<0 || uri.session.len<=0)
 				return pv_get_null(msg, param, res);
@@ -197,7 +206,11 @@ int pv_get_msrp(sip_msg_t *msg,  pv_param_t *param, pv_value_t *res)
 		case 10:
 			return pv_get_uintval(msg, param, res, mf->mbody.len);
 		case 11:
-			s = mf->fline.transaction;
+			if (unlikely(mf->req_cache)) {
+				s = mf->req_cache->transaction_id;
+			} else {
+				s = mf->fline.transaction;
+			}
 			trim(&s);
 			return pv_get_strval(msg, param, res, &s);
 		case 12:
