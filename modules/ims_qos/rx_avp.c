@@ -56,6 +56,8 @@
 #include "rx_avp.h"
 #include "mod.h"
 
+#include "../../lib/ims/ims_getters.h"
+
 /**< Structure with pointers to cdp funcs, global variable defined in mod.c  */
 extern struct cdp_binds cdpb;
 extern cdp_avp_bind_t *cdp_avp;
@@ -86,7 +88,7 @@ inline int rx_add_avp(AAAMessage *m, char *d, int len, int avp_code,
         cdpb.AAAFreeAVP(&avp);
         return 0;
     }
-    return RX_RETURN_TRUE;
+    return CSCF_RETURN_TRUE;
 }
 
 /**
@@ -122,7 +124,7 @@ static inline int rx_add_avp_list(AAA_AVP_LIST *list, char *d, int len, int avp_
         avp->prev = 0;
     }
 
-    return RX_RETURN_TRUE;
+    return CSCF_RETURN_TRUE;
 }
 
 /**
@@ -272,7 +274,7 @@ inline int rx_add_destination_realm_avp(AAAMessage *msg, str data) {
  * Creates and adds an Acct-Application-Id AVP.
  * @param msg - the Diameter message to add to.
  * @param data - the value for the AVP payload
- * @return RX_RETURN_TRUE on success or 0 on error
+ * @return CSCF_RETURN_TRUE on success or 0 on error
  */
 inline int rx_add_auth_application_id_avp(AAAMessage *msg, unsigned int data) {
     char x[4];
@@ -292,7 +294,7 @@ inline int rx_add_auth_application_id_avp(AAAMessage *msg, unsigned int data) {
  * @param msg - the Diameter message to add to.
  * @param r - the sip_message to extract the data from.
  * @param tag - originating (0) terminating (1)
- * @return RX_RETURN_TRUE on success or 0 on error
+ * @return CSCF_RETURN_TRUE on success or 0 on error
  * 
  */
 
