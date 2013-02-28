@@ -239,7 +239,7 @@ modparam("ims_qos", "cdp_event_latency_log", 1)
     
     <section>
       <title><function
-      moreinfo="none">Rx_AAR(domain)</function></title>
+      moreinfo="none">Rx_AAR(direction)</function></title>
 
       <para>Perform a AAR on Diameter RX interface to request resource 
       authorisation from a Diameter server (typically a PCRF). For more details 
@@ -249,8 +249,8 @@ modparam("ims_qos", "cdp_event_latency_log", 1)
 
       <itemizedlist>
         <listitem>
-          <para><emphasis>domain</emphasis> that usrloc_pcscf uses to store 
-          user information.</para>
+          <para><emphasis>direction</emphasis>the direction of this message - 
+          orig, term, etc.</para>
         </listitem>
       </itemizedlist>
 
