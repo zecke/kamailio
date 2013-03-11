@@ -564,7 +564,6 @@ static int w_rx_aar(struct sip_msg *msg, char* str1, char* bar) {
         LM_ERR("Failed to send AAR\n");
         tmb.t_cancel_suspend(saved_t_data->tindex, saved_t_data->tlabel);
         goto error;
-        return CSCF_RETURN_BREAK;
 
 
     } else {
@@ -578,7 +577,7 @@ error:
         free_saved_transaction_global_data(saved_t_data); //only free global data if no AARs were sent. if one was sent we have to rely on the callback (CDP) to free
     //otherwise the callback will segfault
 
-    return CSCF_RETURN_BREAK;
+     return CSCF_RETURN_ERROR;
 }
 
 /* Wrapper to send AAR from config file - only used for registration */

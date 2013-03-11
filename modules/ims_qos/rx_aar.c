@@ -101,6 +101,8 @@ void async_aar_callback(int is_timeout, void *param, AAAMessage *aaa, long elaps
     if (tmb.t_lookup_ident(&t, data->tindex, data->tlabel) < 0) {
         LM_ERR("t_continue: transaction not found\n");
         goto error;
+    }else{
+        LM_DBG("t_continue: transaction found\n");
     }
     //we have T, lets restore our state (esp. for AVPs)
     set_avp_list(AVP_TRACK_FROM | AVP_CLASS_URI, &t->uri_avps_from);
