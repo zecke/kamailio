@@ -56,7 +56,8 @@ int t_suspend(struct sip_msg *msg,
 		unsigned int *hash_index, unsigned int *label)
 {
 	struct cell	*t;
-
+        int branch;
+        
 	t = get_t();
 	if (!t || t == T_UNDEFINED) {
 		LOG(L_ERR, "ERROR: t_suspend: " \
@@ -64,13 +65,14 @@ int t_suspend(struct sip_msg *msg,
 		return -1;
 	}
 
-	if (t->flags & T_CANCELED) {
+            if (t->flags & T_CANCELED) {
 		/* The transaction has already been canceled */
 		LOG(L_DBG, "DEBUG: t_suspend: " \
 			"trying to suspend an already canceled transaction\n");
 		ser_error = E_CANCELED;
 		return 1;
 	}
+        if (msg->first_line.type==SIP_REQUEST){
 
 	/* send a 100 Trying reply, because the INVITE processing
 	will probably take a long time */
@@ -103,10 +105,47 @@ int t_suspend(struct sip_msg *msg,
 			"failed to add the blind UAC\n");
 		return -1;
 	}
+         /* set as suspend request for when we continue */
+        t->uas.suspended_request = 1;
+        
+        return 0;
+        
+        }else if (msg->first_line.type==SIP_REPLY){
+            
+            LOG(L_DBG,"DBG: This is a suspend on reply - setting msg flag to SUSPEND");
+            msg->flags &= FL_RPL_SUSPENDED;
+            //this is a reply suspend find which branch
+            
+            if (t_check( msg  , &branch )==-1){
+                LOG(L_ERR, "ERROR: t_suspend: " \
+			"failed find UAC branch\n");
+		return -1;
+            }
+            LOG(L_DBG,"DBG: Found a a match with branch id [%d]", branch);
+            
+            LOG(L_DBG,"DBG: Assigning reply message to t->uac[branch].reply");
+            t->uac[branch].reply=msg;
+                        
+            if (save_msg_lumps(t->uac[branch].reply, msg)) {
+                    LOG(L_ERR, "ERROR: t_suspend: " \
+                            "failed to save the message lumps\n");
+                    return -1;
+            }
 
+            LOG(L_DBG,"DBG: Saving stuff to transaction");
+            /* set as suspend reply for when we continue */
+            t->uac[branch].suspended_reply=1;
+            /* save the message flags */
+            //TODO do we need this?
+            t->uac[branch].reply->flags = msg->flags;
+		
+            LOG(L_DBG,"DBG: Saving transaction hash and label");
+            *hash_index = t->hash_index;
+            *label = t->label;
+            LOG(L_DBG,"DBG: Done");
+        }
 	return 0;
 }
-
 /* Continues the SIP request processing previously saved by
  * t_suspend(). The script does not continue from the same
  * point, but a separate route block is executed instead.
@@ -120,6 +159,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
 {
 	struct cell	*t;
 	struct sip_msg	faked_req;
+        struct sip_msg	faked_reply;
 	int	branch;
 	struct ua_client *uac =NULL;
 	int	ret;
@@ -142,6 +182,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
 	 * form calling t_continue() multiple times simultaneously */
 	LOCK_REPLIES(t);
 
+        if (t->uas.suspended_request==1){
 	/* Try to find the blind UAC, and cancel its fr timer.
 	 * We assume that the last blind uac called t_continue(). */
 	for (	branch = t->nr_of_outgoings-1;
@@ -223,9 +264,60 @@ int t_continue(unsigned int hash_index, unsigned int label,
 			goto kill_trans;
 		}
 	}
+        
+        }else{
+            LOG(L_DBG,"This a continue from a reply suspend - getting the correct branch as transaction has %d branches", t->nr_of_outgoings);
+            //this is a continue from a reply suspend!
+            for (	branch = 0;
+			branch < t->nr_of_outgoings;
+			branch++
+		) {
+			//TODO not sure if this will work yet - think we need to pass which branch to continue when we call t_continue!
+                        if (t->uac[branch].suspended_reply==1){
+                            LOG(L_DBG,"Found branch that has suspend reply set!");
 
+                            LOG(L_DBG,"Forwarding reply with status code %d", t->uac[branch].reply->first_line.u.reply.statuscode);
+                            
+                            //TODO forward message now
+                            /* Not sure how to do this yet - probably need to fake the environment and then send a fake reply similar to way done for requests */
+
+                            //This might work:
+                            //forward_reply(t->uac[branch].reply);
+                           
+                            //Or we need to fake the environment and send:
+                            //fake_reply(t, branch, t->uac[branch].reply->first_line.u.reply.statuscode);                               
+                            
+                            //faked_env( t, &faked_req);
+                            //                           
+                            /* The sip msg is a faked msg just like in failure route
+                             * therefore execute the pre- and post-script callbacks
+                             * of failure route (Miklos)
+                             */
+//                            if (exec_pre_script_cb(&faked_rep, FAILURE_CB_TYPE)>0) {
+//                                    if (run_top_route(route, &faked_rep, 0)<0)
+//                                            LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
+//                                    exec_post_script_cb(&faked_rep, FAILURE_CB_TYPE);
+//                            }
+                            
+                            //faked_env( t, 0);
+                            //free_faked_rer(&faked_rep, t);
+                            
+                            /* update the flags */
+                            //t->uac[branch].reply->flags = faked_rep.flags;
+                                
+                        }
+		}
+                if (branch == t->nr_of_outgoings) {
+                        LOG(L_DBG,"Could not find a branch with suspend reply set");
+			/* This is a continue on reply suspend but can not find a suspended reply!. */
+			ret = 0;
+			goto kill_trans;
+		}
+        }
+        LOG(L_DBG,"Unlocking transaction mutex");
 	UNLOCK_REPLIES(t);
-
+        
+        LOG(L_DBG,"Unreffing the transaction");
 	/* unref the transaction */
 	t_unref(t->uas.request);
 
