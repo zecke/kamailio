@@ -505,8 +505,11 @@ static str permit_out = {"permit out ", 11};
 static str permit_in = {"permit in ", 10};
 static str from_s = {" from ", 6};
 static str to_s = {" to ", 4};
-static char * permit_out_with_ports = "permit out %i from %.*s %u to %.*s %u %s";
-static char * permit_in_with_ports = "permit in %i from %.*s %u to %.*s %u %s";
+//removed final %s - this is options which Rx 29.214 says will not be used for flow-description AVP
+static char * permit_out_with_ports = "permit out %i from %.*s %u to %.*s %u";
+//static char * permit_out_with_ports = "permit out %i from %.*s %u to %.*s %u %s";
+static char * permit_in_with_ports = "permit in %i from %.*s %u to %.*s %u";
+//static char * permit_in_with_ports = "permit in %i from %.*s %u to %.*s %u %s";
 
 AAA_AVP *rx_create_media_subcomponent_avp(int number, char* proto,
         str *ipA, str *portA,
@@ -551,13 +554,13 @@ AAA_AVP *rx_create_media_subcomponent_avp(int number, char* proto,
     }
 
     set_4bytes(x, number);
-
+    
     flow_number = cdpb.AAACreateAVP(AVP_IMS_Flow_Number,
             AAA_AVP_FLAG_MANDATORY | AAA_AVP_FLAG_VENDOR_SPECIFIC,
             IMS_vendor_id_3GPP, x, 4,
             AVP_DUPLICATE_DATA);
     cdpb.AAAAddAVPToList(&list, flow_number);
-
+    
     /*IMS Flow descriptions*/
     /*first flow is the receive flow*/
     flow_data.len = snprintf(flow_data.s, len, permit_out_with_ports, proto_int,
