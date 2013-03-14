@@ -265,6 +265,12 @@ int receive_msg(char* buf, unsigned int len, struct receive_info* rcv_info)
 				STATS_RPL_FWD_DROP();
 				goto skip_send_reply; /* drop the message, no error */
 			}
+
+			if (unlikely(ret==0 || msg->flags&FL_RPL_SUSPENDED)) {
+				goto skip_send_reply;
+				/* suspend the reply (async), no error */
+			}
+
 		}
 		/* send the msg */
 		forward_reply(msg);
@@ -277,8 +283,10 @@ int receive_msg(char* buf, unsigned int len, struct receive_info* rcv_info)
 		DBG("successfully ran reply processing...(%d usec)\n", diff);
 #endif
 
-		/* execute post reply-script callbacks */
-		exec_post_script_cb(msg, ONREPLY_CB_TYPE);
+		if (likely(!(msg->flags&FL_RPL_SUSPENDED))) {
+			/* execute post reply-script callbacks */
+			exec_post_script_cb(msg, ONREPLY_CB_TYPE);
+		}
 	}
 
 end:
