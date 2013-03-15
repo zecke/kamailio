@@ -328,7 +328,11 @@ int t_continue(unsigned int hash_index, unsigned int label,
                                     //}
                             } else {
                                     LOG(L_DBG,"t is NOT local sending relaying reply with status code: [%d]", t->uac[branch].reply->first_line.u.reply.statuscode);
-                                    reply_status=relay_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode,0, 1 );
+                                    int do_put_on_wait = 0;
+                                    if(t->uac[branch].reply->first_line.u.reply.statuscode>=200){
+                                        do_put_on_wait = 1;
+                                    }
+                                    reply_status=relay_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode,0, do_put_on_wait );
                                     //TODO do we need this?
                                     //if (reply_status == RPS_COMPLETED) {
                                                  /* no more UAC FR/RETR (if I received a 2xx, there may
