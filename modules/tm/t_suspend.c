@@ -113,7 +113,7 @@ int t_suspend(struct sip_msg *msg,
         }else if (msg->first_line.type==SIP_REPLY){
             
             LOG(L_DBG,"DBG: This is a suspend on reply - setting msg flag to SUSPEND");
-            msg->flags &= FL_RPL_SUSPENDED;
+            msg->flags |= FL_RPL_SUSPENDED;
             //this is a reply suspend find which branch
             
             if (t_check( msg  , &branch )==-1){
@@ -123,21 +123,26 @@ int t_suspend(struct sip_msg *msg,
             }
             LOG(L_DBG,"DBG: Found a a match with branch id [%d]", branch);
             
-            LOG(L_DBG,"DBG: Assigning reply message to t->uac[branch].reply");
-            t->uac[branch].reply=msg;
-                        
-            if (save_msg_lumps(t->uac[branch].reply, msg)) {
-                    LOG(L_ERR, "ERROR: t_suspend: " \
-                            "failed to save the message lumps\n");
+            LOG(L_DBG,"DBG: Cloning reply message to t->uac[branch].reply");
+            
+            t->uac[branch].reply = sip_msg_cloner( msg, 0 );
+
+            if (! t->uac[branch].reply ) {
+                    LOG(L_ERR, "ERROR: t_suspend: can't alloc' clone memory\n");
                     return -1;
             }
+            
+            //TODO do we need this?
+//            if (save_msg_lumps(t->uac[branch].reply, msg)) {
+//                    LOG(L_ERR, "ERROR: t_suspend: " \
+//                            "failed to save the message lumps\n");
+//                    return -1;
+//            }
 
             LOG(L_DBG,"DBG: Saving stuff to transaction");
             /* set as suspend reply for when we continue */
             t->uac[branch].suspended_reply=1;
-            /* save the message flags */
-            //TODO do we need this?
-            t->uac[branch].reply->flags = msg->flags;
+            
 		
             LOG(L_DBG,"DBG: Saving transaction hash and label");
             *hash_index = t->hash_index;
@@ -157,7 +162,7 @@ int t_suspend(struct sip_msg *msg,
 int t_continue(unsigned int hash_index, unsigned int label,
 		struct action *route)
 {
-	struct cell	*t;
+        struct cell	*t;
 	struct sip_msg	faked_req;
         struct sip_msg	faked_reply;
 	int	branch;
@@ -168,9 +173,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
 		LOG(L_ERR, "ERROR: t_continue: transaction not found\n");
 		return -1;
 	}
-
+        
 	if (t->flags & T_CANCELED) {
-		/* The transaction has already been canceled,
+                /* The transaction has already been canceled,
 		 * needless to continue */
 		UNREF(t); /* t_unref would kill the transaction */
 		/* reset T as we have no working T anymore */
@@ -181,9 +186,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
 	/* The transaction has to be locked to protect it
 	 * form calling t_continue() multiple times simultaneously */
 	LOCK_REPLIES(t);
-
+	
         if (t->uas.suspended_request==1){
-	/* Try to find the blind UAC, and cancel its fr timer.
+        /* Try to find the blind UAC, and cancel its fr timer.
 	 * We assume that the last blind uac called t_continue(). */
 	for (	branch = t->nr_of_outgoings-1;
 		branch >= 0 && t->uac[branch].request.buffer;
@@ -244,6 +249,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
 
 	/* update the flags */
 	t->uas.request->flags = faked_req.flags;
+        
+        /*unsuspend request*/
+        t->uas.suspended_request=0;
 
 	if (t->uas.status < 200) {
 		/* No final reply has been sent yet.
@@ -263,6 +271,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
 			ret = 0;
 			goto kill_trans;
 		}
+                
+                LOG(L_DBG,"Unlocking transaction reply mutex");
+                UNLOCK_REPLIES(t);
 	}
         
         }else{
@@ -275,47 +286,93 @@ int t_continue(unsigned int hash_index, unsigned int label,
 			//TODO not sure if this will work yet - think we need to pass which branch to continue when we call t_continue!
                         if (t->uac[branch].suspended_reply==1){
                             LOG(L_DBG,"Found branch that has suspend reply set!");
-
-                            LOG(L_DBG,"Forwarding reply with status code %d", t->uac[branch].reply->first_line.u.reply.statuscode);
                             
-                            //TODO forward message now
-                            /* Not sure how to do this yet - probably need to fake the environment and then send a fake reply similar to way done for requests */
-
-                            //This might work:
-                            //forward_reply(t->uac[branch].reply);
-                           
-                            //Or we need to fake the environment and send:
-                            //fake_reply(t, branch, t->uac[branch].reply->first_line.u.reply.statuscode);                               
+                            LOG(L_DBG,"Disabling suspend branch!");
+                            t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
+                            t->uac[branch].suspended_reply = 0;
                             
-                            //faked_env( t, &faked_req);
-                            //                           
-                            /* The sip msg is a faked msg just like in failure route
-                             * therefore execute the pre- and post-script callbacks
-                             * of failure route (Miklos)
-                             */
-//                            if (exec_pre_script_cb(&faked_rep, FAILURE_CB_TYPE)>0) {
-//                                    if (run_top_route(route, &faked_rep, 0)<0)
-//                                            LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
-//                                    exec_post_script_cb(&faked_rep, FAILURE_CB_TYPE);
-//                            }
+                            LOG(L_DBG,"Running pre script!");
+                            if (exec_pre_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE)>0) {
+                                LOG(L_DBG,"Success running pre script!");
+                                if (run_top_route(route, t->uac[branch].reply, 0)<0){
+                                        LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
+                                }else{
+                                    LOG(L_DBG,"Success running top route!");
+                                }
+                                LOG(L_DBG,"Running exec post script!");
+                                exec_post_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE);
+                                LOG(L_DBG,"Done running exec post script!");
+                            }else{
+                                LOG(L_DBG,"Failed running pre script!");
+                            }
                             
-                            //faked_env( t, 0);
-                            //free_faked_rer(&faked_rep, t);
                             
-                            /* update the flags */
-                            //t->uac[branch].reply->flags = faked_rep.flags;
+                            int reply_status;
+                            if ( is_local(t) ) {
+                                LOG(L_DBG,"t is local sending local reply with status code: [%d]", t->uac[branch].reply->first_line.u.reply.statuscode);
+                                    reply_status = local_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, 0 );
+                                    //TODO do we need this?
+                                    //if (reply_status == RPS_COMPLETED) {
+                                                 /* no more UAC FR/RETR (if I received a 2xx, there may
+                                                  * be still pending branches ...
+                                                  */
+                                    //        cleanup_uac_timers( t );
+                                    //        if (is_invite(t)) cancel_uacs(t, &cancel_data, F_CANCEL_B_KILL);
+                                            /* There is no need to call set_final_timer because we know
+                                             * that the transaction is local */
+                                    //        put_on_wait(t);
+                                    //}else if (unlikely(cancel_data.cancel_bitmap)){
+                                            /* cancel everything, even non-INVITEs (e.g in case of 6xx), use
+                                             * cancel_b_method for canceling unreplied branches */
+                                    //       cancel_uacs(t, &cancel_data, cfg_get(tm,tm_cfg, cancel_b_flags));
+                                    //}
+                            } else {
+                                    LOG(L_DBG,"t is NOT local sending relaying reply with status code: [%d]", t->uac[branch].reply->first_line.u.reply.statuscode);
+                                    reply_status=relay_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode,0, 1 );
+                                    //TODO do we need this?
+                                    //if (reply_status == RPS_COMPLETED) {
+                                                 /* no more UAC FR/RETR (if I received a 2xx, there may
+                                                    be still pending branches ...
+                                                 */
+                                    //        cleanup_uac_timers( t );
+                                            /* 2xx is a special case: we can have a COMPLETED request
+                                             * with branches still open => we have to cancel them */
+                                    //        if (is_invite(t) && cancel_data.cancel_bitmap) 
+                                    //                cancel_uacs( t, &cancel_data,  F_CANCEL_B_KILL);
+                                            /* FR for negative INVITES, WAIT anything else */
+                                            /* Call to set_final_timer is embedded in relay_reply to avoid
+                                             * race conditions when reply is sent out and an ACK to stop
+                                             * retransmissions comes before retransmission timer is set.*/
+                                    //}else if (unlikely(cancel_data.cancel_bitmap)){
+                                            /* cancel everything, even non-INVITEs (e.g in case of 6xx), use
+                                             * cancel_b_method for canceling unreplied branches */
+                                    //        cancel_uacs(t, &cancel_data, cfg_get(tm,tm_cfg, cancel_b_flags));
+                                    //}
+                            }
+                            t->uac[branch].request.flags|=F_RB_REPLIED;
+//
+                            if (reply_status==RPS_ERROR)
+                                    goto done;
+//
+//                            /* update FR/RETR timers on provisional replies */
+                            
+                            int msg_status=t->uac[branch].reply->REPLY_STATUS;
+                            int last_uac_status=t->uac[branch].last_received;
+                            
+                            if (is_invite(t) && msg_status<200 &&
+                                    ( cfg_get(tm, tm_cfg, restart_fr_on_each_reply) ||
+                                                    ( (last_uac_status<msg_status) &&
+                                                            ((msg_status>=180) || (last_uac_status==0)) )
+                                            ) ) { /* provisional now */
+                                    restart_rb_fr(& uac->request, t->fr_inv_timeout);
+                                    t->uac[branch].request.flags|=F_RB_FR_INV; /* mark fr_inv */
+                            } 
                                 
                         }
 		}
-                if (branch == t->nr_of_outgoings) {
-                        LOG(L_DBG,"Could not find a branch with suspend reply set");
-			/* This is a continue on reply suspend but can not find a suspended reply!. */
-			ret = 0;
-			goto kill_trans;
-		}
         }
-        LOG(L_DBG,"Unlocking transaction mutex");
-	UNLOCK_REPLIES(t);
+
+done:
         
         LOG(L_DBG,"Unreffing the transaction");
 	/* unref the transaction */

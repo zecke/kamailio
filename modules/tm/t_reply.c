@@ -2346,6 +2346,11 @@ int reply_received( struct sip_msg  *p_msg )
 			}
 		}
 #endif
+        
+        if (unlikely(p_msg->flags&FL_RPL_SUSPENDED)) {
+				goto skip_send_reply;
+				/* suspend the reply (async), no error */
+	}
 	if (unlikely(!replies_locked)){
 		LOCK_REPLIES( t );
 		replies_locked=1;
@@ -2402,6 +2407,13 @@ int reply_received( struct sip_msg  *p_msg )
 		restart_rb_fr(& uac->request, t->fr_inv_timeout);
 		uac->request.flags|=F_RB_FR_INV; /* mark fr_inv */
 	} /* provisional replies */
+        
+skip_send_reply:
+        
+        if (likely(replies_locked)){
+		UNLOCK_REPLIES(t); /* unlock replies  - this would be unlocked by send function*/
+		replies_locked=0;
+	}
 
 done:
 	tm_ctx_set_branch_index(T_BR_UNDEFINED);
