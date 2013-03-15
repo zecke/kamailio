@@ -164,7 +164,6 @@ int t_continue(unsigned int hash_index, unsigned int label,
 {
         struct cell	*t;
 	struct sip_msg	faked_req;
-        struct sip_msg	faked_reply;
 	int	branch;
 	struct ua_client *uac =NULL;
 	int	ret;
@@ -285,13 +284,15 @@ int t_continue(unsigned int hash_index, unsigned int label,
 		) {
 			//TODO not sure if this will work yet - think we need to pass which branch to continue when we call t_continue!
                         if (t->uac[branch].suspended_reply==1){
-                            LOG(L_DBG,"Found branch that has suspend reply set!");
+                            LOG(L_DBG,"Found branch that has suspend reply set");
                             
-                            LOG(L_DBG,"Disabling suspend branch!");
+                            LOG(L_DBG,"Disabling suspend branch");
                             t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
+                            if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
+                            
                             t->uac[branch].suspended_reply = 0;
                             
-                            LOG(L_DBG,"Running pre script!");
+                            LOG(L_DBG,"Running pre script");
                             if (exec_pre_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE)>0) {
                                 LOG(L_DBG,"Success running pre script!");
                                 if (run_top_route(route, t->uac[branch].reply, 0)<0){
@@ -305,7 +306,6 @@ int t_continue(unsigned int hash_index, unsigned int label,
                             }else{
                                 LOG(L_DBG,"Failed running pre script!");
                             }
-                            
                             
                             int reply_status;
                             if ( is_local(t) ) {
@@ -364,9 +364,12 @@ int t_continue(unsigned int hash_index, unsigned int label,
                                                     ( (last_uac_status<msg_status) &&
                                                             ((msg_status>=180) || (last_uac_status==0)) )
                                             ) ) { /* provisional now */
-                                    restart_rb_fr(& uac->request, t->fr_inv_timeout);
+                                    restart_rb_fr(& t->uac[branch].request, t->fr_inv_timeout);
                                     t->uac[branch].request.flags|=F_RB_FR_INV; /* mark fr_inv */
                             } 
+                            
+                            sip_msg_free(t->uac[branch].reply);
+                            t->uac[branch].reply = 0;
                                 
                         }
 		}
