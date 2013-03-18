@@ -132,12 +132,12 @@ int t_suspend(struct sip_msg *msg,
                     return -1;
             }
             
-            //TODO do we need this?
-//            if (save_msg_lumps(t->uac[branch].reply, msg)) {
-//                    LOG(L_ERR, "ERROR: t_suspend: " \
-//                            "failed to save the message lumps\n");
-//                    return -1;
-//            }
+/*          //TODO do we need this?
+            if (save_msg_lumps(t->uac[branch].reply, msg)) {
+                    LOG(L_ERR, "ERROR: t_suspend: " \
+                            "failed to save the message lumps\n");
+                    return -1;
+            }*/
 
             LOG(L_DBG,"DBG: Saving stuff to transaction");
             /* set as suspend reply for when we continue */
@@ -273,6 +273,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
                 
                 LOG(L_DBG,"Unlocking transaction reply mutex");
                 UNLOCK_REPLIES(t);
+                LOG(L_DBG,"Unreffing the transaction");
+                /* unref the transaction */
+                t_unref(t->uas.request);
 	}
         
         }else{
@@ -380,11 +383,6 @@ int t_continue(unsigned int hash_index, unsigned int label,
         }
 
 done:
-        
-        LOG(L_DBG,"Unreffing the transaction");
-	/* unref the transaction */
-	t_unref(t->uas.request);
-
 	return 0;
 
 kill_trans:
@@ -437,34 +435,56 @@ int t_cancel_suspend(unsigned int hash_index, unsigned int label)
 			"transaction id mismatch\n");
 		return -1;
 	}
-	/* The transaction does not need to be locked because this
-	 * function is either executed from the original route block
-	 * or from failure route which already locks */
+        
+        
+        if (t->uas.suspended_request==1){
+            t->uac[branch].suspended_reply = 0;
+            LOG(L_DBG,"This is a cancel suspend for a request");
+                /* The transaction does not need to be locked because this
+             * function is either executed from the original route block
+             * or from failure route which already locks */
 
-	reset_kr(); /* the blind UAC of t_suspend has set kr */
+            reset_kr(); /* the blind UAC of t_suspend has set kr */
 
-	/* Try to find the blind UAC, and cancel its fr timer.
-	 * We assume that the last blind uac called this function. */
-	for (	branch = t->nr_of_outgoings-1;
-		branch >= 0 && t->uac[branch].request.buffer;
-		branch--);
+            /* Try to find the blind UAC, and cancel its fr timer.
+             * We assume that the last blind uac called this function. */
+            for (	branch = t->nr_of_outgoings-1;
+                    branch >= 0 && t->uac[branch].request.buffer;
+                    branch--);
 
-	if (branch >= 0) {
-		stop_rb_timers(&t->uac[branch].request);
-		/* Set last_received to something >= 200,
-		 * the actual value does not matter, the branch
-		 * will never be picked up for response forwarding.
-		 * If last_received is lower than 200,
-		 * then the branch may tried to be cancelled later,
-		 * for example when t_reply() is called from
-		 * a failure rute => deadlock, because both
-		 * of them need the reply lock to be held. */
-		t->uac[branch].last_received=500;
-	} else {
-		/* Not a huge problem, fr timer will fire, but CANCEL
-		will not be sent. last_received will be set to 408. */
-		return -1;
-	}
+            if (branch >= 0) {
+                    stop_rb_timers(&t->uac[branch].request);
+                    /* Set last_received to something >= 200,
+                     * the actual value does not matter, the branch
+                     * will never be picked up for response forwarding.
+                     * If last_received is lower than 200,
+                     * then the branch may tried to be cancelled later,
+                     * for example when t_reply() is called from
+                     * a failure rute => deadlock, because both
+                     * of them need the reply lock to be held. */
+                    t->uac[branch].last_received=500;
+            } else {
+                    /* Not a huge problem, fr timer will fire, but CANCEL
+                    will not be sent. last_received will be set to 408. */
+                    return -1;
+            }
+        }else{
+            LOG(L_DBG,"This is a cancel suspend for a response");
+            for (	branch = 0;
+			branch < t->nr_of_outgoings;
+			branch++
+		) {
+			//TODO not sure if this will work yet - think we need to pass which branch to continue when we call t_continue!
+                        if (t->uac[branch].suspended_reply==1){
+                            LOG(L_DBG,"Found branch that has suspend reply set");
+                            LOG(L_DBG,"Disabling suspend branch");
+                            t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
+                            if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
+                            t->uac[branch].suspended_reply = 0;
+                        }
+		}
+        }
+	
 
 	return 0;
 }
