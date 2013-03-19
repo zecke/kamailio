@@ -358,8 +358,15 @@ int t_continue(unsigned int hash_index, unsigned int label,
                             }
                             t->uac[branch].request.flags|=F_RB_REPLIED;
 //
-                            if (reply_status==RPS_ERROR)
-                                    goto done;
+                            if (reply_status==RPS_ERROR){
+                                LOG(L_DBG,"Unreffing the transaction");
+                                /* unref the transaction */
+                                t_unref(t->uac[branch].reply);
+
+                                sip_msg_free(t->uac[branch].reply);
+                                t->uac[branch].reply = 0;       
+                                goto done;
+                            }
 //
 //                            /* update FR/RETR timers on provisional replies */
                             
@@ -375,6 +382,12 @@ int t_continue(unsigned int hash_index, unsigned int label,
                                     t->uac[branch].request.flags|=F_RB_FR_INV; /* mark fr_inv */
                             } 
                             
+                            LOG(L_DBG,"Unreffing the transaction");
+                            /* unref the transaction */
+                            t_unref(t->uac[branch].reply);
+                            
+                            
+                            LOG(L_DBG,"Freeing earlier cloned reply");
                             sip_msg_free(t->uac[branch].reply);
                             t->uac[branch].reply = 0;
                                 
@@ -383,7 +396,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
         }
 
 done:
-	return 0;
+        return 0;
 
 kill_trans:
 	/* The script has hopefully set the error code. If not,
