@@ -84,7 +84,7 @@ int rx_send_str(str *rx_session_id) {
     LM_DBG("About to try get Auth session\n");
     auth = cdpb.AAAGetAuthSession(*rx_session_id);
     if (!auth) {
-        LM_ERR("Could not get Auth Session for session id: [%.*s]\n", rx_session_id->len, rx_session_id->s);
+        LM_DBG("Could not get Auth Session for session id: [%.*s] - this is fine as this might have been started by already sending an STR\n", rx_session_id->len, rx_session_id->s);
         return CSCF_RETURN_FALSE;
     }else{
         LM_DBG("Retrieved Auth Session for session id: [%.*s]\n", rx_session_id->len, rx_session_id->s);
