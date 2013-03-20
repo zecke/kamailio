@@ -217,6 +217,13 @@ void cdp_cb_event_process() {
                             p_session_data->registration_aor.len, p_session_data->registration_aor.s,
                             p_session_data->domain.len, p_session_data->domain.s);
                     LM_DBG("This is a media bearer session session");
+                    LM_DBG("Terminating dialog with callid, ftag, ttag: [%.*s], [%.*s], [%.*s]\n",
+                            p_session_data->callid.len, p_session_data->callid.s,
+                            p_session_data->ftag.len, p_session_data->ftag.s,
+                            p_session_data->ttag.len, p_session_data->ttag.s);
+                    dlgb.terminate_dlg(&p_session_data->callid,
+                            &p_session_data->ftag, &p_session_data->ttag, NULL,
+                            &release_reason);
                 }
                 break;
 
