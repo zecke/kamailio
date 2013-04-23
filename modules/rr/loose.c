@@ -47,6 +47,7 @@
 
 #define RR_ERROR -1		/*!< An error occured while processing route set */
 #define RR_DRIVEN 1		/*!< The next hop is determined from the route set */
+#define RR_OB_DRIVEN 2		/*!< The next hop is determined from the route set based on flow-token */
 #define NOT_RR_DRIVEN -1	/*!< The next hop is not determined from the route set */
 #define FLOW_TOKEN_BROKEN -2	/*!< Outbound flow-token shows evidence of tampering */
 
@@ -504,24 +505,27 @@ static inline int process_outbound(struct sip_msg *_m, str flow_token,
 		str *dst_uri)
 {
 	int ret;
-	struct receive_info rcv;
+	struct receive_info *rcv = NULL;
 	struct socket_info *si;
 
 	if (!rr_obb.decode_flow_token)
 		return 0;
 
-	ret = rr_obb.decode_flow_token(&rcv, flow_token);
+	ret = rr_obb.decode_flow_token(_m, &rcv, flow_token);
 
 	if (ret == -2) {
-		LM_INFO("no flow token found - outbound not in use\n");
+		LM_DBG("no flow token found - outbound not in use\n");
 		return 0;
 	} else if (ret == -1) {
 		LM_ERR("failed to decode flow token\n");
 		return -1;
-	} else {
+	} else if (!ip_addr_cmp(&rcv->src_ip, &_m->rcv.src_ip)
+			|| rcv->src_port != _m->rcv.src_port) {
+		LM_DBG("\"incoming\" request found. Using flow-token for"
+			"routing\n");
 
 		/* First, force the local socket */
-		si = find_si(&rcv.dst_ip, rcv.dst_port, rcv.proto);
+		si = find_si(&rcv->dst_ip, rcv->dst_port, rcv->proto);
 		if (si)
 			set_force_socket(_m, si);
 		else {
@@ -536,19 +540,23 @@ static inline int process_outbound(struct sip_msg *_m, str flow_token,
 		dst_uri->len += snprintf(dst_uri->s + dst_uri->len,
 					MAX_ROUTE_URI_LEN - dst_uri->len,
 					"sip:%s",
-					rcv.src_ip.af == AF_INET6 ? "[" : "");
-		dst_uri->len += ip_addr2sbuf(&rcv.src_ip,
+					rcv->src_ip.af == AF_INET6 ? "[" : "");
+		dst_uri->len += ip_addr2sbuf(&rcv->src_ip,
 					dst_uri->s + dst_uri->len,
 					MAX_ROUTE_URI_LEN - dst_uri->len);
 		dst_uri->len += snprintf(dst_uri->s + dst_uri->len,
 					MAX_ROUTE_URI_LEN - dst_uri->len,
 					"%s:%d;transport=%s",
-					rcv.src_ip.af == AF_INET6 ? "]" : "",
-					rcv.src_port,
-					get_proto_name(rcv.proto));
+					rcv->src_ip.af == AF_INET6 ? "]" : "",
+					rcv->src_port,
+					get_proto_name(rcv->proto));
+	} else {
+	    LM_DBG("outbound \"outgoing\" request found - "
+		   "Not using flow-token for routing\n");
+	    return 0;
+	}	    
 
-		return 1;
-	}
+	return 1;
 }
 
 /*!
@@ -701,7 +709,7 @@ static inline int after_strict(struct sip_msg* _m)
 		if (res < 0) {
 			LM_ERR("searching for last Route URI failed\n");
 			return RR_ERROR;
-		} else if (res > 0) {
+ 		} else if (res > 0) {
 			/* No remote target is an error */
 			return RR_ERROR;
 		}
@@ -725,7 +733,7 @@ static inline int after_strict(struct sip_msg* _m)
 		if (prev) {
 			rem_off = prev->nameaddr.name.s + prev->len;
 			rem_len = rt->nameaddr.name.s + rt->len - rem_off;
-		} else {
+	 	} else {
 			rem_off = hdr->name.s;
 			rem_len = hdr->len;
 		}
@@ -739,7 +747,10 @@ static inline int after_strict(struct sip_msg* _m)
 	if(routed_params.len > 0)
 		run_rr_callbacks( _m, &routed_params );
 
-	return RR_DRIVEN;
+	if (use_ob == 1)
+	    return RR_OB_DRIVEN;
+	else
+	    return RR_DRIVEN;
 }
 
 
@@ -779,6 +790,8 @@ static inline int after_loose(struct sip_msg* _m, int preloaded)
 		LM_ERR("processing outbound flow-token\n");
 		return FLOW_TOKEN_BROKEN;
 	}
+
+	LM_DBG("process_outbound returned <%d>\n", use_ob);
 
 	/* IF the URI was added by me, remove it */
 	if (uri_is_myself>0)
@@ -904,7 +917,10 @@ got_uri:
 			}
 		}
 	}
-	status = RR_DRIVEN;
+	if (use_ob == 1) 
+	    status = RR_OB_DRIVEN;
+	else
+	    status = RR_DRIVEN;
 
 done:
 	/* run RR callbacks only if we have Route URI parameters */

@@ -1,7 +1,7 @@
 /*
  * $Id$
  *
- * Copyright (C) 2012 Crocodile RCS Ltd
+ * Copyright (C) 2012-2013 Crocodile RCS Ltd
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -28,6 +28,7 @@
 #include "../../sr_module.h"
 #include "../../tcp_conn.h"
 #include "../../timer_proc.h"
+#include "../../cfg/cfg.h"
 #include "../../lib/kcore/kstats_wrapper.h"
 #include "../../lib/kmi/mi.h"
 #include "../../mem/mem.h"
@@ -36,6 +37,7 @@
 #include "ws_handshake.h"
 #include "ws_frame.h"
 #include "ws_mod.h"
+#include "config.h"
 
 MODULE_VERSION
 
@@ -47,10 +49,11 @@ static int child_init(int rank);
 static void destroy(void);
 
 sl_api_t ws_slb;
-int *ws_enabled;
 
 #define DEFAULT_KEEPALIVE_INTERVAL	1
 static int ws_keepalive_interval = DEFAULT_KEEPALIVE_INTERVAL;
+
+static int ws_keepalive_timeout = DEFAULT_KEEPALIVE_TIMEOUT;
 
 #define DEFAULT_KEEPALIVE_PROCESSES	1
 static int ws_keepalive_processes = DEFAULT_KEEPALIVE_PROCESSES;
@@ -85,19 +88,35 @@ static param_export_t params[]=
 static stat_export_t stats[] =
 {
 	/* ws_conn.c */
-	{ "ws_current_connections",       0, &ws_current_connections },
-	{ "ws_max_concurrent_connections",0, &ws_max_concurrent_connections },
+	{ "ws_current_connections",            0, &ws_current_connections },
+	{ "ws_max_concurrent_connections",     0, &ws_max_concurrent_connections },
+	{ "ws_sip_current_connections",        0, &ws_sip_current_connections },
+        { "ws_sip_max_concurrent_connectons",  0, &ws_sip_max_concurrent_connections },
+        { "ws_msrp_current_connections",       0, &ws_msrp_current_connections },
+        { "ws_msrp_max_concurrent_connectons", 0, &ws_sip_max_concurrent_connections },
 
 	/* ws_frame.c */
-	{ "ws_failed_connections",        0, &ws_failed_connections },
-	{ "ws_local_closed_connections",  0, &ws_local_closed_connections },
-	{ "ws_received_frames",           0, &ws_received_frames },
-	{ "ws_remote_closed_connections", 0, &ws_remote_closed_connections },
-	{ "ws_transmitted_frames",        0, &ws_transmitted_frames },
+	{ "ws_failed_connections",             0, &ws_failed_connections },
+	{ "ws_local_closed_connections",       0, &ws_local_closed_connections },
+	{ "ws_received_frames",                0, &ws_received_frames },
+	{ "ws_remote_closed_connections",      0, &ws_remote_closed_connections },
+	{ "ws_transmitted_frames",             0, &ws_transmitted_frames },
+	{ "ws_sip_failed_connections",         0, &ws_sip_failed_connections },
+	{ "ws_sip_local_closed_connections",   0, &ws_sip_local_closed_connections },
+	{ "ws_sip_received_frames",            0, &ws_sip_received_frames },
+	{ "ws_sip_remote_closed_connections",  0, &ws_sip_remote_closed_connections },
+	{ "ws_sip_transmitted_frames",         0, &ws_sip_transmitted_frames },
+	{ "ws_msrp_failed_connections",        0, &ws_msrp_failed_connections },
+	{ "ws_msrp_local_closed_connections",  0, &ws_msrp_local_closed_connections },
+	{ "ws_msrp_received_frames",           0, &ws_msrp_received_frames },
+	{ "ws_msrp_remote_closed_connections", 0, &ws_msrp_remote_closed_connections },
+	{ "ws_msrp_transmitted_frames",        0, &ws_msrp_transmitted_frames },
 
 	/* ws_handshake.c */
-	{ "ws_failed_handshakes",         0, &ws_failed_handshakes },
-	{ "ws_successful_handshakes",     0, &ws_successful_handshakes },
+	{ "ws_failed_handshakes",              0, &ws_failed_handshakes },
+	{ "ws_successful_handshakes",          0, &ws_successful_handshakes },
+	{ "ws_sip_successful_handshakes",      0, &ws_sip_successful_handshakes },
+	{ "ws_msrp_successful_handshakes",     0, &ws_msrp_successful_handshakes },
 
 	{ 0, 0, 0 }
 };
@@ -173,14 +192,6 @@ static int mod_init(void)
 		goto error;
 	}
 
-	if ((ws_enabled = (int *) shm_malloc(sizeof(int))) == NULL)
-	{
-		LM_ERR("allocating shared memory\n");
-		goto error;
-	}
-	*ws_enabled = 1;
-
-	
 	if (ws_ping_application_data.s != 0)
 		ws_ping_application_data.len =
 					strlen(ws_ping_application_data.s);
@@ -233,12 +244,17 @@ static int mod_init(void)
 		goto error;
 	}
 
+	if (cfg_declare("websocket", ws_cfg_def, &default_ws_cfg,
+			cfg_sizeof(websocket), &ws_cfg)) {
+		LM_ERR("declaring configuration\n");
+		return -1;
+	}
+	cfg_get(websocket, ws_cfg, keepalive_timeout) = ws_keepalive_timeout;
+
 	return 0;
 
 error:
 	wsconn_destroy();
-	shm_free(ws_enabled);
-
 	return -1;
 }
 
@@ -271,5 +287,4 @@ static int child_init(int rank)
 static void destroy(void)
 {
 	wsconn_destroy();
-	shm_free(ws_enabled);
 }

@@ -231,6 +231,8 @@ typedef struct ua_client
 #endif
 	str uri;
 	str path;
+	str instance;
+	str ruid;
 	/* if we don't store, we at least want to know the status */
 	int             last_received;
 
@@ -251,6 +253,8 @@ typedef struct ua_client
 #endif
 	/* the route to take if no final positive reply arrived */
 	unsigned short on_failure;
+	/* the route to take for all failure replies */
+	unsigned short on_branch_failure;
 	/* the onreply_route to be processed if registered to do so */
 	unsigned short on_reply;
         int suspended_reply;
@@ -440,6 +444,8 @@ typedef struct cell
 
 	/* the route to take if no final positive reply arrived */
 	unsigned short on_failure;
+	/* the route to take for all failure replies */
+	unsigned short on_branch_failure;
 	/* the onreply_route to be processed if registered to do so */
 	unsigned short on_reply;
 	 /* The route to take for each downstream branch separately */

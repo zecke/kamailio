@@ -1,7 +1,7 @@
 /*
  * $Id$
  *
- * Copyright (C) 2012 Crocodile RCS Ltd
+ * Copyright (C) 2012-2013 Crocodile RCS Ltd
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -37,6 +37,7 @@
 #include "ws_frame.h"
 #include "ws_mod.h"
 #include "ws_handshake.h"
+#include "config.h"
 
 /*    0                   1                   2                   3
       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -93,8 +94,6 @@ typedef enum
 #define OPCODE_PONG		(0xa)
 /* 0xb - 0xf are reserved for further control frames */
 
-/* Time (in seconds) after which to send a keepalive on an idle connection */
-int ws_keepalive_timeout = DEFAULT_KEEPALIVE_TIMEOUT;
 int ws_keepalive_mechanism = DEFAULT_KEEPALIVE_MECHANISM;
 str ws_ping_application_data = {0, 0};
 
@@ -103,6 +102,16 @@ stat_var *ws_local_closed_connections;
 stat_var *ws_received_frames;
 stat_var *ws_remote_closed_connections;
 stat_var *ws_transmitted_frames;
+stat_var *ws_sip_failed_connections;
+stat_var *ws_sip_local_closed_connections;
+stat_var *ws_sip_received_frames;
+stat_var *ws_sip_remote_closed_connections;
+stat_var *ws_sip_transmitted_frames;
+stat_var *ws_msrp_failed_connections;
+stat_var *ws_msrp_local_closed_connections;
+stat_var *ws_msrp_received_frames;
+stat_var *ws_msrp_remote_closed_connections;
+stat_var *ws_msrp_transmitted_frames;
 
 /* WebSocket status text */
 static str str_status_normal_closure = str_init("Normal closure");
@@ -274,13 +283,26 @@ static int encode_and_send_ws_frame(ws_frame_t *frame, conn_close_t conn_close)
 		LM_ERR("sending WebSocket frame\n");
 		pkg_free(send_buf);
 		update_stat(ws_failed_connections, 1);
+		if (frame->wsc->sub_protocol == SUB_PROTOCOL_SIP)
+			update_stat(ws_sip_failed_connections, 1);
+		else if (frame->wsc->sub_protocol == SUB_PROTOCOL_MSRP)
+			update_stat(ws_msrp_failed_connections, 1);
 		if (wsconn_rm(frame->wsc, WSCONN_EVENTROUTE_YES) < 0)
 			LM_ERR("removing WebSocket connection\n");
 		return -1;
 	}
 
 	update_stat(ws_transmitted_frames, 1);
-
+	switch (frame->opcode)
+	{
+	case OPCODE_TEXT_FRAME:
+	case OPCODE_BINARY_FRAME:
+		if (frame->wsc->sub_protocol == SUB_PROTOCOL_SIP)
+			update_stat(ws_sip_transmitted_frames, 1);
+		else if (frame->wsc->sub_protocol == SUB_PROTOCOL_MSRP)
+			update_stat(ws_msrp_transmitted_frames, 1);
+	}
+	
 	pkg_free(send_buf);
 	return 0;
 }
@@ -326,9 +348,22 @@ static int close_connection(ws_connection_t *wsc, ws_close_type_t type,
 		{
 			frame.wsc->state = WS_S_CLOSING;
 			update_stat(ws_local_closed_connections, 1);
+			if (frame.wsc->sub_protocol == SUB_PROTOCOL_SIP)
+				update_stat(ws_sip_local_closed_connections, 1);
+			else if (frame.wsc->sub_protocol == SUB_PROTOCOL_MSRP)
+				update_stat(ws_msrp_local_closed_connections,
+						1);
 		}
 		else
+		{
 			update_stat(ws_remote_closed_connections, 1);
+			if (frame.wsc->sub_protocol == SUB_PROTOCOL_SIP)
+				update_stat(ws_sip_remote_closed_connections,
+						1);
+			else if (frame.wsc->sub_protocol == SUB_PROTOCOL_MSRP)
+				update_stat(ws_msrp_remote_closed_connections,
+						1);
+		}
 	}
 	else /* if (frame->wsc->state == WS_S_CLOSING) */
 		wsconn_close_now(wsc);
@@ -578,6 +613,7 @@ int ws_frame_receive(void *data)
 		{
 			LM_DBG("Rx SIP message:\n%.*s\n", frame.payload_len,
 				frame.payload_data);
+			update_stat(ws_sip_received_frames, 1);
 			return receive_msg(frame.payload_data,
 						frame.payload_len,
 						tcpinfo->rcv);
@@ -586,6 +622,7 @@ int ws_frame_receive(void *data)
 		{
 			LM_DBG("Rx MSRP frame:\n%.*s\n", frame.payload_len,
 				frame.payload_data);
+			update_stat(ws_msrp_received_frames, 1);
 			if (likely(sr_event_enabled(SREV_TCP_MSRP_FRAME)))
 			{
 				tcp_event_info_t tev;
@@ -774,7 +811,8 @@ struct mi_root *ws_mi_pong(struct mi_root *cmd, void *param)
 
 void ws_keepalive(unsigned int ticks, void *param)
 {
-	int check_time = (int) time(NULL) - ws_keepalive_timeout;
+	int check_time = (int) time(NULL)
+		- cfg_get(websocket, ws_cfg, keepalive_timeout);
 	ws_connection_t *wsc = wsconn_used_list->head;
 
 	while (wsc && wsc->last_used < check_time)
