@@ -337,6 +337,7 @@ AVP_PREF	(([ft][rud]?)|g)\.
 DEBUG	debug
 FORK	fork
 FORK_DELAY	fork_delay
+MODINIT_DELAY	modinit_delay
 LOGSTDERROR	log_stderror
 LOGFACILITY	log_facility
 LOGNAME		log_name
@@ -498,11 +499,6 @@ PVBUFSLOTS		"pv_buffer_slots"
 HTTP_REPLY_HACK		"http_reply_hack"
 VERSION_TABLE_CFG		"version_table"
 
-/* stun config variables */
-STUN_REFRESH_INTERVAL "stun_refresh_interval"
-STUN_ALLOW_STUN "stun_allow_stun"
-STUN_ALLOW_FP "stun_allow_fp"
-
 SERVER_ID     "server_id"
 
 LATENCY_LOG				latency_log
@@ -561,7 +557,7 @@ COLON		":"
 STAR		\*
 DOT			\.
 CR			\n
-EVENT_RT_NAME [a-zA-Z][0-9a-zA-Z-]*":"[a-zA-Z][0-9a-zA-Z-]*
+EVENT_RT_NAME [a-zA-Z][0-9a-zA-Z-]*(":"[a-zA-Z][0-9a-zA-Z-]*)+
 
 
 COM_LINE	#
@@ -712,6 +708,7 @@ IMPORTFILE      "import_file"
 <INITIAL>{DEBUG}	{ count(); yylval.strval=yytext; return DEBUG_V; }
 <INITIAL>{FORK}		{ count(); yylval.strval=yytext; return FORK; }
 <INITIAL>{FORK_DELAY}	{ count(); yylval.strval=yytext; return FORK_DELAY; }
+<INITIAL>{MODINIT_DELAY}	{ count(); yylval.strval=yytext; return MODINIT_DELAY; }
 <INITIAL>{LOGSTDERROR}	{ yylval.strval=yytext; return LOGSTDERROR; }
 <INITIAL>{LOGFACILITY}	{ yylval.strval=yytext; return LOGFACILITY; }
 <INITIAL>{LOGNAME}	{ yylval.strval=yytext; return LOGNAME; }
@@ -984,10 +981,6 @@ IMPORTFILE      "import_file"
 <INITIAL>{LOADMODULE}	{ count(); yylval.strval=yytext; return LOADMODULE; }
 <INITIAL>{LOADPATH}		{ count(); yylval.strval=yytext; return LOADPATH; }
 <INITIAL>{MODPARAM}     { count(); yylval.strval=yytext; return MODPARAM; }
-
-<INITIAL>{STUN_REFRESH_INTERVAL} { count(); yylval.strval=yytext; return STUN_REFRESH_INTERVAL;}
-<INITIAL>{STUN_ALLOW_STUN} { count(); yylval.strval=yytext; return STUN_ALLOW_STUN;}
-<INITIAL>{STUN_ALLOW_FP} { count(); yylval.strval=yytext; return STUN_ALLOW_FP;}
 
 <INITIAL>{EQUAL}	{ count(); return EQUAL; }
 <INITIAL>{ADDEQ}          { count(); return ADDEQ; }

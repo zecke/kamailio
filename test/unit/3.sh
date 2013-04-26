@@ -34,7 +34,7 @@ source dbrootpw
 
 tmp_name=""$RANDOM"_kamailiodb_tmp"
 
-cd ../scripts
+cd $CTL_DIR
 
 # setup config file
 cp $CTLRC $CTLRC.bak
@@ -62,5 +62,4 @@ mv $CTLRC.bak $CTLRC
 mv $DBCTL.mysql.bak $DBCTL.mysql
 mv $DBCTL.bak $DBCTL
 
-cd ../test
 exit $ret

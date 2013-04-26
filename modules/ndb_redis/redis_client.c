@@ -366,6 +366,10 @@ int redisc_exec(str *srv, str *res, str *cmd, ...)
 		if(redisc_reconnect_server(rsrv)==0)
 		{
 			rpl->rplRedis = redisvCommand(rsrv->ctxRedis, cmd->s, ap);
+		} else {
+			LM_ERR("unable to reconnect to redis server: %.*s\n", srv->len, srv->s);
+			cmd->s[cmd->len] = c;
+			goto error_exec;
 		}
 	}
 	cmd->s[cmd->len] = c;
@@ -479,7 +483,7 @@ redisc_reply_t *redisc_get_reply(str *name)
  */
 int redisc_free_reply(str *name)
 {
-	redisc_reply_t *rpl, *next_rpl;
+	redisc_reply_t *rpl;
 	unsigned int hid;
 
 	if(name==NULL || name->len==0) {
@@ -494,7 +498,6 @@ int redisc_free_reply(str *name)
 
 		if(rpl->hname==hid && rpl->rname.len==name->len
 		   && strncmp(rpl->rname.s, name->s, name->len)==0) {
-			next_rpl = rpl->next;
 			if(rpl->rplRedis) {
 				freeReplyObject(rpl->rplRedis);
 				rpl->rplRedis = NULL;

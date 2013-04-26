@@ -21,7 +21,7 @@
 
 source include/common
 
-cd ../scripts
+cd $CTL_DIR
 
 # setup config file
 cp $CTLRC $CTLRC.bak
@@ -47,5 +47,4 @@ fi ;
 mv $CTLRC.bak $CTLRC
 mv $CTL.bak $CTL
 
-cd ../test
 exit $ret

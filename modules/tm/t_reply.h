@@ -161,6 +161,11 @@ int run_failure_handlers(struct cell *t, struct sip_msg *rpl,
 					int code, int extra_flags);
 typedef int (*run_failure_handlers_f)(struct cell*, struct sip_msg*, int, int);
 
+/* return 1 if a branch_failure_route processes */
+int run_branch_failure_handlers(struct cell *t, struct sip_msg *rpl,
+					int code, int extra_flags);
+typedef int (*run_branch_failure_handlers_f)(struct cell*, struct sip_msg*, int, int);
+
 
 /* Retransmits the last sent inbound reply.
  * Returns  -1 - error
@@ -209,6 +214,8 @@ void on_failure_reply( struct cell* t, struct sip_msg* msg,
 */
 void t_on_failure( unsigned int go_to );
 unsigned int get_on_failure(void);
+void t_on_branch_failure( unsigned int go_to );
+unsigned int get_on_branch_failure(void);
 void t_on_reply( unsigned int go_to );
 unsigned int get_on_reply(void);
 
@@ -236,5 +243,8 @@ void free_faked_req(struct sip_msg *faked_req, struct cell *t);
 
 typedef int (*tget_picked_f)(void);
 int t_get_picked_branch(void);
+
+int t_get_this_branch_instance(struct sip_msg *msg, str *instance);
+int t_get_this_branch_ruid(struct sip_msg *msg, str *ruid);
 
 #endif

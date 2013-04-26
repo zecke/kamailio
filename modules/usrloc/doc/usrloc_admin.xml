@@ -588,6 +588,15 @@ modparam("usrloc", "db_url", "&exampledb;")
 			caching also disable the statistics exports.
 			</para>
 		</listitem>
+		<listitem>
+			<para>
+			4 - This uses database to load records at startup but uses only
+			memory during the runtime. Records are not written back at all,
+			not even at shutdown. Useful for scenarios when registrations are
+			replicated to a node that does the storage in database during
+			runtime.
+			</para>
+		</listitem>
 		</itemizedlist>
 		<warning>
 		<para>
@@ -839,6 +848,28 @@ modparam("usrloc", "timer_procs", 4)
 		<programlisting format="linespecific">
 ...
 modparam("usrloc", "xavp_contact", "ulattrs")
+...
+</programlisting>
+		</example>
+	</section>
+
+	<section id="usrloc.p.db_obs_ruid">
+		<title><varname>db_obs_ruid</varname> (string)</title>
+		<para>
+			If set to 1, database queries for update or delete are done using
+			ruid value. If it is set to 0, the old style using aor, contact and
+			call-id is done.
+		</para>
+		<para>
+		<emphasis>
+			Default value is <quote>0</quote>.
+		</emphasis>
+		</para>
+		<example>
+		<title>Set <varname>db_obs_ruid</varname> parameter</title>
+		<programlisting format="linespecific">
+...
+modparam("usrloc", "db_obs_ruid", 1)
 ...
 </programlisting>
 		</example>

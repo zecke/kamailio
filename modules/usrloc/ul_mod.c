@@ -118,6 +118,8 @@ int ul_timer_procs = 0;
 int ul_db_check_update = 0;
 int ul_keepalive_timeout = 0;
 
+int ul_db_ops_ruid = 0;
+
 str ul_xavp_contact_name = {0};
 
 /* sruid to get internal uid for mi/rpc commands */
@@ -217,6 +219,7 @@ static param_export_t params[] = {
 	{"timer_procs",         INT_PARAM, &ul_timer_procs},
 	{"db_check_update",     INT_PARAM, &ul_db_check_update},
 	{"xavp_contact",        STR_PARAM, &ul_xavp_contact_name.s},
+	{"db_ops_ruid",         INT_PARAM, &ul_db_ops_ruid},
 	{0, 0, 0}
 };
 
@@ -395,6 +398,9 @@ static int child_init(int _rank)
 	dlist_t* ptr;
 	int i;
 
+	if(sruid_init(&_ul_sruid, '-', "ulcx", SRUID_INC)<0)
+		return -1;
+
 	if(_rank==PROC_MAIN && ul_timer_procs>0)
 	{
 		for(i=0; i<ul_timer_procs; i++)
@@ -413,15 +419,19 @@ static int child_init(int _rank)
 			return 0;
 		case DB_ONLY:
 		case WRITE_THROUGH:
-			/* we need connection from working SIP and TIMER and MAIN
-			 * processes only */
+			/* connect to db only from SIP workers, TIMER and MAIN processes */
 			if (_rank<=0 && _rank!=PROC_TIMER && _rank!=PROC_MAIN)
 				return 0;
 			break;
 		case WRITE_BACK:
-			/* connect only from TIMER (for flush), from MAIN (for
+			/* connect to db only from TIMER (for flush), from MAIN (for
 			 * final flush() and from child 1 for preload */
-			if (_rank!=PROC_TIMER && _rank!=PROC_MAIN && _rank!=1)
+			if (_rank!=PROC_TIMER && _rank!=PROC_MAIN && _rank!=PROC_SIPINIT)
+				return 0;
+			break;
+		case DB_READONLY:
+			/* connect to db only from child 1 for preload */
+			if(_rank!=PROC_SIPINIT)
 				return 0;
 			break;
 	}
@@ -432,7 +442,7 @@ static int child_init(int _rank)
 		return -1;
 	}
 	/* _rank==PROC_SIPINIT is used even when fork is disabled */
-	if (_rank==PROC_SIPINIT && db_mode!= DB_ONLY) {
+	if (_rank==PROC_SIPINIT && db_mode!=DB_ONLY) {
 		/* if cache is used, populate domains from DB */
 		for( ptr=root ; ptr ; ptr=ptr->next) {
 			if (preload_udomain(ul_dbh, ptr->d) < 0) {
@@ -463,6 +473,9 @@ static int mi_child_init(void)
 			return -1;
 		}
 	}
+
+	if(sruid_init(&_ul_sruid, '-', "ulcx", SRUID_INC)<0)
+		return -1;
 	done = 1;
 
 	return 0;

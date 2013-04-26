@@ -37,14 +37,18 @@
 #include "../../dprint.h"
 #include "../../parser/parse_uri.h"
 #include "../../parser/parse_from.h"
+#include "../../parser/parse_rr.h"
 #include "../../str.h"
 #include "../../data_lump.h"
 #include "record.h"
 #include "rr_mod.h"
 
 
-#define RR_PREFIX "Record-Route: <sip:"
-#define RR_PREFIX_LEN (sizeof(RR_PREFIX)-1)
+#define RR_PREFIX_SIP "Record-Route: <sip:"
+#define RR_PREFIX_SIP_LEN (sizeof(RR_PREFIX_SIP)-1)
+
+#define RR_PREFIX_SIPS "Record-Route: <sips:"
+#define RR_PREFIX_SIPS_LEN (sizeof(RR_PREFIX_SIPS)-1)
 
 #define RR_LR ";lr"
 #define RR_LR_LEN (sizeof(RR_LR)-1)
@@ -77,6 +81,15 @@ static unsigned int rr_param_msg;
 
 static pv_spec_t *custom_user_avp;		/*!< AVP for custom_user setting */
 
+
+inline static int rr_is_sips(sip_msg_t *_m)
+{
+	if(parse_sip_msg_uri(_m)<0)
+		return 0;
+	if(_m->parsed_uri.type==SIPS_URI_T)
+		return 1;
+	return 0;
+}
 
 void init_custom_user(pv_spec_t *custom_user_avp_p)
 {
@@ -187,13 +200,23 @@ static inline struct lump *insert_rr_param_lump(struct lump *before,
  * \return 0 on success, negative on failure
  */
 static inline int build_rr(struct lump* _l, struct lump* _l2, str* user,
-				str *tag, str *params, int _inbound, int _use_ob)
+				str *tag, str *params, int _inbound, int _sips)
 {
 	char* prefix, *suffix, *term, *r2;
 	int suffix_len, prefix_len;
 	char *p;
+	char *rr_prefix;
+	int rr_prefix_len;
 
-	prefix_len = RR_PREFIX_LEN + (user->len ? (user->len + 1) : 0);
+	if(_sips==0) {
+		rr_prefix = RR_PREFIX_SIP;
+		rr_prefix_len = RR_PREFIX_SIP_LEN;
+	} else {
+		rr_prefix = RR_PREFIX_SIPS;
+		rr_prefix_len = RR_PREFIX_SIPS_LEN;
+	}
+
+	prefix_len = rr_prefix_len + (user->len ? (user->len + 1) : 0);
 	if (enable_full_lr) {
 		suffix_len = RR_LR_FULL_LEN + (params?params->len:0) +
 				((tag && tag->len) ? (RR_FROMTAG_LEN + tag->len) : 0);
@@ -216,21 +239,21 @@ static inline int build_rr(struct lump* _l, struct lump* _l2, str* user,
 		return -3;
 	}
 	
-	memcpy(prefix, RR_PREFIX, RR_PREFIX_LEN);
+	memcpy(prefix, rr_prefix, rr_prefix_len);
 	if (user->len) {
-		memcpy(prefix + RR_PREFIX_LEN, user->s, user->len);
+		memcpy(prefix + rr_prefix_len, user->s, user->len);
 #ifdef ENABLE_USER_CHECK
 		/* don't add the ignored user into a RR */
 		if(i_user.len && i_user.len == user->len && 
 				!strncmp(i_user.s, user->s, i_user.len))
 		{
-			if(prefix[RR_PREFIX_LEN]=='x')
-				prefix[RR_PREFIX_LEN]='y';
+			if(prefix[rr_prefix_len]=='x')
+				prefix[rr_prefix_len]='y';
 			else
-				prefix[RR_PREFIX_LEN]='x';
+				prefix[rr_prefix_len]='x';
 		}
 #endif
-		prefix[RR_PREFIX_LEN + user->len] = '@';
+		prefix[rr_prefix_len + user->len] = '@';
 	}
 
 	p = suffix;
@@ -261,7 +284,7 @@ static inline int build_rr(struct lump* _l, struct lump* _l2, str* user,
 	_l = insert_subst_lump_after(_l, _inbound?SUBST_RCV_ALL:SUBST_SND_ALL, 0);
 	if (_l ==0 )
 		goto lump_err;
-	if (enable_double_rr && !_use_ob) {
+	if (enable_double_rr) {
 		if (!(_l = insert_cond_lump_after(_l, COND_IF_DIFF_REALMS, 0)))
 			goto lump_err;
 		if (!(_l = insert_new_lump_after(_l, r2, RR_R2_LEN, 0)))
@@ -294,6 +317,51 @@ lump_err:
 	return -4;
 }
 
+/*!
+ * \brief Copy flow-token from top-Route: to a string
+ *
+ * Copy the user part of the top-Route: to a string (allocating private memory
+ * for this).
+ * \param token where the user-part of the top-Route: will be copied to
+ * \param _m the SIP message to extract the top-Route: from
+ * \return 0 on success, negative on failure
+ */
+static int copy_flow_token(str *token, struct sip_msg *_m)
+{
+	rr_t *rt;
+	struct sip_uri puri;
+
+	if (_m->route
+	    || (parse_headers(_m, HDR_ROUTE_F, 0) != -1 && _m->route)) {
+		if (parse_rr(_m->route) < 0) {
+			LM_ERR("parsing Route: header body\n");
+			return -1;
+		}
+		rt = (rr_t *) _m->route->parsed;
+		if (!rt) {
+			LM_ERR("empty Route:\n");
+			return -1;
+		}
+		if (parse_uri(rt->nameaddr.uri.s, rt->nameaddr.uri.len,
+				&puri) < 0) {
+			LM_ERR("parsing Route-URI\n");
+			return -1;
+		}
+
+		token->s = pkg_malloc(puri.user.len * sizeof(char));
+		if (token->s == NULL) {
+			LM_ERR("allocating memory\n");
+			return -1;
+		}
+		memcpy(token->s, puri.user.s, puri.user.len);
+		token->len = puri.user.len;
+		return 0;
+	}
+
+	LM_ERR("no Route: headers found\n");
+	return -1;
+}
+
 
 /*!
  * \brief Insert a new Record-Route header field with lr parameter
@@ -311,6 +379,7 @@ int record_route(struct sip_msg* _m, str *params)
 	struct to_body* from = NULL;
 	str* tag;
 	int use_ob = rr_obb.use_outbound ? rr_obb.use_outbound(_m) : 0;
+	int sips;
 	
 	user.len = 0;
 	
@@ -322,9 +391,14 @@ int record_route(struct sip_msg* _m, str *params)
 				return -1;
 			}
 		}
-	} else if (use_ob) {
+	} else if (use_ob == 1) {
 		if (rr_obb.encode_flow_token(&user, _m->rcv) != 0) {
 			LM_ERR("encoding outbound flow-token\n");
+			return -1;
+		}
+	} else if (use_ob == 2) {
+		if (copy_flow_token(&user, _m) != 0) {
+			LM_ERR("copying outbound flow-token\n");
 			return -1;
 		}
 	}
@@ -345,7 +419,9 @@ int record_route(struct sip_msg* _m, str *params)
 		rr_param_buf.len = 0;
 	}
 
-	if (enable_double_rr && !use_ob) {
+	sips = rr_is_sips(_m);
+
+	if (enable_double_rr) {
 		l = anchor_lump(_m, _m->headers->name.s - _m->buf,0,HDR_RECORDROUTE_T);
 		l2 = anchor_lump(_m, _m->headers->name.s - _m->buf, 0, 0);
 		if (!l || !l2) {
@@ -358,7 +434,7 @@ int record_route(struct sip_msg* _m, str *params)
 			LM_ERR("failed to insert conditional lump\n");
 			return -6;
 		}
-		if (build_rr(l, l2, &user, tag, params, OUTBOUND, 0) < 0) {
+		if (build_rr(l, l2, &user, tag, params, OUTBOUND, sips) < 0) {
 			LM_ERR("failed to insert outbound Record-Route\n");
 			return -7;
 		}
@@ -371,8 +447,7 @@ int record_route(struct sip_msg* _m, str *params)
 		return -3;
 	}
 	
-	if (build_rr(l, l2, &user, tag, params, use_ob ? OUTBOUND : INBOUND,
-			use_ob) < 0) {
+	if (build_rr(l, l2, &user, tag, params, INBOUND, sips) < 0) {
 		LM_ERR("failed to insert inbound Record-Route\n");
 		return -4;
 	}
@@ -401,7 +476,19 @@ int record_route_preset(struct sip_msg* _m, str* _data)
 	char* hdr, *p;
 	int hdr_len;
 	int use_ob = rr_obb.use_outbound ? rr_obb.use_outbound(_m) : 0;
-	
+	char *rr_prefix;
+	int rr_prefix_len;
+	int sips;
+
+	sips = rr_is_sips(_m);
+	if(sips==0) {
+		rr_prefix = RR_PREFIX_SIP;
+		rr_prefix_len = RR_PREFIX_SIP_LEN;
+	} else {
+		rr_prefix = RR_PREFIX_SIPS;
+		rr_prefix_len = RR_PREFIX_SIPS_LEN;
+	}
+
 	from = 0;
 	user.len = 0;
 	user.s = 0;
@@ -411,9 +498,14 @@ int record_route_preset(struct sip_msg* _m, str* _data)
 			LM_ERR("failed to extract username\n");
 			return -1;
 		}
-	} else if (use_ob) {
+	} else if (use_ob == 1) {
 		if (rr_obb.encode_flow_token(&user, _m->rcv) != 0) {
 			LM_ERR("encoding outbound flow-token\n");
+			return -1;
+		}
+	} else if (use_ob == 2) {
+		if (copy_flow_token(&user, _m) != 0) {
+			LM_ERR("copying outbound flow-token\n");
 			return -1;
 		}
 	}
@@ -432,7 +524,7 @@ int record_route_preset(struct sip_msg* _m, str* _data)
 		return -3;
 	}
 
-	hdr_len = RR_PREFIX_LEN;
+	hdr_len = rr_prefix_len;
 	if (user.len)
 		hdr_len += user.len + 1; /* @ */
 	hdr_len += _data->len;
@@ -456,8 +548,8 @@ int record_route_preset(struct sip_msg* _m, str* _data)
 	}
 
 	p = hdr;
-	memcpy(p, RR_PREFIX, RR_PREFIX_LEN);
-	p += RR_PREFIX_LEN;
+	memcpy(p, rr_prefix, rr_prefix_len);
+	p += rr_prefix_len;
 
 	if (user.len) {
 		memcpy(p, user.s, user.len);
@@ -508,13 +600,23 @@ int record_route_preset(struct sip_msg* _m, str* _data)
 #define RR_TRANS_LEN 11
 #define RR_TRANS ";transport="
 static inline int build_advertised_rr(struct lump* _l, struct lump* _l2, str *_data,
-				str* user, str *tag, int _inbound, int _use_ob)
+				str* user, str *tag, int _inbound, int _sips)
 {
 	char *p;
 	char *hdr, *trans, *r2, *suffix, *term;
 	int hdr_len, suffix_len;
+	char *rr_prefix;
+	int rr_prefix_len;
 
-	hdr_len = RR_PREFIX_LEN;
+	if(_sips==0) {
+		rr_prefix = RR_PREFIX_SIP;
+		rr_prefix_len = RR_PREFIX_SIP_LEN;
+	} else {
+		rr_prefix = RR_PREFIX_SIPS;
+		rr_prefix_len = RR_PREFIX_SIPS_LEN;
+	}
+
+	hdr_len = rr_prefix_len;
 	if (user && user->len)
 		hdr_len += user->len + 1; /* @ */
 	hdr_len += _data->len;
@@ -546,8 +648,8 @@ static inline int build_advertised_rr(struct lump* _l, struct lump* _l2, str *_d
 	}
 
 	p = hdr;
-	memcpy(p, RR_PREFIX, RR_PREFIX_LEN);
-	p += RR_PREFIX_LEN;
+	memcpy(p, rr_prefix, rr_prefix_len);
+	p += rr_prefix_len;
 
 	if (user->len) {
 		memcpy(p, user->s, user->len);
@@ -590,7 +692,7 @@ static inline int build_advertised_rr(struct lump* _l, struct lump* _l2, str *_d
 		goto lump_err;
 	if (!(_l = insert_subst_lump_after(_l, _inbound?SUBST_RCV_PROTO:SUBST_SND_PROTO, 0)))
 		goto lump_err;
-	if (enable_double_rr && !_use_ob) {
+	if (enable_double_rr) {
 		if (!(_l = insert_cond_lump_after(_l, COND_IF_DIFF_REALMS, 0)))
 			goto lump_err;
 		if (!(_l = insert_new_lump_after(_l, r2, RR_R2_LEN, 0)))
@@ -625,6 +727,7 @@ int record_route_advertised_address(struct sip_msg* _m, str* _data)
 	struct lump* l;
 	struct lump* l2;
 	int use_ob = rr_obb.use_outbound ? rr_obb.use_outbound(_m) : 0;
+	int sips;
 	
 	user.len = 0;
 	user.s = 0;
@@ -634,9 +737,14 @@ int record_route_advertised_address(struct sip_msg* _m, str* _data)
 			LM_ERR("failed to extract username\n");
 			return -1;
 		}
-	} else if (use_ob) {
+	} else if (use_ob == 1) {
 		if (rr_obb.encode_flow_token(&user, _m->rcv) != 0) {
 			LM_ERR("encoding outbound flow-token\n");
+			return -1;
+		}
+	} else if (use_ob == 2) {
+		if (copy_flow_token(&user, _m) != 0) {
+			LM_ERR("copying outbound flow-token\n");
 			return -1;
 		}
 	}
@@ -649,7 +757,9 @@ int record_route_advertised_address(struct sip_msg* _m, str* _data)
 		tag = &((struct to_body*)_m->from->parsed)->tag_value;
 	}
 
-	if (enable_double_rr && !use_ob) {
+	sips = rr_is_sips(_m);
+
+	if (enable_double_rr) {
 		l = anchor_lump(_m, _m->headers->name.s - _m->buf,0,HDR_RECORDROUTE_T);
 		l2 = anchor_lump(_m, _m->headers->name.s - _m->buf, 0, 0);
 		if (!l || !l2) {
@@ -663,7 +773,7 @@ int record_route_advertised_address(struct sip_msg* _m, str* _data)
 			return -4;
 		}
 		if (build_advertised_rr(l, l2, _data, &user, tag, OUTBOUND,
-					0) < 0) {
+					sips) < 0) {
 			LM_ERR("failed to insert outbound Record-Route\n");
 			return -5;
 		}
@@ -676,9 +786,7 @@ int record_route_advertised_address(struct sip_msg* _m, str* _data)
 		return -6;
 	}
 	
-	if (build_advertised_rr(l, l2, _data, &user, tag,
-				use_ob ? OUTBOUND: INBOUND,
-				use_ob) < 0) {
+	if (build_advertised_rr(l, l2, _data, &user, tag, INBOUND, sips) < 0) {
 		LM_ERR("failed to insert outbound Record-Route\n");
 		return -7;
 	}
@@ -730,7 +838,7 @@ int add_rr_param(struct sip_msg* msg, str* rr_param)
 			goto error;
 		}
 		/* double routing enabled? */
-		if (enable_double_rr && !(rr_obb.use_outbound && rr_obb.use_outbound(msg))) {
+		if (enable_double_rr) {
 			if (root==0 || (last_param=get_rr_param_lump(&root))==0) {
 				LM_CRIT("failed to locate double RR lump\n");
 				goto error;

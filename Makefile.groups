@@ -16,9 +16,9 @@ mod_list_basic=async auth benchmark blst cfg_rpc cfgutils corex counters \
 				   textopsx tm tmx topoh xlog
 
 # - extra used modules, with no extra dependency
-mod_list_extra=avp auth_diameter call_control dmq domainpolicy msrp pdb qos \
-				 sca seas sms sst timer tmrec uac_redirect xhttp xhttp_rpc \
-				 xprint
+mod_list_extra=avp auth_diameter call_control cnxcc dmq domainpolicy msrp pdb \
+			     qos sca seas sms sst timer tmrec uac_redirect xhttp \
+				 xhttp_rpc xprint
 
 # - common modules depending on database
 mod_list_db=acc alias_db auth_db avpops cfg_db db_text db_flatstore \
@@ -95,6 +95,12 @@ mod_list_outbound=outbound
 # - modules depending on unistring library
 mod_list_websocket=websocket
 
+# - modules depending on openssl library
+mod_list_stun=stun
+
+# - modules depending on libval-threads libcrypto libsres libpthread
+mod_list_dnssec=dnssec
+
 # - modules related to SIMPLE presence extensions
 mod_list_presence=presence presence_conference presence_dialoginfo \
 					   presence_mwi presence_profile presence_reginfo \
@@ -165,7 +171,8 @@ mod_list_all=$(sort $(mod_list_basic) $(mod_list_extra) \
 			   $(mod_list_cassandra) $(mod_list_oracle) \
 			   $(mod_list_iptrtpproxy) $(mod_list_mi_xmlrpc) \
 			   $(mod_list_outbound) $(mod_list_osp) \
-			   $(mod_list_java) )
+			   $(mod_list_java) $(mod_list_stun) \
+			   $(mod_list_dnssec))
 
 
 
@@ -313,6 +320,12 @@ module_group_koutbound=$(mod_list_outbound)
 
 # pkg java module
 module_group_kjava=$(mod_list_java)
+
+# pkg stun module
+module_group_kstun=$(mod_list_stun)
+
+# pkg dnssec module
+module_group_kdnssec=$(mod_list_dnssec)
 
 # list of static modules
 #

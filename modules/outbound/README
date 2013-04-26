@@ -4,7 +4,7 @@ Peter Dunkley
 
    Crocodile RCS Ltd
 
-   Copyright © 2012 Crocodile RCS Ltd
+   Copyright (c) 2012-2013 Crocodile RCS Ltd
      __________________________________________________________________
 
    Table of Contents
@@ -24,18 +24,17 @@ Peter Dunkley
         3. Parameters
 
               3.1. force_outbound_flag (integer)
-              3.2. flow_token_key (string)
+              3.2. force_no_outbound_flag (integer)
 
         4. Functions
         5. MI Commands
 
    List of Examples
 
-   1.1. Compiling Kamailio with STUN support
-   1.2. Edge Proxy Configuration
-   1.3. Registrar Configuration
-   1.4. Set force_outbound_flag parameter
-   1.5. Set flow_token_key parameter
+   1.1. Edge Proxy Configuration
+   1.2. Registrar Configuration
+   1.3. Set force_outbound_flag parameter
+   1.4. Set force_no_outbound_flag parameter
 
 Chapter 1. Admin Guide
 
@@ -54,7 +53,7 @@ Chapter 1. Admin Guide
    3. Parameters
 
         3.1. force_outbound_flag (integer)
-        3.2. flow_token_key (string)
+        3.2. force_no_outbound_flag (integer)
 
    4. Functions
    5. MI Commands
@@ -73,12 +72,7 @@ Chapter 1. Admin Guide
 1.1. Edge Proxy Keep-Alives (STUN)
 
    Outbound Edge Proxies MUST support STUN NAT keep-alives on their SIP
-   UDP ports. Kamailio supports this as a compile-time option that is
-   disabled by default.
-
-   Example 1.1. Compiling Kamailio with STUN support
-make FLAVOUR=kamailio cfg STUN=1
-make all
+   UDP ports. Kamailio supports this though the "stun" module.
 
 1.2. Flow Timer
 
@@ -101,64 +95,134 @@ make all
    the Registrar flow timer interval and a little less than the
    "tcp_connection_lifetime".
 
-   Example 1.2. Edge Proxy Configuration
-...
-#!define FLOW_TIMER     20
-...
-tcp_connection_lifetime=FLOW_TIMER+10
-...
-loadmodule "websocket.so"
+   Example 1.1. Edge Proxy Configuration
+#!KAMAILIO
+#
+# Edge proxy configuration
+#
+
+#!subst "/REGISTRAR_IP/192.168.122.3/"
+#!subst "/REGISTRAR_PORT/5060/"
+#!substdef "/FLOW_TIMER/20/"
+
+####### Global Parameters #########
+
+debug=2
+log_stderror=no
+log_facility=LOG_LOCAL0
+fork=yes
+children=4
+alias="example.com"
+mpath="/usr/lib64/kamailio/modules"
+tcp_connection_lifetime=30 # FLOW_TIMER + 10
+force_rport=yes
+
+
+####### Modules Section ########
+
+loadmodule "tm.so"
+loadmodule "sl.so"
 loadmodule "outbound.so"
 loadmodule "rr.so"
 loadmodule "path.so"
-...
-modparam("websocket", "keepalive_timeout", FLOW_TIMER+5)
-...
-modparam("outbound", "flow_token_key", "!!!Kamailio rocks!!!")
-...
-route {
+loadmodule "pv.so"
+loadmodule "maxfwd.so"
+loadmodule "xlog.so"
+loadmodule "sanity.so"
+loadmodule "ctl.so"
+loadmodule "mi_rpc.so"
+loadmodule "mi_fifo.so"
+loadmodule "textops.so"
+loadmodule "siputils.so"
+loadmodule "stun.so"
+
+# ----------------- setting module-specific parameters ---------------
+
+# ----- mi_fifo params -----
+modparam("mi_fifo", "fifo_name", "/tmp/kamailio_fifo")
+
+# ----- tm params -----
+modparam("tm", "failure_reply_mode", 3)
+
+# ----- rr params -----
+modparam("rr", "append_fromtag", 0)
+
+
+####### Routing Logic ########
+
+request_route {
         route(REQINIT);
-        ...
-        t_check_trans();
 
-        if (is_method("INVITE|SUBSCRIBE")) {
-                record_route();
-
-                if ($rU==$null) {
-                        sl_send_reply("484", "Address Incomplete");
-                        exit;
-                }
-
-                if (!loose_route()) {
-                        switch($rc) {
-                        case -2:
-                                # Flow-token has been tampered with
-                                sl_send_reply("403", "Forbidden");
-                                exit;
-                        case -1:
-                                # Handle -1 here if all dialog forming requests
-                                # must be outbound routed
-                        }
-                }
-
-                t_on_failure("FAIL_OUTBOUND");
-                route(RELAY);
-        } else if (is_method("REGISTER")) {
-                add_path();
-                if (!t_relay("### Registrar ###")) {
-                        sl_reply_error();
+        if (is_method("CANCEL")) {
+                if (t_check_trans()) {
+                        route(RELAY);
                 }
                 exit;
         }
+
+        route(WITHINDLG);
+
+        t_check_trans();
+
+        if (is_method("REGISTER")) {
+                remove_hf("Route");
+                add_path();
+                $du = "sip:REGISTRAR_IP:REGISTRAR_PORT";
+        } else {
+                if (is_method("INVITE|SUBSCRIBE"))
+                        record_route();
+
+                if (@via[2] == "") {
+                        # From client so route to registrar...
+
+                        if ($rU == $null) {
+                                sl_send_reply("484", "Address Incomplete");
+                                exit;
+                        }
+                        remove_hf("Route");
+                        $du = "sip:REGISTRAR_IP:REGISTRAR_PORT";
+                } else {
+                        # From registrar so route using "Route:" headers...
+
+                        if (!loose_route()) {
+                                switch($rc) {
+                                case -2:
+                                        sl_send_reply("403", "Forbidden");
+                                        exit;
+                                default:
+                                        xlog("L_ERR", "in request_route\n");
+                                        sl_reply_error();
+                                        exit;
+                                }
+                        }
+
+                        t_on_failure("FAIL_OUTBOUND");
+                }
+        }
+
+        route(RELAY);
 }
 
 route[RELAY] {
         if (!t_relay()) {
-                sl_send_reply("430", "Flow Failed");
+                sl_reply_error();
         }
         exit;
 }
-...
+
+route[REQINIT] {
+        if (!mf_process_maxfwd_header("10")) {
+                sl_send_reply("483","Too Many Hops");
+                exit;
+        }
+
+        if(!sanity_check("1511", "7"))
+        {
+                xlog("Malformed SIP message from $si:$sp\n");
+                exit;
+        }
+}
+
 route[WITHINDLG] {
         if (has_totag()) {
                 if (!loose_route()) {
@@ -166,36 +230,37 @@ route[WITHINDLG] {
                         case -2:
                                 sl_send_reply("403", "Forbidden");
                                 exit;
-                        case -1:
+                        default:
                                 if (is_method("ACK")) {
-                                        if (t_check_trans()) {
-                                                t_relay();
+                                        if ( t_check_trans() ) {
+                                                route(RELAY);
                                                 exit;
                                         } else {
                                                 exit;
                                         }
                                 }
-                                sl_send_reply("404", "Not Found");
+                                sl_send_reply("404","Not Found");
                         }
                 } else {
+                        if (is_method("NOTIFY")) {
+                                record_route();
+                        }
                         route(RELAY);
                 }
                 exit;
         }
 }
-...
+
 onreply_route {
         if (!t_check_trans()) {
                 drop;
         }
 
-        if ($rm == "REGISTER" && $rs >= 200 && $rs <= 299)
-        {
+        if ($rm == "REGISTER" && $rs >= 200 && $rs <= 299) {
+                remove_hf("Flow-Timer");
                 if ($(hdr(Require)[*])=~"outbound")
                         insert_hf("Flow-Timer: FLOW_TIMER\r\n", "Call-ID");
         }
-
-...
 }
 
 failure_route[FAIL_OUTBOUND] {
@@ -203,26 +268,155 @@ failure_route[FAIL_OUTBOUND] {
                 send_reply("430", "Flow Failed");
         }
 }
-...
 
-   Example 1.3. Registrar Configuration
-...
+   Example 1.2. Registrar Configuration
+MAILIO
+#
+# Registrar configuration
+#
+
+
+####### Global Parameters #########
+
+debug=2
+log_stderror=no
+log_facility=LOG_LOCAL0
+fork=yes
+children=4
+alias="example.com"
+mpath="/usr/lib64/kamailio/modules"
+
+
+####### Modules Section ########
+
 loadmodule "tm.so"
-...
+loadmodule "tmx.so"
+loadmodule "sl.so"
+loadmodule "rr.so"
+loadmodule "pv.so"
+loadmodule "maxfwd.so"
+loadmodule "xlog.so"
+loadmodule "sanity.so"
+loadmodule "ctl.so"
+loadmodule "mi_rpc.so"
+loadmodule "mi_fifo.so"
+loadmodule "textops.so"
+loadmodule "siputils.so"
+loadmodule "usrloc.so"
 loadmodule "registrar.so"
-...
-modparam("tm", "contacts_avp", "tm_contacts")
+
+# ----------------- setting module-specific parameters ---------------
+
+# ----- mi_fifo params -----
+modparam("mi_fifo", "fifo_name", "/tmp/kamailio_fifo")
+
+
+# ----- tm params -----
+modparam("tm", "failure_reply_mode", 3)
+modparam("tm", "restart_fr_on_each_reply", 0)
 modparam("tm", "contact_flows_avp", "tm_contact_flows")
-...
+modparam("tm", "contacts_avp", "tm_contacts")
+
+# ----- rr params -----
+modparam("rr", "append_fromtag", 0)
+
+# ----- registrar params -----
 modparam("registrar", "use_path", 1)
-modparam("registrar", "path_mode", 2)
-modparam("registrar", "outbound_mode", 2)
-...
+modparam("registrar", "gruu_enabled", 1)
+modparam("registrar", "outbound_mode", 1)
+
+
+####### Routing Logic ########
+
+request_route {
+        route(REQINIT);
+
+        if (is_method("CANCEL")) {
+                if (t_check_trans()) {
+                        route(RELAY);
+                }
+                exit;
+        }
+
+        route(WITHINDLG);
+
+        t_check_trans();
+
+        remove_hf("Route");
+        if (is_method("INVITE|SUBSCRIBE"))
+                record_route();
+
+        route(REGISTRAR);
+
+        if ($rU==$null) {
+                xlog("L_INFO", "Address Incomplete\n");
+                send_reply("484","Address Incomplete");
+                exit;
+        }
+
+        route(LOCATION);
+}
+
+
+route[RELAY] {
+        if (!t_relay()) {
+                xlog("L_ERR", "t_relay() failed\n");
+                sl_reply_error();
+        }
+        exit;
+}
+
+route[REQINIT] {
+        if (!mf_process_maxfwd_header("10")) {
+                xlog("L_INFO", "Too Many Hops\n");
+                send_reply("483","Too Many Hops");
+                exit;
+        }
+
+        if(!sanity_check("1511", "7"))
+        {
+                xlog("Malformed SIP message from $si:$sp\n");
+                exit;
+        }
+}
+
+route[WITHINDLG] {
+        if (has_totag()) {
+                if (loose_route()) {
+                        if (is_method("NOTIFY")) {
+                                record_route();
+                        }
+                        route(RELAY);
+                } else {
+                        if (is_method("ACK")) {
+                                if (t_check_trans()) {
+                                        route(RELAY);
+                                        exit;
+                                } else {
+                                        exit;
+                                }
+                        }
+                        xlog("L_INFO", "Not Found");
+                        send_reply("404","Not Found");
+                }
+                exit;
+        }
+}
+
+route[REGISTRAR] {
+        if (is_method("REGISTER"))
+        {
+                if (!save("location")) {
+                        xlog("L_ERR", "Unable to save location\n");
+                        sl_reply_error();
+                }
+                exit;
+        }
+}
+
 route[LOCATION] {
-...
         if (!lookup("location")) {
                 $var(rc) = $rc;
-                route(TOVOICEMAIL);
                 t_newtran();
                 switch ($var(rc)) {
                         case -1:
@@ -235,35 +429,49 @@ route[LOCATION] {
                 }
         }
 
-        if (!t_load_contacts()) {
-                send_reply("500", "Server Internal Error");
+        if (!t_load_contacts() || !t_next_contacts()) {
+                xlog("L_ERR", "t_(load|next)_contacts() failed\n");
+                sl_reply_error();
                 exit;
         }
 
-        if (!t_next_contacts()) {
-                send_reply("500", "Server Internal Error");
-                exit;
-        }
-
-        t_on_failure("FAIL_OUTBOUND");
-...
+        t_on_failure("FAIL_TRANSACTION");
+        t_on_branch_failure("FAIL-BRANCH");
+        route(RELAY);
+        exit;
 }
-...
-failure_route[FAIL_OUTBOUND] {
-        if (t_check_status("408|430")) {
-                if (!t_next_contact_flows() && !t_next_contacts()) {
-                        send_reply("500", "Server Internal Error");
+
+onreply_route {
+        if (!t_check_trans()) {
+                drop;
+        }
+}
+
+failure_route[FAIL_TRANSACTION] {
+        if (!t_check_status("6[0-9][0-9]")) {
+                if (t_next_contacts()) {
+                        t_relay();
                         exit;
                 }
-        } else if (!t_next_contacts()) {
-                send_reply("500", "Server Internal Error");
-                exit;
         }
 
-        t_on_failure("FAIL_OUTBOUND");
-        route(RELAY);
+        if (t_check_status("430")) {
+                t_reply("480", "Temporarily Unavailable");
+                exit;
+        }
 }
-...
+
+event_route[tm:branch-failure:FAIL-BRANCH] {
+        if (t_check_status("403|430")
+                        || (t_branch_timeout() && !t_branch_replied())) {
+                unregister("location", "$tu", "$T_reply_ruid");
+
+                if (t_next_contact_flow()) {
+                        t_on_branch_failure("FAIL-BRANCH");
+                        t_relay();
+                }
+        }
+}
 
 2. Dependencies
 
@@ -284,7 +492,7 @@ failure_route[FAIL_OUTBOUND] {
 3. Parameters
 
    3.1. force_outbound_flag (integer)
-   3.2. flow_token_key (string)
+   3.2. force_no_outbound_flag (integer)
 
 3.1. force_outbound_flag (integer)
 
@@ -294,26 +502,22 @@ failure_route[FAIL_OUTBOUND] {
 
    Default value is -1.
 
-   Example 1.4. Set force_outbound_flag parameter
+   Example 1.3. Set force_outbound_flag parameter
 ...
 modparam("outbound", "force_outbound_flag", 1)
 ...
 
-3.2. flow_token_key (string)
+3.2. force_no_outbound_flag (integer)
 
-   The outbound flow token is generated using the algorithm described in
-   RFC 5626 section 5.2. This algorithm requires a 20 octet crypto random
-   key that is unique for each Edge Proxy.
+   A flag which, if set for a request, will force path and rr not to add
+   flow tokens to Path: and Record-Route: headers regardless of the
+   request contents.
 
-Note
+   Default value is -1.
 
-   If this 20 character string is not set Kamailio will not start.
-
-   Default value is: "".
-
-   Example 1.5. Set flow_token_key parameter
+   Example 1.4. Set force_no_outbound_flag parameter
 ...
-modparam("outbound", "flow_token_key", "!!!Kamailio rocks!!!")
+modparam("outbound", "force_no_outbound_flag", 2)
 ...
 
 4. Functions

@@ -365,6 +365,12 @@ typedef struct sip_msg {
 	str path_vec;
         str instance;
         unsigned int reg_id;
+	str ruid;
+
+	struct {
+		int decoded;
+		struct receive_info rcv;
+	} flow;
 } sip_msg_t;
 
 /*! \brief pointer to a fakes message which was never received ;
@@ -452,6 +458,10 @@ void reset_path_vector(struct sip_msg* const msg);
 int set_instance(struct sip_msg* msg, str* instance);
 
 void reset_instance(struct sip_msg* const msg);
+
+int set_ruid(struct sip_msg* msg, str* ruid);
+
+void reset_ruid(struct sip_msg* const msg);
 
 /** force a specific send socket for forwarding a request.
  * @param msg - sip msg.
