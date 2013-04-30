@@ -505,6 +505,14 @@ static int w_rx_aar(struct sip_msg *msg, char* str1, char* bar) {
     memcpy(saved_t_data->ftag.s, ftag.s, ftag.len);
     saved_t_data->ftag.len = ftag.len;
 
+    //store branch
+    int branch;
+    if (tmb.t_check( msg  , &branch )==-1){
+        LOG(L_ERR, "ERROR: t_suspend: failed find UAC branch\n");
+        return CSCF_RETURN_ERROR;
+    }
+    saved_t_data->branch = branch;
+    
     //Check that we dont already have an auth session for this specific dialog
     //if not we create a new one and attach it to the dialog (via session ID).
     enum dialog_direction dlg_direction = get_dialog_direction(direction);
@@ -553,7 +561,7 @@ static int w_rx_aar(struct sip_msg *msg, char* str1, char* bar) {
     }
 
     LM_DBG("Suspending SIP TM transaction\n");
-    if (tmb.t_suspend(msg, &saved_t_data->tindex, &saved_t_data->tlabel) < 0) {
+    if (tmb.t_suspend_reply(msg, &saved_t_data->tindex, &saved_t_data->tlabel) < 0) {
         LM_ERR("failed to suspend the TM processing\n");
         free_saved_transaction_global_data(saved_t_data);
         return CSCF_RETURN_ERROR;
@@ -564,7 +572,7 @@ static int w_rx_aar(struct sip_msg *msg, char* str1, char* bar) {
 
     if (!ret) {
         LM_ERR("Failed to send AAR\n");
-        tmb.t_cancel_suspend(saved_t_data->tindex, saved_t_data->tlabel);
+        tmb.t_cancel_suspend_reply(saved_t_data->tindex, saved_t_data->tlabel, saved_t_data->branch);
         goto error;
 
 
