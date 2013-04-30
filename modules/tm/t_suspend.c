@@ -56,8 +56,7 @@ int t_suspend(struct sip_msg *msg,
 		unsigned int *hash_index, unsigned int *label)
 {
 	struct cell	*t;
-        int branch;
-        
+
 	t = get_t();
 	if (!t || t == T_UNDEFINED) {
 		LOG(L_ERR, "ERROR: t_suspend: " \
@@ -65,14 +64,13 @@ int t_suspend(struct sip_msg *msg,
 		return -1;
 	}
 
-            if (t->flags & T_CANCELED) {
+	if (t->flags & T_CANCELED) {
 		/* The transaction has already been canceled */
 		LOG(L_DBG, "DEBUG: t_suspend: " \
 			"trying to suspend an already canceled transaction\n");
 		ser_error = E_CANCELED;
 		return 1;
 	}
-        if (msg->first_line.type==SIP_REQUEST){
 
 	/* send a 100 Trying reply, because the INVITE processing
 	will probably take a long time */
@@ -105,52 +103,70 @@ int t_suspend(struct sip_msg *msg,
 			"failed to add the blind UAC\n");
 		return -1;
 	}
-         /* set as suspend request for when we continue */
-        t->uas.suspended_request = 1;
-        
-        return 0;
-        
-        }else if (msg->first_line.type==SIP_REPLY){
-            
-            LOG(L_DBG,"DBG: This is a suspend on reply - setting msg flag to SUSPEND");
-            msg->flags |= FL_RPL_SUSPENDED;
-            //this is a reply suspend find which branch
-            
-            if (t_check( msg  , &branch )==-1){
-                LOG(L_ERR, "ERROR: t_suspend: " \
-			"failed find UAC branch\n");
-		return -1;
-            }
-            LOG(L_DBG,"DBG: Found a a match with branch id [%d]", branch);
-            
-            LOG(L_DBG,"DBG: Cloning reply message to t->uac[branch].reply");
-            
-            t->uac[branch].reply = sip_msg_cloner( msg, 0 );
 
-            if (! t->uac[branch].reply ) {
-                    LOG(L_ERR, "ERROR: t_suspend: can't alloc' clone memory\n");
-                    return -1;
-            }
-            
-/*          //TODO do we need this?
-            if (save_msg_lumps(t->uac[branch].reply, msg)) {
-                    LOG(L_ERR, "ERROR: t_suspend: " \
-                            "failed to save the message lumps\n");
-                    return -1;
-            }*/
-
-            LOG(L_DBG,"DBG: Saving stuff to transaction");
-            /* set as suspend reply for when we continue */
-            t->uac[branch].suspended_reply=1;
-            
-		
-            LOG(L_DBG,"DBG: Saving transaction hash and label");
-            *hash_index = t->hash_index;
-            *label = t->label;
-            LOG(L_DBG,"DBG: Done");
-        }
 	return 0;
 }
+
+/* Suspends the transaction for later use.
+ * Save the returned hash_index and label to get
+ * back to the SIP request processing, see the readme.
+ * This method is specifically for suspending replies
+ * 
+ * Return value:
+ * 	0  - success
+ * 	<0 - failure
+ */
+int t_suspend_reply(struct sip_msg *msg,
+		unsigned int *hash_index, unsigned int *label)
+{
+	struct cell	*t;
+        int branch;
+
+	t = get_t();
+	if (!t || t == T_UNDEFINED) {
+		LOG(L_ERR, "ERROR: t_suspend: " \
+			"transaction has not been created yet\n");
+		return -1;
+	}
+
+	if (t->flags & T_CANCELED) {
+               	/* The transaction has already been canceled */
+		LOG(L_DBG, "DEBUG: t_suspend: " \
+			"trying to suspend an already canceled transaction\n");
+		ser_error = E_CANCELED;
+		return 1;
+	}
+        
+	LOG(L_DBG,"DEBUG: This is a suspend on reply - setting msg flag to SUSPEND\n");
+        msg->flags |= FL_RPL_SUSPENDED;
+        /* this is a reply suspend find which branch */
+            
+        if (t_check( msg  , &branch )==-1){
+                LOG(L_ERR, "ERROR: t_suspend: " \
+                        "failed find UAC branch\n");
+                return -1; 
+        }
+        LOG(L_DBG,"DEBUG: Found a a match with branch id [%d]\n", branch);
+        
+        LOG(L_DBG,"DEBUG: Cloning reply message to t->uac[branch].reply\n");
+            
+        t->uac[branch].reply = sip_msg_cloner( msg, 0 );
+
+        if (! t->uac[branch].reply ) {
+                LOG(L_ERR, "ERROR: t_suspend: can't alloc' clone memory\n");
+                return -1;
+        }
+            
+        LOG(L_DBG,"DEBUG: Saving stuff to transaction\n");
+		
+        LOG(L_DBG,"DEBUG: Saving transaction hash and label\n");
+        *hash_index = t->hash_index;
+        *label = t->label;
+        LOG(L_DBG,"DEBUG: Done");
+
+	return 0;
+}
+
 /* Continues the SIP request processing previously saved by
  * t_suspend(). The script does not continue from the same
  * point, but a separate route block is executed instead.
@@ -162,7 +178,7 @@ int t_suspend(struct sip_msg *msg,
 int t_continue(unsigned int hash_index, unsigned int label,
 		struct action *route)
 {
-        struct cell	*t;
+	struct cell	*t;
 	struct sip_msg	faked_req;
 	int	branch;
 	struct ua_client *uac =NULL;
@@ -172,9 +188,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
 		LOG(L_ERR, "ERROR: t_continue: transaction not found\n");
 		return -1;
 	}
-        
+
 	if (t->flags & T_CANCELED) {
-                /* The transaction has already been canceled,
+		/* The transaction has already been canceled,
 		 * needless to continue */
 		UNREF(t); /* t_unref would kill the transaction */
 		/* reset T as we have no working T anymore */
@@ -185,9 +201,8 @@ int t_continue(unsigned int hash_index, unsigned int label,
 	/* The transaction has to be locked to protect it
 	 * form calling t_continue() multiple times simultaneously */
 	LOCK_REPLIES(t);
-	
-        if (t->uas.suspended_request==1){
-        /* Try to find the blind UAC, and cancel its fr timer.
+
+	/* Try to find the blind UAC, and cancel its fr timer.
 	 * We assume that the last blind uac called t_continue(). */
 	for (	branch = t->nr_of_outgoings-1;
 		branch >= 0 && t->uac[branch].request.buffer;
@@ -248,9 +263,6 @@ int t_continue(unsigned int hash_index, unsigned int label,
 
 	/* update the flags */
 	t->uas.request->flags = faked_req.flags;
-        
-        /*unsuspend request*/
-        t->uas.suspended_request=0;
 
 	if (t->uas.status < 200) {
 		/* No final reply has been sent yet.
@@ -270,133 +282,14 @@ int t_continue(unsigned int hash_index, unsigned int label,
 			ret = 0;
 			goto kill_trans;
 		}
-                
-                LOG(L_DBG,"Unlocking transaction reply mutex");
-                UNLOCK_REPLIES(t);
-                LOG(L_DBG,"Unreffing the transaction");
-                /* unref the transaction */
-                t_unref(t->uas.request);
 	}
-        
-        }else{
-            LOG(L_DBG,"This a continue from a reply suspend - getting the correct branch as transaction has %d branches", t->nr_of_outgoings);
-            //this is a continue from a reply suspend!
-            for (	branch = 0;
-			branch < t->nr_of_outgoings;
-			branch++
-		) {
-			//TODO not sure if this will work yet - think we need to pass which branch to continue when we call t_continue!
-                        if (t->uac[branch].suspended_reply==1){
-                            LOG(L_DBG,"Found branch that has suspend reply set");
-                            
-                            LOG(L_DBG,"Disabling suspend branch");
-                            t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
-                            if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
-                            
-                            t->uac[branch].suspended_reply = 0;
-                            
-                            LOG(L_DBG,"Running pre script");
-                            if (exec_pre_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE)>0) {
-                                LOG(L_DBG,"Success running pre script!");
-                                if (run_top_route(route, t->uac[branch].reply, 0)<0){
-                                        LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
-                                }else{
-                                    LOG(L_DBG,"Success running top route!");
-                                }
-                                LOG(L_DBG,"Running exec post script!");
-                                exec_post_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE);
-                                LOG(L_DBG,"Done running exec post script!");
-                            }else{
-                                LOG(L_DBG,"Failed running pre script!");
-                            }
-                            
-                            int reply_status;
-                            if ( is_local(t) ) {
-                                LOG(L_DBG,"t is local sending local reply with status code: [%d]", t->uac[branch].reply->first_line.u.reply.statuscode);
-                                    reply_status = local_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, 0 );
-                                    //TODO do we need this?
-                                    //if (reply_status == RPS_COMPLETED) {
-                                                 /* no more UAC FR/RETR (if I received a 2xx, there may
-                                                  * be still pending branches ...
-                                                  */
-                                    //        cleanup_uac_timers( t );
-                                    //        if (is_invite(t)) cancel_uacs(t, &cancel_data, F_CANCEL_B_KILL);
-                                            /* There is no need to call set_final_timer because we know
-                                             * that the transaction is local */
-                                    //        put_on_wait(t);
-                                    //}else if (unlikely(cancel_data.cancel_bitmap)){
-                                            /* cancel everything, even non-INVITEs (e.g in case of 6xx), use
-                                             * cancel_b_method for canceling unreplied branches */
-                                    //       cancel_uacs(t, &cancel_data, cfg_get(tm,tm_cfg, cancel_b_flags));
-                                    //}
-                            } else {
-                                    LOG(L_DBG,"t is NOT local sending relaying reply with status code: [%d]", t->uac[branch].reply->first_line.u.reply.statuscode);
-                                    int do_put_on_wait = 0;
-                                    if(t->uac[branch].reply->first_line.u.reply.statuscode>=200){
-                                        do_put_on_wait = 1;
-                                    }
-                                    reply_status=relay_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode,0, do_put_on_wait );
-                                    //TODO do we need this?
-                                    //if (reply_status == RPS_COMPLETED) {
-                                                 /* no more UAC FR/RETR (if I received a 2xx, there may
-                                                    be still pending branches ...
-                                                 */
-                                    //        cleanup_uac_timers( t );
-                                            /* 2xx is a special case: we can have a COMPLETED request
-                                             * with branches still open => we have to cancel them */
-                                    //        if (is_invite(t) && cancel_data.cancel_bitmap) 
-                                    //                cancel_uacs( t, &cancel_data,  F_CANCEL_B_KILL);
-                                            /* FR for negative INVITES, WAIT anything else */
-                                            /* Call to set_final_timer is embedded in relay_reply to avoid
-                                             * race conditions when reply is sent out and an ACK to stop
-                                             * retransmissions comes before retransmission timer is set.*/
-                                    //}else if (unlikely(cancel_data.cancel_bitmap)){
-                                            /* cancel everything, even non-INVITEs (e.g in case of 6xx), use
-                                             * cancel_b_method for canceling unreplied branches */
-                                    //        cancel_uacs(t, &cancel_data, cfg_get(tm,tm_cfg, cancel_b_flags));
-                                    //}
-                            }
-                            t->uac[branch].request.flags|=F_RB_REPLIED;
-//
-                            if (reply_status==RPS_ERROR){
-                                LOG(L_DBG,"Unreffing the transaction");
-                                /* unref the transaction */
-                                t_unref(t->uac[branch].reply);
 
-                                sip_msg_free(t->uac[branch].reply);
-                                t->uac[branch].reply = 0;       
-                                goto done;
-                            }
-//
-//                            /* update FR/RETR timers on provisional replies */
-                            
-                            int msg_status=t->uac[branch].reply->REPLY_STATUS;
-                            int last_uac_status=t->uac[branch].last_received;
-                            
-                            if (is_invite(t) && msg_status<200 &&
-                                    ( cfg_get(tm, tm_cfg, restart_fr_on_each_reply) ||
-                                                    ( (last_uac_status<msg_status) &&
-                                                            ((msg_status>=180) || (last_uac_status==0)) )
-                                            ) ) { /* provisional now */
-                                    restart_rb_fr(& t->uac[branch].request, t->fr_inv_timeout);
-                                    t->uac[branch].request.flags|=F_RB_FR_INV; /* mark fr_inv */
-                            } 
-                            
-                            LOG(L_DBG,"Unreffing the transaction");
-                            /* unref the transaction */
-                            t_unref(t->uac[branch].reply);
-                            
-                            
-                            LOG(L_DBG,"Freeing earlier cloned reply");
-                            sip_msg_free(t->uac[branch].reply);
-                            t->uac[branch].reply = 0;
-                                
-                        }
-		}
-        }
+	UNLOCK_REPLIES(t);
 
-done:
-        return 0;
+	/* unref the transaction */
+	t_unref(t->uas.request);
+
+	return 0;
 
 kill_trans:
 	/* The script has hopefully set the error code. If not,
@@ -416,6 +309,109 @@ kill_trans:
 
 	t_unref(t->uas.request);
 	return ret;
+}
+
+/* Continues the SIP reply processing previously saved by
+ * t_suspend(). The script does not continue from the same
+ * point, but a separate route block is executed instead.
+ *
+ * Parameter:
+ *      The branch of the suspended reply
+ * 
+ * Return value:
+ * 	0  - success
+ * 	<0 - failure
+ */
+int t_continue_reply(unsigned int hash_index, unsigned int label,
+		struct action *route, int branch)
+{
+	struct cell	*t;
+
+	if (t_lookup_ident(&t, hash_index, label) < 0) {
+		LOG(L_ERR, "ERROR: t_continue: transaction not found\n");
+		return -1;
+	}
+
+	if (t->flags & T_CANCELED) {
+		/* The transaction has already been canceled,
+		 * needless to continue */
+		UNREF(t); /* t_unref would kill the transaction */
+		/* reset T as we have no working T anymore */
+		set_t(T_UNDEFINED, T_BR_UNDEFINED);
+		return 1;
+	}
+
+	/* The transaction has to be locked to protect it
+	 * form calling t_continue() multiple times simultaneously */
+	LOCK_REPLIES(t);
+
+        LOG(L_DBG,"DEBUG: This a continue from a reply suspend\n");
+        /* this is a continue from a reply suspend */
+            
+        LOG(L_DBG,"Disabling suspend branch");
+        t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
+        if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
+                            
+        LOG(L_DBG,"DEBUG: Running pre script\n");
+        
+        if (exec_pre_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE)>0) {
+                if (run_top_route(route, t->uac[branch].reply, 0)<0){
+                        LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
+                }
+                LOG(L_DBG,"DEBUG: Running exec post script\n");
+                exec_post_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE);
+        }
+        int reply_status;
+                                                        
+        if ( is_local(t) ) {
+                LOG(L_DBG,"DEBUG: t is local sending local reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
+                reply_status = local_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, 0 );
+                                    
+        } else {
+                LOG(L_DBG,"DEBUG: t is NOT local sending relaying reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
+                int do_put_on_wait = 0;
+                if(t->uac[branch].reply->first_line.u.reply.statuscode>=200){
+                        do_put_on_wait = 1;
+                }
+                reply_status=relay_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode,0, do_put_on_wait );
+                
+        }
+        t->uac[branch].request.flags|=F_RB_REPLIED;
+
+        if (reply_status==RPS_ERROR){
+                LOG(L_DBG,"DEBUG: Unreffing the transaction\n");
+                /* unref the transaction */
+                t_unref(t->uac[branch].reply);
+                
+                sip_msg_free(t->uac[branch].reply);
+                t->uac[branch].reply = 0;       
+                goto done;
+        }
+
+        /* update FR/RETR timers on provisional replies */
+                            
+        int msg_status=t->uac[branch].reply->REPLY_STATUS;
+        int last_uac_status=t->uac[branch].last_received;
+                            
+        if (is_invite(t) && msg_status<200 &&
+        ( cfg_get(tm, tm_cfg, restart_fr_on_each_reply) ||
+        ( (last_uac_status<msg_status) &&
+        ((msg_status>=180) || (last_uac_status==0)) )
+        ) ) { /* provisional now */
+                restart_rb_fr(& t->uac[branch].request, t->fr_inv_timeout);
+                t->uac[branch].request.flags|=F_RB_FR_INV; /* mark fr_inv */
+        } 
+        LOG(L_DBG,"DEBUG: Unreffing the transaction");
+        /* unref the transaction */
+        t_unref(t->uac[branch].reply);
+                            
+        LOG(L_DBG,"DEBUG: Freeing earlier cloned reply\n");
+        sip_msg_free(t->uac[branch].reply);
+        t->uac[branch].reply = 0;
+                                
+done:
+        return 0;
+        
 }
 
 /* Revoke the suspension of the SIP request, i.e.
@@ -448,56 +444,75 @@ int t_cancel_suspend(unsigned int hash_index, unsigned int label)
 			"transaction id mismatch\n");
 		return -1;
 	}
-        
-        
-        if (t->uas.suspended_request==1){
-            t->uac[branch].suspended_reply = 0;
-            LOG(L_DBG,"This is a cancel suspend for a request");
-                /* The transaction does not need to be locked because this
-             * function is either executed from the original route block
-             * or from failure route which already locks */
+	/* The transaction does not need to be locked because this
+	 * function is either executed from the original route block
+	 * or from failure route which already locks */
 
-            reset_kr(); /* the blind UAC of t_suspend has set kr */
+	reset_kr(); /* the blind UAC of t_suspend has set kr */
 
-            /* Try to find the blind UAC, and cancel its fr timer.
-             * We assume that the last blind uac called this function. */
-            for (	branch = t->nr_of_outgoings-1;
-                    branch >= 0 && t->uac[branch].request.buffer;
-                    branch--);
+	/* Try to find the blind UAC, and cancel its fr timer.
+	 * We assume that the last blind uac called this function. */
+	for (	branch = t->nr_of_outgoings-1;
+		branch >= 0 && t->uac[branch].request.buffer;
+		branch--);
 
-            if (branch >= 0) {
-                    stop_rb_timers(&t->uac[branch].request);
-                    /* Set last_received to something >= 200,
-                     * the actual value does not matter, the branch
-                     * will never be picked up for response forwarding.
-                     * If last_received is lower than 200,
-                     * then the branch may tried to be cancelled later,
-                     * for example when t_reply() is called from
-                     * a failure rute => deadlock, because both
-                     * of them need the reply lock to be held. */
-                    t->uac[branch].last_received=500;
-            } else {
-                    /* Not a huge problem, fr timer will fire, but CANCEL
-                    will not be sent. last_received will be set to 408. */
-                    return -1;
-            }
-        }else{
-            LOG(L_DBG,"This is a cancel suspend for a response");
-            for (	branch = 0;
-			branch < t->nr_of_outgoings;
-			branch++
-		) {
-			//TODO not sure if this will work yet - think we need to pass which branch to continue when we call t_continue!
-                        if (t->uac[branch].suspended_reply==1){
-                            LOG(L_DBG,"Found branch that has suspend reply set");
-                            LOG(L_DBG,"Disabling suspend branch");
-                            t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
-                            if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
-                            t->uac[branch].suspended_reply = 0;
-                        }
-		}
-        }
-	
+	if (branch >= 0) {
+		stop_rb_timers(&t->uac[branch].request);
+		/* Set last_received to something >= 200,
+		 * the actual value does not matter, the branch
+		 * will never be picked up for response forwarding.
+		 * If last_received is lower than 200,
+		 * then the branch may tried to be cancelled later,
+		 * for example when t_reply() is called from
+		 * a failure rute => deadlock, because both
+		 * of them need the reply lock to be held. */
+		t->uac[branch].last_received=500;
+	} else {
+		/* Not a huge problem, fr timer will fire, but CANCEL
+		will not be sent. last_received will be set to 408. */
+		return -1;
+	}
 
 	return 0;
 }
+
+/* Revoke the suspension of the SIP reply, 
+ * This function can be called when something fails
+ * after t_suspend() has already been executed in the same
+ * process, and it turns out that the transaction should
+ * not have been suspended.
+ * 
+ * Parameter:
+ *      The branch of the suspended reply
+ * 
+ * Return value:
+ * 	0  - success
+ * 	<0 - failure
+ */
+int t_cancel_suspend_reply(unsigned int hash_index, unsigned int label, int branch)
+{
+	struct cell	*t;
+	
+	t = get_t();
+	if (!t || t == T_UNDEFINED) {
+		LOG(L_ERR, "ERROR: t_revoke_suspend: " \
+			"no active transaction\n");
+		return -1;
+	}
+	/* Only to double-check the IDs */
+	if ((t->hash_index != hash_index)
+		|| (t->label != label)
+	) {
+		LOG(L_ERR, "ERROR: t_revoke_suspend: " \
+			"transaction id mismatch\n");
+		return -1;
+	}
+	
+        LOG(L_DBG,"This is a cancel suspend for a response\n");
+        
+        t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
+        if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
+        
+        return 0;
+}
+

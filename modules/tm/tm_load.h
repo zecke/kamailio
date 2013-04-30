@@ -110,8 +110,11 @@ struct tm_binds {
 	void* reserved4;
 #endif
 	t_suspend_f	t_suspend;
+        t_suspend_reply_f	t_suspend_reply;
 	t_continue_f	t_continue;
+        t_continue_reply_f	t_continue_reply;
 	t_cancel_suspend_f	t_cancel_suspend;
+        t_cancel_suspend_reply_f	t_cancel_suspend_reply;
 	tget_reply_totag_f t_get_reply_totag;
 	tget_picked_f t_get_picked_branch;
 	tlookup_callid_f t_lookup_callid;

@@ -34,13 +34,28 @@ int t_suspend(struct sip_msg *msg,
 typedef int (*t_suspend_f)(struct sip_msg *msg,
 		unsigned int *hash_index, unsigned int *label);
 
+int t_suspend_reply(struct sip_msg *msg,
+		unsigned int *hash_index, unsigned int *label);
+typedef int (*t_suspend_reply_f)(struct sip_msg *msg,
+		unsigned int *hash_index, unsigned int *label);
+
+
 int t_continue(unsigned int hash_index, unsigned int label,
 		struct action *route);
 typedef int (*t_continue_f)(unsigned int hash_index, unsigned int label,
 		struct action *route);
 
+int t_continue_reply(unsigned int hash_index, unsigned int label,
+		struct action *route, int branch);
+typedef int (*t_continue_reply_f)(unsigned int hash_index, unsigned int label,
+		struct action *route, int branch);
+
+
 int t_cancel_suspend(unsigned int hash_index, unsigned int label);
 typedef int (*t_cancel_suspend_f)(unsigned int hash_index, unsigned int label);
+
+int t_cancel_suspend_reply(unsigned int hash_index, unsigned int label, int branch);
+typedef int (*t_cancel_suspend_reply_f)(unsigned int hash_index, unsigned int label, int branch);
 
 
 #endif /* _T_SUSPEND_H */

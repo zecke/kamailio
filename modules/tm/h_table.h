@@ -196,8 +196,6 @@ typedef struct ua_server
 										  for e2e cancels */
 #endif /* CANCEL_REASON_SUPPORT */
 	unsigned int     status;
-        
-        int suspended_request;
 }ua_server_type;
 
 
@@ -257,7 +255,6 @@ typedef struct ua_client
 	unsigned short on_branch_failure;
 	/* the onreply_route to be processed if registered to do so */
 	unsigned short on_reply;
-        int suspended_reply;
 }ua_client_type;
 
 
@@ -453,7 +450,7 @@ typedef struct cell
 
 	/* place holder for MD5checksum  (meaningful only if syn_branch=0) */
 	char md5[0]; /* if syn_branch==0 then MD5_LEN bytes are extra alloc'ed*/
-        
+
 } tm_cell_t;
 
 
