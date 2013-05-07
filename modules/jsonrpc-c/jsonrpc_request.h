@@ -1,7 +1,7 @@
 /**
  * $Id$
  *
- * Copyright (C) 2011 Flowroute LLC (flowroute.com)
+ * Copyright (C) 2013 Flowroute LLC (flowroute.com)
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -22,12 +22,46 @@
  *
  */
 
+#include "jsonrpc_io.h"
+#include "jsonrpc_server.h"
+
 #ifndef _JSONRPC_REQUEST_H_
 #define _JSONRPC_REQUEST_H_
-#include "../../parser/msg_parser.h"
 
-int jsonrpc_request(struct sip_msg* msg, char* method, char* params, char* cb_route, char* err_route, char* cb_pv);
-int jsonrpc_notification(struct sip_msg* msg, char* method, char* params);
-int cmd_pipe;
+#define JSONRPC_DEFAULT_HTABLE_SIZE 500
+#define JSONRPC_MAX_ID 1000000
+#define RETRY_MAX_TIME 60000 /* milliseconds */
 
-#endif /* _JSONRPC_REQUEST_H_ */
+/* forward declaration */
+typedef struct jsonrpc_req_cmd jsonrpc_req_cmd_t;
+
+typedef enum {
+	RPC_REQUEST,
+	RPC_NOTIFICATION
+} rpc_type;
+
+typedef struct jsonrpc_request jsonrpc_request_t;
+struct jsonrpc_request {
+	rpc_type type;
+	int id;
+	jsonrpc_request_t *next; /* pkg */
+	jsonrpc_server_t* server; /* shm */
+	jsonrpc_req_cmd_t* cmd; /* shm */
+	json_t* payload;
+	struct event* timeout_ev; /* pkg */
+	struct event* retry_ev; /* pkg */
+	int retry;
+	unsigned int ntries;
+	unsigned int timeout;
+};
+
+jsonrpc_request_t* request_table[JSONRPC_DEFAULT_HTABLE_SIZE];
+
+jsonrpc_request_t* create_request(jsonrpc_req_cmd_t* cmd);
+void print_request(jsonrpc_request_t* req);
+jsonrpc_request_t* pop_request(int id);
+unsigned int requests_using_server(jsonrpc_server_t* server);
+void free_request(jsonrpc_request_t* req);
+int schedule_retry(jsonrpc_request_t* req);
+
+#endif /* _JSONRPC_H_ */

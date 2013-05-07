@@ -11,17 +11,16 @@ LIBS=-lm
 
 BUILDER = $(shell which pkg-config)
 ifeq ($(BUILDER),)
-	DEFS+=-I/usr/include/json -I$(LOCALBASE)/include/json \
-       -I$(LOCALBASE)/include
-	LIBS+=-L$(SYSBASE)/include/lib -L$(LOCALBASE)/lib -levent -ljson
+	DEFS+=-I$(LOCALBASE)/include
+	LIBS+=-L$(SYSBASE)/include/lib -L$(LOCALBASE)/lib -levent -ljansson
 else
-	DEFS+= $(shell pkg-config --cflags json)
-	LIBS+= $(shell pkg-config --libs json)
+	DEFS+= $(shell pkg-config --cflags jansson)
+	LIBS+= $(shell pkg-config --libs jansson)
 	DEFS+= $(shell pkg-config --cflags libevent)
 	LIBS+= $(shell pkg-config --libs libevent)
 endif
  
-DEFS+=-DKAMAILIO_MOD_INTERFACE
+DEFS+=-DOPENSER_MOD_INTERFACE
 
 SERLIBPATH=../../lib
 include ../../Makefile.modules

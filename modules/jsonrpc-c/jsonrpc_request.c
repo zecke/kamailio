@@ -1,7 +1,7 @@
 /**
  * $Id$
-*
- * Copyright (C) 2011 Flowroute LLC (flowroute.com)
+ *
+ * Copyright (C) 2013 Flowroute LLC (flowroute.com)
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -22,144 +22,321 @@
  *
  */
 
-#include "../../mod_fix.h"
-#include "../../pvar.h"
-#include "../../lvalue.h"
-#include "../tm/tm_load.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 
+#include "../../sr_module.h"
+#include "../../mem/mem.h"
+
+#include "jsonrpc.h"
 #include "jsonrpc_request.h"
 #include "jsonrpc_io.h"
 
+int next_id = 1;
 
-struct tm_binds tmb;
-static char *shm_strdup(str *src);
+int store_request(jsonrpc_request_t* req);
 
-int memory_error() {
-	LM_ERR("Out of memory!");
-	return -1;
+/* for debugging only */
+void print_request(jsonrpc_request_t* req)
+{
+	if(!req) {
+		INFO("request is (null)\n");
+		return;
+	}
+
+	INFO("------request------\n");
+	INFO("| id: %d\n", req->id);
+
+	if(req->type == RPC_NOTIFICATION) {
+		INFO("| type: notification\n");
+	} else if(req->type == RPC_REQUEST) {
+		INFO("| type: request\n");
+	} else {
+		INFO("| type: unknown (%d)\n", (int)req->type);
+	}
+
+	if(!(req->server)) {
+		INFO("| server: (null)\n");
+	} else {
+		print_server(req->server);
+	}
+
+	if(!(req->cmd)) {
+		INFO("| cmd: (null)\n");
+	} else {
+		INFO("| cmd->route: %.*s\n", STR(req->cmd->route));
+	}
+
+	INFO("| payload: %s\n", json_dumps(req->payload, 0));
+	INFO("| retry: %d\n", req->retry);
+	INFO("| ntries: %d\n", req->ntries);
+	INFO("| timeout: %d\n", req->timeout);
+	INFO("\t-------------------\n");
 }
 
-int jsonrpc_request(struct sip_msg* _m, char* _method, char* _params, char* _cb_route, char* _err_route, char* _cb_pv)
+void free_request(jsonrpc_request_t* req)
 {
-  str method;
-  str params;
-  str cb_route;
-  str err_route;
-	
+	if(!req)
+		return;
 
-	if (fixup_get_svalue(_m, (gparam_p)_method, &method) != 0) {
-		LM_ERR("cannot get method value\n");
-		return -1;
-	}
-	if (fixup_get_svalue(_m, (gparam_p)_params, &params) != 0) {
-		LM_ERR("cannot get params value\n");
-		return -1;
-	}
-	if (fixup_get_svalue(_m, (gparam_p)_cb_route, &cb_route) != 0) {
-		LM_ERR("cannot get cb_route value\n");
-		return -1;
-	}
+	pop_request(req->id);
 
-	if (fixup_get_svalue(_m, (gparam_p)_err_route, &err_route) != 0) {
-		LM_ERR("cannot get err_route value\n");
-		return -1;
+	CHECK_AND_FREE_EV(req->retry_ev);
+	CHECK_AND_FREE_EV(req->timeout_ev);
+
+	if(req->payload) json_decref(req->payload);
+	pkg_free(req);
+}
+
+jsonrpc_request_t* create_request(jsonrpc_req_cmd_t* cmd)
+{
+	if (cmd == NULL) {
+		ERR("cmd is (null). Cannot build request.\n");
+		return NULL;
 	}
 
-	tm_cell_t *t = 0;
-	t = tmb.t_gett();
-	if (t==NULL || t==T_UNDEFINED)
-	{
-		if(tmb.t_newtran(_m)<0)
-		{
-			LM_ERR("cannot create the transaction\n");
-			return -1;
+	if (cmd->params.s == NULL) {
+		ERR("params is (null). Cannot build request.\n");
+		return NULL;
+	}
+
+	jsonrpc_request_t* req = (jsonrpc_request_t*)pkg_malloc(sizeof(jsonrpc_request_t));
+	if (!req) {
+		ERR("Out of memory!");
+		return NULL;
+	}
+	memset(req, 0, sizeof(jsonrpc_request_t));
+
+	if (cmd->notify_only) {
+		req->type = RPC_NOTIFICATION;
+	} else {
+		req->type = RPC_REQUEST;
+	}
+
+	/* settings for both notifications and requests */
+	req->ntries = 0;
+	req->next = NULL;
+
+	req->payload = json_object();
+	if(!(req->payload)) {
+		ERR("Failed to create request payload\n");
+		goto fail;
+	}
+
+	if(req->type == RPC_REQUEST) {
+		if (next_id>JSONRPC_MAX_ID) {
+			next_id = 1;
+		} else {
+			next_id++;
 		}
-		t = tmb.t_gett();
-		if (t==NULL || t==T_UNDEFINED)
-		{
-			LM_ERR("cannot look up the transaction\n");
-			return -1;
+		req->id = next_id;
+		req->timeout = cmd->timeout;
+
+		json_t* id_js = json_integer(next_id);
+		if(id_js) {
+			json_object_set(req->payload, "id", id_js);
+			json_decref(id_js);
+		} else {
+			ERR("Failed to create request id\n");
+			goto fail;
+		}
+
+		req->retry = cmd->retry;
+		req->timeout = cmd->timeout;
+		if (!store_request(req)) {
+			ERR("store_request failed\n");
+			goto fail;
+		}
+	} else if (req->type == RPC_NOTIFICATION) {
+		req->id = 0;
+		req->retry = 0;
+	} else {
+		ERR("Unknown RPC type: %d\n", (int)req->type);
+		goto fail;
+	}
+
+	json_t* version_js = json_string(JSONRPC_VERSION);
+	if(version_js) {
+		json_object_set(req->payload, "jsonrpc", version_js);
+		json_decref(version_js);
+	} else {
+		ERR("Failed to create request version\n");
+		goto fail;
+	}
+
+	json_t* method_js = json_string(cmd->method.s);
+	if(method_js) {
+		json_object_set(req->payload, "method", method_js);
+		json_decref(method_js);
+	} else {
+		ERR("Failed to create request method\n");
+		goto fail;
+	}
+
+	json_t* params = NULL;
+	json_error_t error;
+	if(cmd->params.len > 0) {
+		params = json_loads(cmd->params.s, 0, &error);
+		if(!params) {
+			ERR("Failed to parse json: %.*s\n", STR(cmd->params));
+			ERR("PARSE ERROR: %s at %d,%d\n",
+					error.text, error.line, error.column);
+			goto fail;
 		}
 	}
 
-	unsigned int hash_index;
-	unsigned int label;
+	json_object_set(req->payload, "params", params);
+	if(!(req->payload)) {
+		ERR("Failed to add request payload params\n");
+		goto fail;
+	}
 
-	if (tmb.t_suspend(_m, &hash_index, &label) < 0) {
-		LM_ERR("t_suspend() failed\n");
+	if(params) json_decref(params);
+
+	req->cmd = cmd;
+	return req;
+fail:
+	ERR("Failed to create request\n");
+	free_request(req);
+	return NULL;
+}
+
+void retry_cb(int fd, short event, void* arg)
+{
+	if(!arg)
+		return;
+
+	jsonrpc_request_t* req = (jsonrpc_request_t*)arg;
+
+	if(!(req->cmd)) {
+		ERR("request has no cmd\n");
+		goto error;
+	}
+
+	DEBUG("retrying request: id=%d\n", req->id);
+
+	if(jsonrpc_send(req->cmd->conn, req, 0)<0) {
+		goto error;
+	}
+
+	CHECK_AND_FREE_EV(req->retry_ev);
+	return;
+
+error:
+	fail_request(JRPC_ERR_SEND, req, "Retry failed to send request");
+}
+
+int schedule_retry(jsonrpc_request_t* req)
+{
+	if(!req) {
+		ERR("Trying to schedule retry for a null request.\n");
 		return -1;
 	}
 
-	struct jsonrpc_pipe_cmd *cmd;
-	if (!(cmd = (struct jsonrpc_pipe_cmd *) shm_malloc(sizeof(struct jsonrpc_pipe_cmd))))
-		return memory_error();
-
-	memset(cmd, 0, sizeof(struct jsonrpc_pipe_cmd));
-
-	pv_spec_t *cb_pv = (pv_spec_t*)shm_malloc(sizeof(pv_spec_t));
-	if (!cb_pv)
-		return memory_error();
-
-	cb_pv = memcpy(cb_pv, (pv_spec_t *)_cb_pv, sizeof(pv_spec_t));
-
-	cmd->method = shm_strdup(&method);
-	cmd->params = shm_strdup(&params);
-	cmd->cb_route = shm_strdup(&cb_route);
-	cmd->err_route = shm_strdup(&err_route);
-	cmd->cb_pv = cb_pv;
-	cmd->msg = _m;
-	cmd->t_hash = hash_index;
-	cmd->t_label = label;
-	
-	if (write(cmd_pipe, &cmd, sizeof(cmd)) != sizeof(cmd)) {
-		LM_ERR("failed to write to io pipe: %s\n", strerror(errno));
+	if(req->retry == 0) {
 		return -1;
+	}
+
+	req->ntries++;
+	if(req->retry > 0 && req->ntries > req->retry) {
+		WARN("Number of retries exceeded. Failing request.\n");
+		return -1;
+	}
+
+	/* next retry in milliseconds */
+	unsigned int time = req->ntries * req->ntries * req->timeout;
+	if(time > RETRY_MAX_TIME) {
+		time = RETRY_MAX_TIME;
+	}
+
+	jsonrpc_request_t* new_req = create_request(req->cmd);
+
+	new_req->ntries = req->ntries;
+
+	free_request(req);
+
+	const struct timeval tv = ms_to_tv(time);
+
+	new_req->retry_ev = evtimer_new(global_ev_base, retry_cb, (void*)new_req);
+	if(evtimer_add(new_req->retry_ev, &tv)<0) {
+		ERR("event_add failed while setting request retry timer (%s).",
+				strerror(errno));
+		goto error;
 	}
 
 	return 0;
+error:
+	ERR("schedule_retry failed.\n");
+	return -1;
 }
 
-int jsonrpc_notification(struct sip_msg* _m, char* _method, char* _params)
+int id_hash(int id) {
+	return (id % JSONRPC_DEFAULT_HTABLE_SIZE);
+}
+
+jsonrpc_request_t* pop_request(int id)
 {
-	str method;
-	str params;
+	int key = id_hash(id);
+	jsonrpc_request_t* req = request_table[key];
+	jsonrpc_request_t* prev_req = NULL;
 
-	if (fixup_get_svalue(_m, (gparam_p)_method, &method) != 0) {
-		LM_ERR("cannot get method value\n");
-		return -1;
-	}
-	if (fixup_get_svalue(_m, (gparam_p)_params, &params) != 0) {
-		LM_ERR("cannot get params value\n");
-		return -1;
-	}
-
-	struct jsonrpc_pipe_cmd *cmd;
-	if (!(cmd = (struct jsonrpc_pipe_cmd *) shm_malloc(sizeof(struct jsonrpc_pipe_cmd))))
-		return memory_error();
-
-	memset(cmd, 0, sizeof(struct jsonrpc_pipe_cmd));
-
-	cmd->method = shm_strdup(&method);
-	cmd->params = shm_strdup(&params);
-	cmd->notify_only = 1;
-
-	if (write(cmd_pipe, &cmd, sizeof(cmd)) != sizeof(cmd)) {
-		LM_ERR("failed to write to io pipe: %s\n", strerror(errno));
-		return -1;
+	while (req && req->id != id) {
+		prev_req = req;
+		if (!(req = req->next)) {
+			break;
+		};
 	}
 
+	if (req && req->id == id) {
+		if (prev_req != NULL) {
+			prev_req->next = req->next;
+		} else {
+			request_table[key] = NULL;
+		}
+		return req;
+	}
+	return 0;
+}
+
+int store_request(jsonrpc_request_t* req)
+{
+	int key = id_hash(req->id);
+	jsonrpc_request_t* existing;
+
+	if ((existing = request_table[key])) { /* collision */
+		jsonrpc_request_t* i;
+		for(i=existing; i; i=i->next) {
+			if (i == NULL) {
+				i = req;
+				LM_ERR("!!!!!!!");
+				return 1;
+			}
+			if (i->next == NULL) {
+				i->next = req;
+				return 1;
+			}
+		}
+	} else {
+		request_table[key] = req;
+	}
 	return 1;
 }
 
-static char *shm_strdup(str *src)
+unsigned int requests_using_server(jsonrpc_server_t* server)
 {
-	char *res;
-
-	if (!src || !src->s)
-		return NULL;
-	if (!(res = (char *) shm_malloc(src->len + 1)))
-		return NULL;
-	strncpy(res, src->s, src->len);
-	res[src->len] = 0;
-	return res;
+	unsigned int count = 0;
+	jsonrpc_request_t* req = NULL;
+	int key = 0;
+	for (key=0; key < JSONRPC_DEFAULT_HTABLE_SIZE; key++) {
+		for (req = request_table[key]; req != NULL; req = req->next) {
+			if(req->server
+					&& req->server == server) {
+				count++;
+			}
+		}
+	}
+	return count;
 }
+

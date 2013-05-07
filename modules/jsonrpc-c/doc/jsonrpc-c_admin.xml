@@ -16,10 +16,11 @@
 	<section>
 		<title>Overview</title>
 		<para>
-			This module provides access to json-rpc services (operating over TCP/Netstrings).
+			This module provides access to JSON-RPC 2.0 services (operating over TCP/Netstrings)
+			in accordance with http://www.jsonrpc.org/specification
 		</para>
 		<para>
-			This module uses t_suspend() and t_continue() from the TM module.
+			It uses t_suspend() and t_continue() from the TM module.
 		</para>
 		<para>
 			Note that after invoking an asyncronous operation, the processing
@@ -38,9 +39,10 @@
 				The following modules must be loaded before this module:
 				<itemizedlist>
 					<listitem>
-						<para>
-							<emphasis>tm</emphasis> - transaction management.
-						</para>
+						<emphasis>json</emphasis> - json handling.
+					</listitem>
+					<listitem>
+						<emphasis>tm</emphasis> - transaction management.
 					</listitem>
 				</itemizedlist>
 			</para>
@@ -52,13 +54,11 @@
 				&kamailio; with this module loaded:
 				<itemizedlist>
 					<listitem>
-						<para>
-							<emphasis>libjson (https://github.com/json-c/json-c/wiki)</emphasis>
-						</para>
+						<emphasis>jansson (http://www.digip.org/jansson/)</emphasis>, tested with: 2.2+
 					</listitem>
 					<listitem>
 						<para>
-							<emphasis>libevent</emphasis> - http://libevent.org/
+							<emphasis>libevent 2.0.5+ (http://libevent.org/)</emphasis>, tested with: 2.0.16
 						</para>
 					</listitem>
 				</itemizedlist>
@@ -68,15 +68,107 @@
 	<section>
 		<title>Parameters</title>
 		<section>
-			<title><varname>servers</varname> (string)</title>
+			<title><varname>min_srv_ttl</varname> (integer)</title>
 			<para>
-				The servers providing the remote jsonrpc service. Format is "host1:port1,priority1 host2:port2,priority2". Requests to servers of the same priority will be distributed evenly (round robin). Server groups with higher priority are used first. 
+				The minimum acceptable TTL in seconds for SRV DNS entries. This means that TTLs from the DNS will be ignored if they are lower than this value. It cannot be set lower than 1 second.
+			</para>
+			<para>
+			<emphasis>
+				Default is 5 seconds.
+			</emphasis>
 			</para>
 			<example>
-				<title>Set <varname>servers</varname> parameter</title>
+			<title>Set <varname>min_srv_ttl</varname> parameter</title>
+			<programlisting format="linespecific">
+...
+modparam("jsonrpc", "min_srv_ttl", 30)
+...
+			</programlisting>
+			<para>
+				This will set any SRV TTL lower than 30 seconds to 30 seconds.
+			</para>
+			</example>
+		</section>
+		<section>
+			<title><varname>result_pv</varname> (string)</title>
+			<para>
+				The PV spec where to store the result of a call to jsonrpc_request(). It can be any writtable PV.
+			</para>
+			<para>
+			<emphasis>
+				Default value is <quote>$var(jsrpc_result)</quote>.
+			</emphasis>
+			</para>
+			<example>
+			<title>Set <varname>result_pv</varname> parameter</title>
+			<programlisting format="linespecific">
+...
+modparam("jsonrpc", "result_pv", "$var(result)")
+...
+			</programlisting>
+		</example>
+		</section>
+		<section>
+			<title><varname>server</varname> (string)</title>
+			<para>
+				The server providing the remote jsonrpc service. Format can be "conn=example;addr=localhost;port=9999;priority=10;weight=20" or "conn=bar;srv=_sip._tcp.example.net".
+			</para>
+			<para>
+				<itemizedlist>
+					<listitem>
+						<emphasis>conn</emphasis> - name for a collection of servers (required).
+					</listitem>
+					<listitem>
+						<emphasis>srv</emphasis> - DNS SRV domain name (optional).
+					</listitem>
+					<listitem>
+						<emphasis>addr</emphasis> - host address (required, except when using srv).
+					</listitem>
+					<listitem>
+						<emphasis>port</emphasis> - host port (required, except when using srv).
+					</listitem>
+					<listitem>
+						<emphasis>priority</emphasis> - server are grouped by priority. Servers with higher priority (lower number) are used first. Default is 0. (optional when using addr, invalid otherwise).
+					</listitem>
+					<listitem>
+						<emphasis>weight</emphasis> - functions the same as a DNS SRV weight. Requests are distributed between servers of the same priority proportional to their weight. Default is 1. (optional when using addr, invalid otherwise).
+					</listitem>
+				</itemizedlist>
+			</para>
+			<example>
+				<title>Set <varname>server</varname> parameter</title>
 				<programlisting format="linespecific">
 ...
-modparam("jsonrpc", "servers", "localhost:9999,2 10.10.0.1:9999,2 backup.server:9999,1")
+modparam("jsonrpc", "server", "conn=tests;srv=_test1._tcp.example.net");
+modparam("jsonrpc", "server", "conn=tests;srv=_test2._tcp.example.net");
+modparam("jsonrpc", "server", "conn=local;addr=localhost;port=8080;priority=10;weight=10");
+modparam("jsonrpc", "server", "conn=user_db;addr=rpc.prod.exmaple.net;port=5060;priority=10;weight=10");
+...
+				</programlisting>
+			</example>
+		</section>
+		<section>
+			<title><varname>retry_codes</varname> (string)</title>
+			<para>
+				A comma delimited list of error codes or error code ranges to automatically schedule a request retry if received.
+			</para>
+			<para>
+				This will only be used if there is no route specified for the request.
+			</para>
+			<para>
+				An error code can be any interger, but is typically a negative number.
+			</para>
+			<para>
+				An error code range is delimited by "<emphasis>..</emphasis>" . For example, "-32099..-32000".
+			</para>
+			<para>
+				Spaces are ignored.
+			</para>
+			<example>
+				<title>Set <varname>retry_codes</varname> parameter</title>
+				<programlisting format="linespecific">
+...
+modparam("jsonrpc", "retry_codes", "-32603, -32000..-32099");
 ...
 				</programlisting>
 			</example>
@@ -86,69 +178,225 @@ modparam("jsonrpc", "servers", "localhost:9999,2 10.10.0.1:9999,2 backup.server:
 		<title>Functions</title>
 		<section>
 			<title>
-				<function moreinfo="none">jsonrpc_notification(method, parameters)</function>
+				<function moreinfo="none">jsonrpc_notification(conn, method, parameters)</function>
 			</title>
 			<para>
-				Invokes the remote 'method' with the given 'parameters' as a notification.
-				Unlike jsonrpc_request (below), notifications do not receive a response. 
+				<itemizedlist>
+					<listitem>
+						<emphasis>conn</emphasis> - name for a collection of servers (required)
+					</listitem>
+					<listitem>
+						<emphasis>method</emphasis> - jsonrpc method (required)
+					</listitem>
+					<listitem>
+						<emphasis>params</emphasis> - jsonrpc request params (required)
+						Use $null or empty string to not send any parameters in the jsonrpc notification.
+					</listitem>
+				</itemizedlist>
+			</para>
+			<para>
+				Unlike jsonrpc_request (below), notifications do not receive a response.
 				Script processing continues in the usual fashion as soon as the notification
 				has been sent.
 			</para>
 			<para>
-				The method and parameters can be a static string or dynamic string value with 
+				If no servers can be reached, a message is sent to the logs.
+			</para>
+			<para>
+				The 'method' and 'params' can be a static string or dynamic string value with
 				config variables.
 			</para>
 			<example>
 				<title><function>jsonrpc_notification</function> usage</title>
 				<programlisting format="linespecific">
 ...
-jsonrpc_notification("update_user", "{'id': 1234, 'name': 'Petros'}")
+jsonrpc_notification("user_db", "update_user", '{"id": 1234, "name": "Daniel"}');
 ...
 				</programlisting>
 			</example>
 		</section>
-
 		<section>
 			<title>
-				<function moreinfo="none">jsonrpc_request(method, parameters, return_route, error_route, result_var)</function>
+				<function moreinfo="none">jsonrpc_request(conn, method, params[, options]])</function>
 			</title>
 			<para>
-				Invokes the remote 'method' with the given 'parameters'. 
-				When the response is received, continues processing of the SIP request
-				with the route[return_route]. If a timeout occurs, no servers can be reached,
-				or a jsonrpc error message is received, continues process at route[error_route].
-				In this case, the result_var will contain one of "timeout", "failure", or the error
-				message received back from the jsonrpc server.
-			</para>
-			<para>
-				The method, parameters, return_route, and error_route can be a static string or 
+				The conn, method, params, and options can be a static string or
 				a dynamic string value with config variables.
 			</para>
 			<para>
-				Since the SIP request handling is resumed in another process,
-				the config file execution is lost. As mentioned above, only 
-				shared variables ($shv, etc) should be used for any value that
-				will be needed when the script is resumed.
+				<itemizedlist>
+					<listitem>
+						<emphasis>conn</emphasis> - name for a collection of servers (required)
+					</listitem>
+					<listitem>
+						<emphasis>method</emphasis> - jsonrpc method (required)
+					</listitem>
+					<listitem>
+						<emphasis>params</emphasis> - jsonrpc request params (required)
+						Use $null or empty string to not send any parameters in the jsonrpc request.
+					</listitem>
+					<listitem>
+						<para><emphasis>options</emphasis></para>
+						<para>
+							Options for the jsonrpc_request function. Format can be "route=RESPONSE;retry=2;timeout=100".
+							All these parameters are optional.
+						</para>
+						<para>
+							<itemizedlist>
+								<listitem>
+									<emphasis>retry</emphasis> - number of times you retry a failed request. 
+									-1 means retry forever. Default is 0.
+									Request will be retried if they either timeout or fail to send.
+									Retries untilize exponential back off between successive retries,
+									up to 60 seconds. The equation for time between retries is:
+									<para>
+									time = n^2 * timeout (for time &lt; 60 seconds)
+									</para>
+									 where n is the number of times a request has been tried.
+								</listitem>
+								<listitem>
+									<emphasis>timeout</emphasis> - request timeout in milliseconds. Default is 500.
+								</listitem>
+								<listitem>
+									<emphasis>route</emphasis> - resume script execution at this route.
+								</listitem>
+							</itemizedlist>
+						</para>
+					</listitem>
+				</itemizedlist>
 			</para>
 			<para>
-				The result is stored in the pseudo-variable 'result_var'. Since this 
-				variable is set <emphasis>after</emphasis> the response is received,
-				it is possible to use a $var for this parameter.
+				When a response is received, processing continues for the SIP request in the route specified.
+			</para>
+			<para>
+				If no route is specified, then any errors are logged and successes are ignored.
+				The function will also not interupt script execution.
+			</para>
+			<para>
+				Since the SIP request handling is resumed in another process,
+				the config file execution is lost. Only shared variables ($shv, $avp, etc)
+				should be used for any value that will be needed when the script is resumed.
+			</para>
+			<para>
+				The result is stored in the pseudo-variable specified in the module parameter 'result_pv'.
+				This pseudo-variable is set <emphasis>after</emphasis> the response is received.
 			</para>
 			<example>
 				<title><function>jsonrpc_request</function> usage</title>
 				<programlisting format="linespecific">
 ...
-jsonrpc_request("get_user", "{'id': 1234}", "RESPONSE", "ERROR", "$var(result)");
-...
+jsonrpc_request("user_db", "get_user", '{"id": 1234}', "route=RESPONSE;retry=1");
+	...
+
 route[RESPONSE] {
 	xlog("Result received: $var(result)");
 	...
 }
 ...
+				</programlisting>
+			</example>
+		</section>
+		<section>
+			<title>
+				Error Handling
+			</title>
+			<para>
+				When a route is specified as part of the jsonrpc_request() function,
+				a JSON object is stored in the result pseudo-variable (see 'Parameters').
+			</para>
+			<para>
+				The JSON object can be accessed using the json_get() function
+				from the json module and is of the form:
+				<programlisting format="linespecific">
+...
+{
+  "result" : {...},
+  "error": {...},
+  "internal_error": { "code": ..., "message": ..., "data": ... }
+}
+...
+				</programlisting>
+			</para>
+			<para>
+				'result' or 'error' come from the server and should follow the
+				JSONRPC specification.  Keep in mind a server's 'error' might
+				not follow the JSONRPC specification and not include a 'code'
+				and/or 'message', so be sure to check that they are there
+				before trying to use them.
+			</para>
+			<para>
+				When 'internal_error' is present, that means there was a
+				problem with sending or receiving the request. 'internal_error'
+				contains a 'code' which is an integer representing the type of
+				error, a 'message' which is the error in string form, and
+				possibly 'data' which is usually the failed request, which is
+				optional and can be useful for debugging.
+			</para>
+			<para>
+				Here are the possible values for internal error codes:
+				<itemizedlist>
+					<listitem><emphasis>-1</emphasis>: "Failed to build request"</listitem>
+					<listitem><emphasis>-5</emphasis>: "Failed to send request"</listitem>
+					<listitem><emphasis>-10</emphasis>: "JSON parse error"</listitem>
+					<listitem><emphasis>-11</emphasis>: "Failed to convert response to a pseudo-variable"</listitem>
+					<listitem><emphasis>-20</emphasis>: "Bad response from server"</listitem>
+					<listitem><emphasis>-50</emphasis>: "Request retry failed"</listitem>
+					<listitem><emphasis>-75</emphasis>: "Request dropped for server disconnection"</listitem>
+					<listitem><emphasis>-100</emphasis>: "Message timeout"</listitem>
+					<listitem><emphasis>-1000</emphasis>: "There is a bug". Please report these errors to the module maintainers.</listitem>
+				</itemizedlist>
+			</para>
+			<example>
+				<title>route example with internal_error handling</title>
+				<programlisting format="linespecific">
+...
+route {
+	jsonrpc_request("user_db", "get_user", '{"id": 1234}', "route=RESPONSE;retry=1");
+}
+
+route[RESPONSE] {
+	if(json_get($var(jsrpc_result), "internal_error", "$var(internal)")) {
+		route(INTERNAL);
+	} else if(json_get($var(jsrpc_result), "error", "$var(error)")) {
+		route(ERROR);
+	} else if(json_get($var(jsrpc_result), "result", "$var(result)")) {
+		route(RESULT);
+	}
+    t_reply("200", "OK");
+}
+
+route[RESULT] {
+	xlog("result is $var(result)\n");
+	xlog("success\n");
+}
+
 route[ERROR] {
-	xlog("Error received: $var(result)");
-	...
+	xlog("There was an error\n");
+	if(json_get($var(error), "code", "$var(c)")) {
+		xlog("code is $var(c)\n");
+	}
+
+	if(json_get($var(error), "message", "$var(r)")) {
+		xlog("error is $var(r)\n");
+	}
+
+	if(json_get($var(error), "data", "$var(d)")) {
+		xlog("data is $var(d)\n");
+	}
+}
+
+route[INTERNAL] {
+	xlog("There was an internal error\n");
+
+	json_get($var(internal), "code", "$var(c)");
+	xlog("code is $var(c)\n");
+
+	json_get($var(internal), "message", "$var(r)");
+	xlog("error is $var(r)\n");
+
+	if(json_get($var(internal), "data", "$var(d)")) {
+		xlog("request is $var(d)\n");
+	}
 }
 ...
 				</programlisting>

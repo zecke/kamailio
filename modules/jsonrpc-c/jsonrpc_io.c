@@ -1,7 +1,7 @@
 /**
  * $Id$
  *
- * Copyright (C) 2011 Flowroute LLC (flowroute.com)
+ * Copyright (C) 2013 Flowroute LLC (flowroute.com)
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -24,252 +24,728 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
+#include <jansson.h>
 #include <event.h>
-#include <sys/timerfd.h>
+#include <event2/dns.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <signal.h>
 
 #include "../../sr_module.h"
 #include "../../route.h"
+#include "../../mem/mem.h"
+#include "../../action.h"
 #include "../../route_struct.h"
 #include "../../lvalue.h"
+#include "../../rand/fastrand.h"
 #include "../tm/tm_load.h"
+#include "../json/json.h"
 
-#include "jsonrpc_io.h"
 #include "jsonrpc.h"
+#include "jsonrpc_request.h"
+#include "jsonrpc_server.h"
+#include "jsonrpc_io.h"
+#include "jsonrpc_connect.h"
 #include "netstring.h"
-
-#define CHECK_MALLOC_VOID(p)  if(!p) {LM_ERR("Out of memory!"); return;}
-#define CHECK_MALLOC(p)  if(!p) {LM_ERR("Out of memory!"); return -1;}
-
-struct jsonrpc_server {
-	char *host;
-	int  port, socket, status;
-	struct jsonrpc_server *next;
-	struct event *ev;
-	struct itimerspec *timer;
-};
-
-struct jsonrpc_server_group {
-	struct jsonrpc_server *next_server;
-	int    priority;
-	struct jsonrpc_server_group *next_group;
-};
 
 struct tm_binds tmb;
 
-struct jsonrpc_server_group *server_group;
-
-void socket_cb(int fd, short event, void *arg);
 void cmd_pipe_cb(int fd, short event, void *arg);
-int  set_non_blocking(int fd);
-int  parse_servers(char *_servers, struct jsonrpc_server_group **group_ptr);
-int  connect_servers(struct jsonrpc_server_group *group);
-int  connect_server(struct jsonrpc_server *server);
-int  handle_server_failure(struct jsonrpc_server *server);
+void io_shutdown(int sig);
 
-int jsonrpc_io_child_process(int cmd_pipe, char* _servers)
+int jsonrpc_io_child_process(int cmd_pipe)
 {
-	if (parse_servers(_servers, &server_group) != 0)
-	{
-		LM_ERR("servers parameter could not be parsed\n");
-		return -1;
-	}
+	global_ev_base = event_base_new();
+	global_evdns_base = evdns_base_new(global_ev_base, 1);
 
-	event_init();
-	
-	struct event pipe_ev;
 	set_non_blocking(cmd_pipe);
-	event_set(&pipe_ev, cmd_pipe, EV_READ | EV_PERSIST, cmd_pipe_cb, &pipe_ev);
-	event_add(&pipe_ev, NULL);
-
-	if (!connect_servers(server_group))
-	{
-		LM_ERR("failed to connect to any servers\n");
+	struct event* pipe_ev = event_new(global_ev_base, cmd_pipe, EV_READ | EV_PERSIST, cmd_pipe_cb, NULL);
+	if(!pipe_ev) {
+		ERR("Failed to create pipe event\n");
 		return -1;
 	}
 
-	event_dispatch();
-	return 0;
-}
-
-void timeout_cb(int fd, short event, void *arg) 
-{
-	LM_ERR("message timeout\n");
-	jsonrpc_request_t *req = (jsonrpc_request_t*)arg;
-	json_object *error = json_object_new_string("timeout");
-	void_jsonrpc_request(req->id);
-	close(req->timerfd);
-	event_del(req->timer_ev);
-	pkg_free(req->timer_ev);
-	req->cbfunc(error, req->cbdata, 1);
-	pkg_free(req);
-}
-
-int result_cb(json_object *result, char *data, int error) 
-{
-	struct jsonrpc_pipe_cmd *cmd = (struct jsonrpc_pipe_cmd*)data;
-
-	pv_spec_t *dst = cmd->cb_pv;
-	pv_value_t val;
-
-	const char* res = json_object_get_string(result);
-
-	val.rs.s = (char*)res;
-	val.rs.len = strlen(res);
-	val.flags = PV_VAL_STR;
-
-	dst->setf(0, &dst->pvp, (int)EQ_T, &val);
-
-	int n;
-	if (error) {
-		n = route_get(&main_rt, cmd->err_route);
-	} else {
-		n = route_get(&main_rt, cmd->cb_route);
+	if(event_add(pipe_ev, NULL)<0) {
+		ERR("Failed to start pipe event\n");
+		return -1;
 	}
 
-	struct action *a = main_rt.rlist[n];
-	tmb.t_continue(cmd->t_hash, cmd->t_label, a);	
+	connect_servers(global_server_group);
 
-	free_pipe_cmd(cmd);
+#if 0
+	/* attach shutdown signal handler */
+	/* The shutdown handler are intended to clean up the remaining memory
+	 * in the IO process. However, catching the signals causes unpreditable
+	 * behavior in the Kamailio shutdown process, so this should be disabled
+	 * except when doing memory debugging. */
+	struct sigaction sa;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = io_shutdown;
+	if(sigaction(SIGTERM, &sa, NULL) == -1) {
+		ERR("Failed to attach IO shutdown handler to SIGTERM\n");
+	} else if(sigaction(SIGINT, NULL, &sa) == -1) {
+		ERR("Failed to attach IO shutdown handler to SIGINT\n");
+	}
+#endif
+
+	if(event_base_dispatch(global_ev_base)<0) {
+		ERR("IO couldn't start event loop\n");
+		return -1;
+	}
 	return 0;
 }
 
+void io_shutdown(int sig)
+{
+	INFO("Shutting down JSONRPC IO process...\n");
+	lock_get(jsonrpc_server_group_lock); /* blocking */
 
-int (*res_cb)(json_object*, char*, int) = &result_cb;
+	INIT_SERVER_LOOP
+	FOREACH_SERVER_IN(global_server_group)
+		close_server(server);
+	ENDFOR
+
+	evdns_base_free(global_evdns_base, 0);
+	event_base_loopexit(global_ev_base, NULL);
+	event_base_free(global_ev_base);
+
+	lock_release(jsonrpc_server_group_lock);
+}
+
+int send_to_script(pv_value_t* val, jsonrpc_req_cmd_t* req_cmd)
+{
+	if(!(req_cmd)) return -1;
+
+	if(req_cmd->route.len <= 0) return -1;
+
+	jsonrpc_result_pv.setf(req_cmd->msg, &jsonrpc_result_pv.pvp, (int)EQ_T, val);
+
+	int n = route_lookup(&main_rt, req_cmd->route.s);
+	if(n<0) {
+		ERR("no such route: %s\n", req_cmd->route.s);
+		return -1;
+	}
+
+	struct action* route = main_rt.rlist[n];
+
+	if(tmb.t_continue(req_cmd->t_hash, req_cmd->t_label, route)<0) {
+		ERR("Failed to resume transaction\n");
+		return -1;
+	}
+	return 0;
+}
+
+json_t* internal_error(int code, json_t* data)
+{
+	json_t* ret = json_object();
+	json_t* inner = json_object();
+	char* message;
+
+	switch(code){
+	case JRPC_ERR_REQ_BUILD:
+		message = "Failed to build request";
+		break;
+	case JRPC_ERR_SEND:
+		message = "Failed to send";
+		break;
+	case JRPC_ERR_BAD_RESP:
+		message = "Bad response result";
+		json_object_set(ret, "data", data);
+		break;
+	case JRPC_ERR_RETRY:
+		message = "Retry failed";
+		break;
+	case JRPC_ERR_SERVER_DISCONNECT:
+		message = "Server disconnected";
+		break;
+	case JRPC_ERR_TIMEOUT:
+		message = "Message timeout";
+		break;
+	case JRPC_ERR_PARSING:
+		message = "JSON parse error";
+		break;
+	case JRPC_ERR_BUG:
+		message = "There is a bug";
+		break;
+	default:
+		ERR("Unrecognized error code: %d\n", code);
+		message = "Unknown error";
+		break;
+	}
+
+	json_t* message_js = json_string(message);
+	json_object_set(inner, "message", message_js);
+	if(message_js) json_decref(message_js);
+
+	json_t* code_js = json_integer(code);
+	json_object_set(inner, "code", code_js);
+	if(code_js) json_decref(code_js);
+
+	if(data) {
+		json_object_set(inner, "data", data);
+	}
+
+	json_object_set(ret, "internal_error", inner);
+	if(inner) json_decref(inner);
+	return ret;
+}
+
+void fail_request(int code, jsonrpc_request_t* req, char* err_str)
+{
+	char* req_s;
+	char* freeme = NULL;
+	pv_value_t val;
+	json_t* error;
+
+	if(!req) {
+null_req:
+		WARN("%s: (null)\n", err_str);
+		goto end;
+	}
+
+	if(!(req->cmd) || (req->cmd->route.len <= 0)) {
+no_route:
+		req_s = json_dumps(req->payload, JSON_COMPACT);
+		if(req_s) {
+			WARN("%s: \n%s\n", err_str, req_s);
+			free(req_s);
+			goto end;
+		}
+		goto null_req;
+	}
+
+	error = internal_error(code, req->payload);
+	jsontoval(&val, &freeme, error);
+	if(error) json_decref(error);
+	if(send_to_script(&val, req->cmd)<0) {
+		goto no_route;
+	}
+
+end:
+	if(freeme) free(freeme);
+	free_req_cmd(req->cmd);
+	free_request(req);
+}
+
+void timeout_cb(int fd, short event, void *arg)
+{
+	jsonrpc_request_t* req = (jsonrpc_request_t*)arg;
+	if(!req)
+		return;
+
+	if(!(req->server)) {
+		ERR("No server defined for request\n");
+		return;
+	}
+
+	if(schedule_retry(req)<0) {
+		fail_request(JRPC_ERR_TIMEOUT, req, "Request timeout");
+	}
+}
+
+
+int server_tried(jsonrpc_server_t* server, server_list_t* tried)
+{
+	if(!server)
+		return 0;
+
+	int t = 0;
+	for(;tried!=NULL;tried=tried->next)
+	{
+		if(tried->server &&
+			server == tried->server)
+		{
+			t = 1;
+		}
+	}
+	return t;
+}
+
+/* loadbalance_by_weight() uses an algorithm to randomly pick a server out of
+ * a list based on its relative weight.
+ *
+ * It is loosely inspired by this:
+ * http://eli.thegreenplace.net/2010/01/22/weighted-random-generation-in-python/
+ *
+ * The insert_server_group() function provides the ability to get the combined
+ * weight of all the servers off the head of the list, making it possible to
+ * compute in O(n) in the worst case and O(1) in the best.
+ *
+ * A random number out of the total weight is chosen. Each node is inspected and
+ * its weight added to a recurring sum. Once the sum is larger than the random
+ * number the last server that was seen is chosen.
+ *
+ * A weight of 0 will almost never be chosen, unless if maybe all the other
+ * servers are offline.
+ *
+ * The exception is when all the servers in a group have a weight of 0. In
+ * this case, the load should be distributed evenly across each of them. This
+ * requires finding the size of the list beforehand.
+ * */
+void loadbalance_by_weight(jsonrpc_server_t** s,
+		jsonrpc_server_group_t* grp, server_list_t* tried)
+{
+	*s = NULL;
+
+	if(grp == NULL) {
+		ERR("Trying to pick from an empty group\n");
+		return;
+	}
+
+	if(grp->type != WEIGHT_GROUP) {
+		ERR("Trying to pick from a non weight group\n");
+		return;
+	}
+
+	jsonrpc_server_group_t* head = grp;
+	jsonrpc_server_group_t* cur = grp;
+
+	unsigned int pick = 0;
+	if(head->weight == 0) {
+		unsigned int size = 0;
+		size = server_group_size(cur);
+		if(size == 0) return;
+
+		pick = fastrand_max(size-1);
+
+		int i;
+		for(i=0;
+			(i <= pick || *s == NULL)
+				&& cur != NULL;
+			i++, cur=cur->next)
+		{
+			if(cur->server->status == JSONRPC_SERVER_CONNECTED) {
+				if(!server_tried(cur->server, tried)
+					&& (cur->server->hwm <= 0
+						|| cur->server->req_count < cur->server->hwm))
+				{
+					*s = cur->server;
+				}
+			}
+		}
+	} else {
+		pick = fastrand_max(head->weight - 1);
+
+		unsigned int sum = 0;
+		while(1) {
+			if(cur == NULL) break;
+			if(cur->server->status == JSONRPC_SERVER_CONNECTED) {
+				if(!server_tried(cur->server, tried)
+					&& (cur->server->hwm <= 0
+						|| cur->server->req_count < cur->server->hwm))
+				{
+					*s = cur->server;
+				}
+			}
+			sum += cur->server->weight;
+			if(sum > pick && *s != NULL) break;
+			cur = cur->next;
+		}
+	}
+}
+
+int jsonrpc_send(str conn, jsonrpc_request_t* req, bool notify_only)
+{
+	char* json = (char*)json_dumps(req->payload, JSON_COMPACT);
+
+	char* ns;
+	size_t bytes;
+	bytes = netstring_encode_new(&ns, json, (size_t)strlen(json));
+
+	bool sent = false;
+	jsonrpc_server_group_t* c_grp = NULL;
+	if(global_server_group != NULL)
+		c_grp = *global_server_group;
+	jsonrpc_server_group_t* p_grp = NULL;
+	jsonrpc_server_group_t* w_grp = NULL;
+	jsonrpc_server_t* s = NULL;
+	server_list_t* tried_servers = NULL;
+	DEBUG("SENDING DATA\n");
+	for(; c_grp != NULL; c_grp = c_grp->next) {
+
+		if(strncmp(conn.s, c_grp->conn.s, c_grp->conn.len) != 0) continue;
+
+		for(p_grp = c_grp->sub_group; p_grp != NULL; p_grp = p_grp->next)
+		{
+			w_grp = p_grp->sub_group;
+			while(!sent) {
+				loadbalance_by_weight(&s, w_grp, tried_servers);
+				if (s == NULL || s->status != JSONRPC_SERVER_CONNECTED) {
+					break;
+				}
+
+				if(bufferevent_write(s->bev, ns, bytes) == 0) {
+					sent = true;
+					if(!notify_only) {
+						s->req_count++;
+						if (s->hwm > 0 && s->req_count >= s->hwm) {
+							WARN("%.*s:%d in connection group %.*s has exceeded its high water mark (%d)\n",
+									STR(s->addr), s->port,
+									STR(s->conn), s->hwm);
+						}
+					}
+					req->server = s;
+					break;
+				} else {
+					addto_server_list(s, &tried_servers);
+				}
+			}
+
+			if (sent) {
+				break;
+			}
+
+			WARN("Failed to send to priority group, %d\n", p_grp->priority);
+			if(p_grp->next != NULL) {
+				INFO("Proceeding to next priority group, %d\n",
+						p_grp->next->priority);
+			}
+		}
+
+		if (sent) {
+			break;
+		}
+
+	}
+
+	if(!sent) {
+		WARN("Failed to send to connection group, \"%.*s\"\n",
+				STR(conn));
+		if(schedule_retry(req)<0) {
+			fail_request(JRPC_ERR_RETRY, req, "Failed to schedule retry");
+		}
+	}
+
+	free_server_list(tried_servers);
+	if(ns) pkg_free(ns);
+	if(json) free(json);
+
+	if (sent && notify_only == false) {
+
+		const struct timeval tv = ms_to_tv(req->timeout);
+
+		req->timeout_ev = evtimer_new(global_ev_base, timeout_cb, (void*)req);
+		if(event_add(req->timeout_ev, &tv)<0) {
+			ERR("event_add failed while setting request timer (%s).",
+					strerror(errno));
+			return -1;
+		}
+	}
+
+	return sent;
+}
 
 
 void cmd_pipe_cb(int fd, short event, void *arg)
 {
 	struct jsonrpc_pipe_cmd *cmd;
-	/* struct event *ev = (struct event*)arg; */
 
 	if (read(fd, &cmd, sizeof(cmd)) != sizeof(cmd)) {
-		LM_ERR("failed to read from command pipe: %s\n", strerror(errno));
+		ERR("FATAL ERROR: failed to read from command pipe: %s\n",
+				strerror(errno));
 		return;
 	}
 
-	json_object *params = json_tokener_parse(cmd->params);
-	json_object *payload = NULL;
-	jsonrpc_request_t *req = NULL;
 
-	if (cmd->notify_only) {
-		payload = build_jsonrpc_notification(cmd->method, params);
-	} else {
-		req = build_jsonrpc_request(cmd->method, params, (char*)cmd, res_cb);
-		if (req)
-			payload = req->payload;
-	}
-
-	if (!payload) {
-		LM_ERR("Failed to build jsonrpc_request_t (method: %s, params: %s)\n", cmd->method, cmd->params);	
-		return;
-	}
-	char *json = (char*)json_object_get_string(payload);
-
-	char *ns; size_t bytes;
-	bytes = netstring_encode_new(&ns, json, (size_t)strlen(json));
-
-	struct jsonrpc_server_group *g;
-	int sent = 0;
-	for (g = server_group; g != NULL; g = g->next_group)
-	{
-		struct jsonrpc_server *s, *first = NULL;
-		for (s = g->next_server; s != first; s = s->next)
-		{
-			if (first == NULL) first = s;
-			if (s->status == JSONRPC_SERVER_CONNECTED) {
-				if (send(s->socket, ns, bytes, 0) == bytes)
-				{
-					sent = 1;
-					break;
-				} else {
-					handle_server_failure(s);
-				}
-			}
-			g->next_server = s->next;
+	switch(cmd->type) {
+	case CMD_CLOSE:
+		if(cmd->server) {
+			wait_close(cmd->server);
 		}
-		if (sent) {
-			break;
+		goto end;
+		break;
+	case CMD_RECONNECT:
+		if(cmd->server) {
+			wait_reconnect(cmd->server);
+		}
+		goto end;
+		break;
+	case CMD_CONNECT:
+		if(cmd->server) {
+			bev_connect(cmd->server);
+		}
+		goto end;
+		break;
+	case CMD_UPDATE_SERVER_GROUP:
+		if(cmd->new_grp) {
+			jsonrpc_server_group_t* old_grp = *global_server_group;
+			*global_server_group = cmd->new_grp;
+			free_server_group(&old_grp);
+		}
+		lock_release(jsonrpc_server_group_lock);
+		goto end;
+		break;
+
+	case CMD_SEND:
+		break;
+
+	default:
+		ERR("Unrecognized pipe command: %d\n", cmd->type);
+		goto end;
+		break;
+	}
+
+	/* command is SEND */
+
+	jsonrpc_req_cmd_t* req_cmd = cmd->req_cmd;
+	if(req_cmd == NULL) {
+		ERR("req_cmd is NULL. Invalid send command\n");
+		goto end;
+	}
+
+	jsonrpc_request_t* req = NULL;
+	req = create_request(req_cmd);
+	if (!req || !req->payload) {
+		json_t* error = internal_error(JRPC_ERR_REQ_BUILD, NULL);
+		pv_value_t val;
+		char* freeme = NULL;
+		jsontoval(&val, &freeme, error);
+		if(req_cmd->route.len <=0 && send_to_script(&val, req_cmd)<0) {
+			ERR("Failed to build request (method: %.*s, params: %.*s)\n",
+					STR(req_cmd->method), STR(req_cmd->params));
+		}
+		if(freeme) free(freeme);
+		if(error) json_decref(error);
+		free_req_cmd(req_cmd);
+		goto end;
+	}
+
+	int sent = jsonrpc_send(req_cmd->conn, req, req_cmd->notify_only);
+
+	char* type;
+	if (sent<0) {
+		if (req_cmd->notify_only == false) {
+			type = "Request";
 		} else {
-			LM_WARN("Failed to send on priority group %d... proceeding to next priority group.\n", g->priority);
+			type = "Notification";
 		}
+		WARN("%s could not be sent to connection group: %.*s\n",
+				type, STR(req_cmd->conn));
+		fail_request(JRPC_ERR_SEND, req, "Failed to send request");
 	}
 
-	if (sent && req) {
-		int timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-
-		if (timerfd == -1) {
-			LM_ERR("Could not create timerfd.");
-			return;
-		}
-
-		req->timerfd = timerfd;
-		struct itimerspec *itime = pkg_malloc(sizeof(struct itimerspec));
-		CHECK_MALLOC_VOID(itime);
-		itime->it_interval.tv_sec = 0;
-		itime->it_interval.tv_nsec = 0;
-
-		itime->it_value.tv_sec = JSONRPC_TIMEOUT/1000;
-		itime->it_value.tv_nsec = (JSONRPC_TIMEOUT % 1000) * 1000000;
-		if (timerfd_settime(timerfd, 0, itime, NULL) == -1) 
-		{
-			LM_ERR("Could not set timer.");
-			return;
-		}
-		pkg_free(itime);
-		struct event *timer_ev = pkg_malloc(sizeof(struct event));
-		CHECK_MALLOC_VOID(timer_ev);
-		event_set(timer_ev, timerfd, EV_READ, timeout_cb, req); 
-		if(event_add(timer_ev, NULL) == -1) {
-			LM_ERR("event_add failed while setting request timer (%s).", strerror(errno));
-			return;
-		}
-		req->timer_ev = timer_ev;
-	} else if (!sent) {
-		LM_ERR("Request could not be sent... no more failover groups.\n");
-		if (req) {
-			json_object *error = json_object_new_string("failure");
-			void_jsonrpc_request(req->id);
-			req->cbfunc(error, req->cbdata, 1);
-		}
-	}
-
-	pkg_free(ns);
-	json_object_put(payload);
+end:
+	free_pipe_cmd(cmd);
 }
 
-void socket_cb(int fd, short event, void *arg)
-{	
-	struct jsonrpc_server *server = (struct jsonrpc_server*)arg;
+int handle_response(json_t* response)
+{
+	int retval = 0;
+	jsonrpc_request_t* req = NULL;
+	json_t* return_obj = NULL;
+	json_t* internal = NULL;
+	char* freeme = NULL;
 
-	if (event != EV_READ) {
-		LM_ERR("unexpected socket event (%d)\n", event);
-		handle_server_failure(server);	
-		return;
+
+	/* check if json object */
+	if(!json_is_object(response)){
+		WARN("jsonrpc response is not an object\n");
+		return -1;
 	}
 
-	char *netstring;
+	/* check version */
+	json_t* version = json_object_get(response, "jsonrpc");
+	if(!version) {
+		WARN("jsonrpc response does not have a version.\n");
+		retval = -1;
+		goto end;
+	}
 
-	int retval = netstring_read_fd(fd, &netstring);
+	const char* version_s = json_string_value(version);
+	if(!version_s){
+		WARN("jsonrpc response version is not a string.\n");
+		retval = -1;
+		goto end;
+	}
 
-	if (retval != 0) {
-		LM_ERR("bad netstring (%d)\n", retval);
-		handle_server_failure(server);
-		return;
-	}	
+	if (strlen(version_s) != (sizeof(JSONRPC_VERSION)-1)
+			|| strncmp(version_s, JSONRPC_VERSION, sizeof(JSONRPC_VERSION)-1) != 0) {
+		WARN("jsonrpc response version is not %s. version: %s\n",
+				JSONRPC_VERSION, version_s);
+		retval = -1;
+		goto end;
+	}
 
-	struct json_object *res = json_tokener_parse(netstring);
+	/* check for an id */
+	json_t* _id = json_object_get(response, "id");
+	if(!_id) {
+		WARN("jsonrpc response does not have an id.\n");
+		retval = -1;
+		goto end;
+	}
+
+	int id = json_integer_value(_id);
+	if (!(req = pop_request(id))) {
+		/* don't fail the server for an unrecognized id */
+		retval = 0;
+		goto end;
+	}
+
+	return_obj = json_object();
+
+	json_t* error = json_object_get(response, "error");
+	json_t* result = json_object_get(response, "result");
+
+	if(error) {
+		json_object_set(return_obj, "error", error);
+	}
+
+	if(result) {
+		json_object_set(return_obj, "result", result);
+	}
+
+	if ((!result && !error) || (result && error)) {
+		WARN("bad response\n");
+		internal = internal_error(JRPC_ERR_BAD_RESP, req->payload);
+		json_object_update(return_obj, internal);
+		if(internal) json_decref(internal);
+	}
+
+	pv_value_t val;
+
+	if(jsontoval(&val, &freeme, return_obj)<0) {
+		fail_request(
+				JRPC_ERR_TO_VAL,
+				req,
+				"Failed to convert response json to pv\n");
+		retval = -1;
+		goto end;
+	}
+
+	char* error_s = NULL;
+
+	if(send_to_script(&val, req->cmd)>=0) {
+		goto free_and_end;
+	}
+
+	if(error) {
+		// get code from error
+		json_t* _code = json_object_get(error, "code");
+		if(_code) {
+			int code = json_integer_value(_code);
+
+			// check if code is in global_retry_ranges
+			retry_range_t* tmpr;
+			for(tmpr = global_retry_ranges;
+					tmpr != NULL;
+					tmpr = tmpr->next) {
+				if((tmpr->start < tmpr->end
+						&& tmpr->start <= code && code <= tmpr->end)
+				|| (tmpr->end < tmpr->start
+						&& tmpr->end <= code && code <= tmpr->start)
+				|| (tmpr->start == tmpr->end && tmpr->start == code)) {
+					if(schedule_retry(req)==0) {
+						goto end;
+					}
+					break;
+				}
+			}
+
+		}
+		error_s = json_dumps(error, JSON_COMPACT);
+		if(error_s) {
+			WARN("Request recieved an error: \n%s\n", error_s);
+			free(error_s);
+		} else {
+			fail_request(
+					JRPC_ERR_BAD_RESP,
+					req,
+					"Could not convert 'error' response to string");
+			retval = -1;
+			goto end;
+		}
+	}
+
+
+free_and_end:
+	free_req_cmd(req->cmd);
+	free_request(req);
+
+end:
+	if(freeme) free(freeme);
+	if(return_obj) json_decref(return_obj);
+	return retval;
+}
+
+void handle_netstring(jsonrpc_server_t* server)
+{
+	unsigned int old_count = server->req_count;
+	server->req_count--;
+	if (server->hwm > 0
+			&& old_count >= server->hwm
+			&& server->req_count < server->hwm) {
+		INFO("%.*s:%d in connection group %.*s is back to normal\n",
+				STR(server->addr), server->port, STR(server->conn));
+	}
+
+	json_error_t error;
+
+	json_t* res = json_loads(server->buffer->string, 0, &error);
 
 	if (res) {
-		handle_jsonrpc_response(res);
-		json_object_put(res);
+		if(handle_response(res)<0){
+			ERR("Cannot handle jsonrpc response: %s\n", server->buffer->string);
+		}
+		json_decref(res);
 	} else {
-		LM_ERR("netstring could not be parsed: (%s)\n", netstring);
-		handle_server_failure(server);
+		ERR("Failed to parse json: %s\n", server->buffer->string);
+		ERR("PARSE ERROR: %s at %d,%d\n",
+				error.text, error.line, error.column);
 	}
-	pkg_free(netstring);
+}
+
+void bev_read_cb(struct bufferevent* bev, void* arg)
+{
+	jsonrpc_server_t* server = (jsonrpc_server_t*)arg;
+	int retval = 0;
+	while (retval == 0) {
+		int retval = netstring_read_evbuffer(bev, &server->buffer);
+
+		if (retval == NETSTRING_INCOMPLETE) {
+			return;
+		} else if (retval < 0) {
+			char* msg = "";
+			switch(retval) {
+			case NETSTRING_ERROR_TOO_LONG:
+				msg = "too long";
+				break;
+			case NETSTRING_ERROR_NO_COLON:
+				msg = "no colon after length field";
+				break;
+			case NETSTRING_ERROR_TOO_SHORT:
+				msg = "too short";
+				break;
+			case NETSTRING_ERROR_NO_COMMA:
+				msg = "missing comma";
+				break;
+			case NETSTRING_ERROR_LEADING_ZERO:
+				msg = "length field has a leading zero";
+				break;
+			case NETSTRING_ERROR_NO_LENGTH:
+				msg = "missing length field";
+				break;
+			case NETSTRING_INCOMPLETE:
+				msg = "incomplete";
+				break;
+			default:
+				ERR("bad netstring: unknown error (%d)\n", retval);
+				goto reconnect;
+			}
+			ERR("bad netstring: %s\n", msg);
+reconnect:
+			force_reconnect(server);
+			return;
+		}
+
+		handle_netstring(server);
+		free_netstring(server->buffer);
+		server->buffer = NULL;
+	}
 }
 
 int set_non_blocking(int fd)
@@ -286,272 +762,95 @@ int set_non_blocking(int fd)
 	return 0;
 }
 
-int parse_servers(char *_servers, struct jsonrpc_server_group **group_ptr)
+jsonrpc_pipe_cmd_t* create_pipe_cmd()
 {
-	char cpy[strlen(_servers)+1];
-	char *servers = strcpy(cpy, _servers);
-
-	struct jsonrpc_server_group *group = NULL;
-
-	/* parse servers string */
-	char *token = strtok(servers, ":");
-	while (token != NULL) 
-	{
-		char *host, *port_s, *priority_s, *tail;
-		int port, priority;
-		host = token;
-
-		/* validate domain */
-		if (!(isalpha(host[0]) || isdigit(host[0]))) {
-			LM_ERR("invalid domain (1st char is '%c')\n", host[0]);
-			return -1;
-		}
-		int i;
-		for (i=1; i<strlen(host)-1; i++)
-		{
-			if(!(isalpha(host[i]) || isdigit(host[i]) || host[i] == '-' || host[i] == '.'))
-			{
-				LM_ERR("invalid domain (char %d is %c)\n", i, host[i]);
-				return -1;
-			}
-		}
-		if (!(isalpha(host[i]) || isdigit(host[i]))) {
-			LM_ERR("invalid domain (char %d (last) is %c)\n", i, host[i]);
-			return -1;
-		}
-
-		/* convert/validate port */
-		port_s = strtok(NULL, ",");
-		if (port_s == NULL || !(port = strtol(port_s, &tail, 0)) || strlen(tail)) 
-		{
-			LM_ERR("invalid port: %s\n", port_s);
-			return -1;
-		}
-
-		/* convert/validate priority */
-		priority_s = strtok(NULL, " ");
-		if (priority_s == NULL || !(priority = strtol(priority_s, &tail, 0)) || strlen(tail)) 
-		{
-			LM_ERR("invalid priority: %s\n", priority_s);
-			return -1;
-		}
-
-	
-		struct jsonrpc_server *server = pkg_malloc(sizeof(struct jsonrpc_server));
-		CHECK_MALLOC(server);
-		char *h = pkg_malloc(strlen(host)+1);
-		CHECK_MALLOC(h);
-
-		strcpy(h,host);
-		server->host = h;
-		server->port = port;
-		server->status = JSONRPC_SERVER_DISCONNECTED;
-		server->socket = 0;
-
-		int group_cnt = 0;
-
-		/* search for a server group with this server's priority */
-		struct jsonrpc_server_group *selected_group = NULL;
-		for (selected_group=group; selected_group != NULL; selected_group=selected_group->next_group)
-		{
-			if (selected_group->priority == priority) break;
-		}
-		
-		if (selected_group == NULL) {
-			group_cnt++;
-			LM_INFO("Creating group for priority %d\n", priority);
-
-			/* this is the first server for this priority... link it to itself */
-			server->next = server;
-			
-			selected_group = pkg_malloc(sizeof(struct jsonrpc_server_group));
-			CHECK_MALLOC(selected_group);
-			selected_group->priority = priority;
-			selected_group->next_server = server;
-			
-			/* insert the group properly in the linked list */
-			struct jsonrpc_server_group *x, *pg;
-			pg = NULL;
-			if (group == NULL) 
-			{
-				group = selected_group;
-				group->next_group = NULL;
-			} else {
-				for (x = group; x != NULL; x = x->next_group) 
-				{
-					if (priority > x->priority)
-					{
-						if (pg == NULL)
-						{
-							group = selected_group;
-						} else {
-							pg->next_group = selected_group;
-						}
-						selected_group->next_group = x;
-						break;
-					} else if (x->next_group == NULL) {
-						x->next_group = selected_group;
-						break;
-					} else {
-						pg = x;
-					}
-				}
-			}
-		} else {
-			LM_ERR("Using existing group for priority %d\n", priority);
-			server->next = selected_group->next_server->next;
-			selected_group->next_server->next = server;
-		}
-
-		token = strtok(NULL, ":");
+	jsonrpc_pipe_cmd_t* cmd = NULL;
+	cmd = (jsonrpc_pipe_cmd_t*)shm_malloc(sizeof(jsonrpc_pipe_cmd_t));
+	if(!cmd) {
+		ERR("Failed to malloc pipe cmd.\n");
+		return NULL;
 	}
+	memset(cmd, 0, sizeof(jsonrpc_pipe_cmd_t));
 
-	*group_ptr = group;
-	return 0;
+	return cmd;
 }
 
-int connect_server(struct jsonrpc_server *server) 
-{	
-	struct sockaddr_in  server_addr;
-	struct hostent      *hp;
-
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port   = htons(server->port);
-
-	hp = gethostbyname(server->host);
-	if (hp == NULL) {
-		LM_ERR("gethostbyname(%s) failed with h_errno=%d.\n", server->host, h_errno);
-		handle_server_failure(server);
-		return -1;
-	}
-	memcpy(&(server_addr.sin_addr.s_addr), hp->h_addr, hp->h_length);
-
-	int sockfd = socket(AF_INET,SOCK_STREAM,0);
-
-	if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in))) {
-		LM_WARN("Failed to connect to %s on port %d... %s\n", server->host, server->port, strerror(errno));
-		handle_server_failure(server);
-		return -1;
-	}
-
-	if (set_non_blocking(sockfd) != 0)
-	{
-		LM_WARN("Failed to set socket (%s:%d) to non blocking.\n", server->host, server->port);
-		handle_server_failure(server);
-		return -1;
-	}
-
-	server->socket = sockfd;
-	server->status = JSONRPC_SERVER_CONNECTED;
-
-	struct event *socket_ev = pkg_malloc(sizeof(struct event));
-	CHECK_MALLOC(socket_ev);
-	event_set(socket_ev, sockfd, EV_READ | EV_PERSIST, socket_cb, server);
-	event_add(socket_ev, NULL);
-	server->ev = socket_ev;
-	return 0;
-}
-
-int  connect_servers(struct jsonrpc_server_group *group)
+void free_pipe_cmd(jsonrpc_pipe_cmd_t* cmd)
 {
-	int connected_servers = 0;
-	for (;group != NULL; group = group->next_group)
-	{
-		struct jsonrpc_server *s, *first = NULL;
-		LM_INFO("Connecting to servers for priority %d:\n", group->priority);
-		for (s=group->next_server;s!=first;s=s->next)
-		{
-			if (connect_server(s) == 0) 
-			{
-				connected_servers++;
-				LM_INFO("Connected to host %s on port %d\n", s->host, s->port);
-			}
-			if (first == NULL) first = s;
-		}
-	}
-	return connected_servers;
-}
+	if(!cmd) return;
 
-void reconnect_cb(int fd, short event, void *arg)
-{
-	LM_INFO("Attempting to reconnect now.");
-	struct jsonrpc_server *server = (struct jsonrpc_server*)arg;
-	
-	if (server->status == JSONRPC_SERVER_CONNECTED) {
-		LM_WARN("Trying to connect an already connected server.");
-		return;
-	}
-
-	if (server->ev != NULL) {
-		event_del(server->ev);
-		pkg_free(server->ev);
-		server->ev = NULL;
-	}
-
-	close(fd);
-	pkg_free(server->timer);
-
-	connect_server(server);
-}
-
-int handle_server_failure(struct jsonrpc_server *server)
-{
-	LM_INFO("Setting timer to reconnect to %s on port %d in %d seconds.\n", server->host, server->port, JSONRPC_RECONNECT_INTERVAL);
-
-	if (server->socket)
-		close(server->socket);
-	server->socket = 0;
-	if (server->ev != NULL) {
-		event_del(server->ev);
-		pkg_free(server->ev);
-		server->ev = NULL;
-	}
-	server->status = JSONRPC_SERVER_FAILURE;
-	int timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-	
-	if (timerfd == -1) {
-		LM_ERR("Could not create timerfd to reschedule connection. No further attempts will be made to reconnect this server.");
-		return -1;
-	}
-
-	struct itimerspec *itime = pkg_malloc(sizeof(struct itimerspec));
-	CHECK_MALLOC(itime);
-	itime->it_interval.tv_sec = 0;
-	itime->it_interval.tv_nsec = 0;
-	
-	itime->it_value.tv_sec = JSONRPC_RECONNECT_INTERVAL;
-	itime->it_value.tv_nsec = 0;
-	
-	if (timerfd_settime(timerfd, 0, itime, NULL) == -1) 
-	{
-		LM_ERR("Could not set timer to reschedule connection. No further attempts will be made to reconnect this server.");
-		return -1;
-	}
-	LM_INFO("timerfd value is %d\n", timerfd);
-	struct event *timer_ev = pkg_malloc(sizeof(struct event));
-	CHECK_MALLOC(timer_ev);
-	event_set(timer_ev, timerfd, EV_READ, reconnect_cb, server); 
-	if(event_add(timer_ev, NULL) == -1) {
-		LM_ERR("event_add failed while rescheduling connection (%s). No further attempts will be made to reconnect this server.", strerror(errno));
-		return -1;
-	}
-	server->ev = timer_ev;
-	server->timer = itime;
-	return 0;
-}
-
-
-void free_pipe_cmd(struct jsonrpc_pipe_cmd *cmd) 
-{
-	if (cmd->method) 
-		shm_free(cmd->method);
-	if (cmd->params)
-		shm_free(cmd->params);
-	if (cmd->cb_route)
-		shm_free(cmd->cb_route);
-	if (cmd->err_route)
-		shm_free(cmd->err_route);
-	if (cmd->cb_pv)
-		shm_free(cmd->cb_pv);
 	shm_free(cmd);
+}
+
+jsonrpc_req_cmd_t* create_req_cmd()
+{
+	jsonrpc_req_cmd_t* req_cmd = NULL;
+	req_cmd = (jsonrpc_req_cmd_t*)shm_malloc(sizeof(jsonrpc_req_cmd_t));
+	CHECK_MALLOC_NULL(req_cmd);
+	memset(req_cmd, 0, sizeof(jsonrpc_req_cmd_t));
+
+	req_cmd->conn = null_str;
+	req_cmd->method = null_str;
+	req_cmd->params = null_str;
+	req_cmd->route = null_str;
+	return req_cmd;
+}
+
+void free_req_cmd(jsonrpc_req_cmd_t* req_cmd)
+{
+	if(req_cmd) {
+		CHECK_AND_FREE(req_cmd->conn.s);
+		CHECK_AND_FREE(req_cmd->method.s);
+		CHECK_AND_FREE(req_cmd->params.s);
+		CHECK_AND_FREE(req_cmd->route.s);
+		shm_free(req_cmd);
+	}
+}
+
+int send_pipe_cmd(cmd_type type, void* data)
+{
+	char* name = "";
+	jsonrpc_pipe_cmd_t* cmd = NULL;
+	cmd = create_pipe_cmd();
+	CHECK_MALLOC(cmd);
+
+	cmd->type = type;
+
+	switch(type) {
+	case CMD_CONNECT:
+		cmd->server = (jsonrpc_server_t*)data;
+		name = "connect";
+		break;
+	case CMD_RECONNECT:
+		cmd->server = (jsonrpc_server_t*)data;
+		name = "reconnect";
+		break;
+	case CMD_CLOSE:
+		cmd->server = (jsonrpc_server_t*)data;
+		name = "close";
+		break;
+	case CMD_UPDATE_SERVER_GROUP:
+		cmd->new_grp = (jsonrpc_server_group_t*)data;
+		name = "update";
+		break;
+	case CMD_SEND:
+		cmd->req_cmd = (jsonrpc_req_cmd_t*)data;
+		name = "send";
+		break;
+	default:
+		ERR("Unknown command type %d", type);
+		goto error;
+	}
+
+	DEBUG("sending %s command\n", name);
+
+	if (write(cmd_pipe, &cmd, sizeof(cmd)) != sizeof(cmd)) {
+		ERR("Failed to send '%s' cmd to io pipe: %s\n", name, strerror(errno));
+		goto error;
+	}
+
+	return 0;
+error:
+	free_pipe_cmd(cmd);
+	return -1;
 }

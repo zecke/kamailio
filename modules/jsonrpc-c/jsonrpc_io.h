@@ -1,7 +1,7 @@
 /**
  * $Id$
  *
- * Copyright (C) 2011 Flowroute LLC (flowroute.com)
+ * Copyright (C) 2013 Flowroute LLC (flowroute.com)
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -25,28 +25,74 @@
 #ifndef _JSONRPC_IO_H_
 #define _JSONRPC_IO_H_
 
+#include <jansson.h>
+#include <event2/bufferevent.h>
+#include <stdbool.h>
 #include "../../route_struct.h"
 #include "../../pvar.h"
+#include "jsonrpc_server.h"
+#include "jsonrpc_request.h"
+#include "jsonrpc.h"
 
-#define JSONRPC_SERVER_CONNECTED    1
-#define JSONRPC_SERVER_DISCONNECTED 2
-#define JSONRPC_SERVER_FAILURE      3
+/* event bases */
+struct event_base* global_ev_base;
+struct evdns_base* global_evdns_base;
 
-/* interval (in seconds) at which failed servers are retried */
-#define JSONRPC_RECONNECT_INTERVAL  3
+typedef enum
+{ CMD_CONNECT = 1000
+, CMD_RECONNECT
+, CMD_CLOSE
+, CMD_UPDATE_SERVER_GROUP
+, CMD_SEND
+} cmd_type;
 
-/* time (in ms) after which the error route is called */
-#define JSONRPC_TIMEOUT 			500
-
-struct jsonrpc_pipe_cmd 
-{
-	char *method, *params, *cb_route, *err_route;
-	unsigned int t_hash, t_label, notify_only;
-	pv_spec_t *cb_pv;
+typedef struct jsonrpc_req_cmd {
+	str method, params, route, conn;
+	unsigned int t_hash, t_label, timeout;
+	bool notify_only;
+	int retry;
 	struct sip_msg *msg;
+} jsonrpc_req_cmd_t;
+
+/* forward declaration */
+typedef struct jsonrpc_request jsonrpc_request_t;
+
+typedef struct jsonrpc_pipe_cmd jsonrpc_pipe_cmd_t;
+struct jsonrpc_pipe_cmd
+{
+	cmd_type type;
+	union {
+		jsonrpc_server_t* server;
+		jsonrpc_req_cmd_t* req_cmd;
+		jsonrpc_server_group_t* new_grp;
+	};
 };
 
-int jsonrpc_io_child_process(int data_pipe, char* servers);
-void free_pipe_cmd(struct jsonrpc_pipe_cmd *cmd); 
+int jsonrpc_io_child_process(int data_pipe);
+int jsonrpc_send(str conn, jsonrpc_request_t* req, bool notify_only);
+int send_pipe_cmd(cmd_type type, void* data);
+int handle_response(json_t *response);
+jsonrpc_pipe_cmd_t* create_pipe_cmd();
+void free_pipe_cmd(jsonrpc_pipe_cmd_t* cmd);
+jsonrpc_req_cmd_t* create_req_cmd();
+void free_req_cmd(jsonrpc_req_cmd_t* cmd);
+int  set_non_blocking(int fd);
+void bev_read_cb(struct bufferevent* bev, void* arg);
+
+/* Remember to update the docs if you add or change these */
+typedef enum
+{ JRPC_ERR_BUG       = -1000
+, JRPC_ERR_TIMEOUT   = -100
+, JRPC_ERR_SERVER_DISCONNECT = -75
+, JRPC_ERR_RETRY     = -50
+, JRPC_ERR_BAD_RESP  = -20
+, JRPC_ERR_TO_VAL    = -11
+, JRPC_ERR_PARSING   = -10
+, JRPC_ERR_SEND      = -5
+, JRPC_ERR_REQ_BUILD = -1
+} jsonrpc_error;
+
+
+void fail_request(int code, jsonrpc_request_t* req, char* error_str);
 
 #endif /* _JSONRPC_IO_H_ */

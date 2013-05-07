@@ -1,7 +1,7 @@
 /**
  * $Id$
  *
- * Copyright (C) 2011 Flowroute LLC (flowroute.com)
+ * Copyright (C) 2013 Flowroute LLC (flowroute.com)
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -25,28 +25,115 @@
 #ifndef _JSONRPC_H_
 #define _JSONRPC_H_
 
-#define JSONRPC_DEFAULT_HTABLE_SIZE 500
-#define JSONRPC_MAX_ID 1000000
+#ifdef TEST
+
+#include "unit_tests/test.h"
+
+#else
+
+#include "../../sr_module.h"
+#include "../json/json.h"
+json_to_val_f jsontoval;
+pv_spec_t jsonrpc_result_pv;
+
+#endif
+
+#define JSONRPC_VERSION "2.0"
 
 #define JSONRPC_INTERNAL_SERVER_ERROR -32603
+#define JSONRPC_ERROR_NO_MEMORY -1;
 
-#include <json.h>
+/* DEFAULTS */
+/* time (in ms) after which the error route is called */
+#define JSONRPC_DEFAULT_TIMEOUT     500
+#define JSONRPC_RESULT_STR "$var(jsrpc_result)"
+#define JSONRPC_DEFAULT_RETRY       0
+
+/* helpful macros */
+#define CHECK_MALLOC_VOID(p)  if(!(p)) {ERR("Out of memory!\n"); return;}
+#define CHECK_MALLOC(p)  if(!(p)) {ERR("Out of memory!\n"); return JSONRPC_ERROR_NO_MEMORY;}
+#define CHECK_MALLOC_NULL(p)  if(!(p)) {ERR("Out of memory!\n"); return NULL;}
+#define CHECK_MALLOC_GOTO(p,loc)  if(!(p)) {ERR("Out of memory!\n"); goto loc;}
+#define CHECK_AND_FREE(p) if((p)!=NULL) shm_free(p)
+#define CHECK_AND_FREE_EV(p) \
+	if((p) && event_initialized((p))) {\
+		event_del(p); \
+		event_free(p); \
+		p = NULL; \
+	}
+
+#define STR(ss) (ss).len, (ss).s
+/* The lack of parens is intentional; this is intended to be used in a list
+ * of multiple arguments.
+ *
+ * Usage: printf("my str %.*s", STR(mystr))
+ *
+ * Expands to: printf("my str %.*s", (mystr).len, (mystr).s)
+ * */
+
+
+#define PIT_MATCHES(param) \
+	(pit->name.len == sizeof((param))-1 && \
+		strncmp(pit->name.s, (param), sizeof((param))-1)==0)
+
+#include <jansson.h>
 #include <event.h>
 
-typedef struct jsonrpc_request jsonrpc_request_t;
+typedef void (*libev_cb_f)(int sock, short flags, void *arg);
 
-struct jsonrpc_request {
-	int id, timerfd;
-	jsonrpc_request_t *next;
-	int (*cbfunc)(json_object*, char*, int);
-	char *cbdata;
-	json_object *payload;
-	struct event *timer_ev; 
-};
+typedef struct retry_range {
+	int start;
+	int end;
+	struct retry_range* next;
+} retry_range_t;
 
-json_object* build_jsonrpc_notification(char *method, json_object *params); 
-jsonrpc_request_t* build_jsonrpc_request(char *method, json_object *params, char *cbdata, int (*cbfunc)(json_object*, char*, int));
-int handle_jsonrpc_response(json_object *response);
-void void_jsonrpc_request(int id);
+/* globals */
+int cmd_pipe;
+extern const str null_str;
+str result_pv_str;
+retry_range_t* global_retry_ranges;
+
+static inline str pkg_strdup(str src)
+{
+	str res;
+
+	if (!src.s) {
+		res.s = NULL;
+		res.len = 0;
+	} else if (!(res.s = (char *) pkg_malloc(src.len + 1))) {
+		res.len = 0;
+	} else {
+		strncpy(res.s, src.s, src.len);
+		res.s[src.len] = 0;
+		res.len = src.len;
+	}
+	return res;
+}
+
+static inline str shm_strdup(str src)
+{
+	str res;
+
+	if (!src.s) {
+		res.s = NULL;
+		res.len = 0;
+	} else if (!(res.s = (char *) shm_malloc(src.len + 1))) {
+		res.len = 0;
+	} else {
+		strncpy(res.s, src.s, src.len);
+		res.s[src.len] = 0;
+		res.len = src.len;
+	}
+	return res;
+}
+
+static inline struct timeval ms_to_tv(unsigned int time)
+{
+	struct timeval tv = {0,0};
+	tv.tv_sec = time/1000;
+	tv.tv_usec = ((time % 1000) * 1000);
+	return tv;
+}
+
+
 #endif /* _JSONRPC_H_ */
-

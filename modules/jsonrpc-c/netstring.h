@@ -1,7 +1,7 @@
 /**
  * $Id$
  *
- * Copyright (C) 2011 Flowroute LLC (flowroute.com)
+ * Copyright (C) 2013 Flowroute LLC (flowroute.com)
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -23,11 +23,22 @@
  */
 
 #ifndef __NETSTRING_STREAM_H
-#define __NETSTRNG_STREAM_H
+#define __NETSTRING_STREAM_H
 
 #include <string.h>
+#include <event2/bufferevent.h>
 
-int netstring_read_fd(int fd, char **netstring);
+typedef struct {
+	char* buffer;
+	char* string;
+	unsigned int start, read, length;
+} netstring_t;
+
+void free_netstring(netstring_t* netstring);
+
+int netstring_read_evbuffer(struct bufferevent *bev, netstring_t **netstring);
+
+int netstring_read_fd(int fd, netstring_t **netstring);
 
 int netstring_read(char *buffer, size_t buffer_length,
 		   char **netstring_start, size_t *netstring_length);
@@ -37,12 +48,17 @@ size_t netstring_buffer_size(size_t data_length);
 size_t netstring_encode_new(char **netstring, char *data, size_t len);
 
 /* Errors that can occur during netstring parsing */
-#define NETSTRING_ERROR_TOO_LONG     -1
-#define NETSTRING_ERROR_NO_COLON     -2
-#define NETSTRING_ERROR_TOO_SHORT    -3
-#define NETSTRING_ERROR_NO_COMMA     -4
-#define NETSTRING_ERROR_LEADING_ZERO -5
-#define NETSTRING_ERROR_NO_LENGTH    -6
-#define NETSTRING_ERROR_BAD_FD       -7
+typedef enum {
+	NETSTRING_ERROR_TOO_LONG = -1000,
+	NETSTRING_ERROR_NO_COLON,
+	NETSTRING_ERROR_TOO_SHORT,
+	NETSTRING_ERROR_NO_COMMA,
+	NETSTRING_ERROR_LEADING_ZERO,
+	NETSTRING_ERROR_NO_LENGTH,
+	NETSTRING_ERROR_BAD_FD,
+	NETSTRING_INCOMPLETE
+} netstring_errors;
+
+#define NETSTRING_PEEKLEN 10
 
 #endif
