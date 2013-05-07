@@ -105,8 +105,8 @@ Chapter 1. Admin Guide
 
    This module offers support for instant message conference. It follows
    the architecture of IRC channels, you can send commands embedded in
-   MESSAGE body, because there are no SIP UA clients which have GUI for IM
-   conferencing.
+   MESSAGE body, because there are just a few SIP UA clients which have
+   GUI for IM conferencing.
 
    You have to define an URI corresponding to im conferencing manager,
    where user can send commands to create a new conference room. Once the
@@ -114,8 +114,8 @@ Chapter 1. Admin Guide
    conferece's URI.
 
    To ease the integration in the configuration file, the interpreter of
-   the IMC commands are embeded in the module, from configuration poin of
-   view, there is only one function which has to be executed for both
+   the IMC commands are embeded in the module. From a configuration point
+   of view, there is only one function which has to be executed for both
    messages and commands.
 
 2. Dependencies
@@ -126,7 +126,7 @@ Chapter 1. Admin Guide
 2.1. Kamailio Modules
 
    The following modules must be loaded before this module:
-     * mysql.
+     * db_mysql.
      * tm.
 
 2.2. External Libraries or Applications
@@ -149,7 +149,7 @@ Chapter 1. Admin Guide
 
    The database url.
 
-   The default value is "mysql://openser:openserrw@localhost/openser".
+   The default value is "mysql://kamailio:kamailiorw@localhost/kamailio".
 
    Example 1.1. Set db_url parameter
 ...

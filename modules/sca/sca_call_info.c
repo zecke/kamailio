@@ -686,29 +686,27 @@ sca_call_info_seize_held_call( sip_msg_t *msg, sca_call_info *call_info,
     sca_hash_table_unlock_index( sca->appearances, slot_idx );
     slot_idx = -1;
 
-    if ( !SCA_STR_EMPTY( &callee_aor )) {
-	if ( sca_uri_lock_if_shared_appearance( sca, &callee_aor, &slot_idx )) {
-	    app = sca_appearance_for_tags_unsafe( sca, &callee_aor,
-			&prev_callid, &prev_totag, NULL, slot_idx );
-	    if ( app == NULL ) {
-		LM_ERR( "sca_call_info_seize_held_call: failed to find "
-			"appearance of %.*s with dialog %.*s;%.*s",
-			STR_FMT( &callee_aor ), STR_FMT( &prev_callid ),
-			STR_FMT( &prev_totag ));
-		goto done;
-	    }
+    if ( sca_uri_lock_if_shared_appearance( sca, &callee_aor, &slot_idx )) {
+	app = sca_appearance_for_tags_unsafe( sca, &callee_aor,
+		    &prev_callid, &prev_totag, NULL, slot_idx );
+	if ( app == NULL ) {
+	    LM_ERR( "sca_call_info_seize_held_call: failed to find "
+		    "appearance of %.*s with dialog %.*s;%.*s",
+		    STR_FMT( &callee_aor ), STR_FMT( &prev_callid ),
+		    STR_FMT( &prev_totag ));
+	    goto done;
+	}
 
-	    app->flags |= SCA_APPEARANCE_FLAG_CALLEE_PENDING;
+	app->flags |= SCA_APPEARANCE_FLAG_CALLEE_PENDING;
 
-	    if ( sca_appearance_update_callee_unsafe( app, contact_uri ) < 0 ) {
-		LM_ERR( "sca_call_info_seize_held_call: failed to update callee" );
-		goto done;
-	    }
-	    if ( sca_appearance_update_dialog_unsafe( app, &msg->callid->body,
-					&to->tag_value, &from->tag_value ) < 0 ) {
-		LM_ERR( "sca_call_info_seize_held_call: failed to update dialog" );
-		goto done;
-	    }
+	if ( sca_appearance_update_callee_unsafe( app, contact_uri ) < 0 ) {
+	    LM_ERR( "sca_call_info_seize_held_call: failed to update callee" );
+	    goto done;
+	}
+	if ( sca_appearance_update_dialog_unsafe( app, &msg->callid->body,
+				    &to->tag_value, &from->tag_value ) < 0 ) {
+	    LM_ERR( "sca_call_info_seize_held_call: failed to update dialog" );
+	    goto done;
 	}
     }
 
@@ -1185,15 +1183,18 @@ sca_call_info_invite_reply_200_handler( sip_msg_t *msg,
 
     if ( call_info != NULL ) {
 	/* this implies To-AoR is SCA */
-
 	rc = sca_call_info_uri_update( to_aor, call_info, from, to,
 			contact_uri, &msg->callid->body );
-
-	rc = sca_call_info_insert_asserted_identity( msg, contact_uri, to );
     }
 
     if ( !sca_uri_is_shared_appearance( sca, from_aor )) {
 	goto done;
+    }
+
+    if ( sca_call_info_insert_asserted_identity( msg, contact_uri, to ) < 0 ) {
+	LM_WARN( "sca_call_info_invite_reply_200_handler: failed to "
+		"add P-Asserted-Identity header to response from %.*s",
+		STR_FMT( contact_uri ));
     }
 
     /*
@@ -1438,10 +1439,10 @@ sca_call_info_invite_handler( sip_msg_t *msg, sca_call_info *call_info,
     int			rc = -1;
 
     if ( SCA_STR_EMPTY( contact_uri )) {
-	LM_ERR( "sca_call_info_invite_handler: Contact header is empty. "
+	LM_DBG( "sca_call_info_invite_handler: Contact header is empty. "
 		"(From: %.*s To: %.*s)", STR_FMT( from_aor ),
 		 STR_FMT( to_aor ));
-	return( -1 );
+	return( 1 );
     }
 
     if ( msg->first_line.type == SIP_REQUEST ) {
