@@ -1,7 +1,7 @@
 /**
  * $Id$
  *
- * Copyright (C) 2011 Flowroute LLC (flowroute.com)
+ * Copyright (C) 2013 Flowroute LLC (flowroute.com)
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -22,16 +22,15 @@
  *
  */
 
-#ifndef _JSON_FUNCS_H_
-#define _JSON_FUNCS_H_
+#ifndef _JSON_H_
+#define _JSON_H_
 
-#include "../../parser/msg_parser.h"
+#include <jansson.h>
 
-int jsonmod_get(struct sip_msg* msg, char* path_in, char* json_in,
-		char* result);
-int jsonmod_set(unsigned int append, struct sip_msg* msg, char* type_in,
-		char* path_in, char* value_in, char* result);
-int jsonmod_array_size(struct sip_msg* msg, char* json_in,
-		char* path_in, char* dst);
+#include "../../sr_module.h"
+#include "../../lvalue.h"
+
+typedef int (*json_to_val_f)(pv_value_t* val, char** freeme, json_t* v);
+int json_to_val(pv_value_t* val, char** freeme, json_t* v);
 
 #endif

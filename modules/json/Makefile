@@ -7,7 +7,6 @@
 include ../../Makefile.defs
 auto_gen=
 NAME=json.so
-LIBS=
 
 BUILDER = $(shell which pkg-config)
 ifeq ($(BUILDER),)
