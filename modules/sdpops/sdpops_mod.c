@@ -1128,6 +1128,7 @@ static int w_sdp_content(sip_msg_t* msg, char* foo, char *bar)
  */
 static int w_sdp_get_line_startswith(sip_msg_t *msg, char *avp, char *prefix)
 {
+	sdp_info_t *sdp = NULL;
 	str body = {NULL, 0};
 	str line = {NULL, 0};
 	char* p = NULL;
@@ -1137,6 +1138,7 @@ static int w_sdp_get_line_startswith(sip_msg_t *msg, char *avp, char *prefix)
         int_str avp_name;
         pv_spec_t *avp_spec = NULL;
         static unsigned short avp_type = 0;
+	int sdp_missing=1;
 
 	if (prefix == NULL || strlen(prefix) <= 0)
 	{
@@ -1146,13 +1148,23 @@ static int w_sdp_get_line_startswith(sip_msg_t *msg, char *avp, char *prefix)
 	pprefix.s = prefix;
 	pprefix.len = strlen(prefix);
 
-	if(parse_sdp(msg) < 0) {
+	sdp_missing = parse_sdp(msg);
+
+	if(sdp_missing < 0) {
 		LM_ERR("Unable to parse sdp\n");
 		return -1;
 	}
 
-	body.s = ((sdp_info_t*)msg->body)->raw_sdp.s;
-	body.len = ((sdp_info_t*)msg->body)->raw_sdp.len;
+	sdp = (sdp_info_t *)msg->body;
+
+        if (sdp_missing || sdp == NULL)
+	{
+                LM_DBG("No SDP\n");
+                return -2;
+	}
+
+	body.s = sdp->raw_sdp.s;
+	body.len = sdp->raw_sdp.len;
 
 	if (body.s==NULL) {
 		LM_ERR("failed to get the message body\n");
