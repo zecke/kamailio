@@ -381,7 +381,7 @@ if(sdp_content()) {
 				<title><function>sdp_get_line_startswith</function> usage</title>
 				<programlisting format="linespecific">
 ...
-if(sdp_get_line_startswith("m=", "$avp(mline)")) {
+if(sdp_get_line_startswith("$avp(mline)", "m=")) {
     xlog("m-line: $avp(mline)\n");
 }
 ...
