@@ -152,7 +152,7 @@
 #endif
 #include <sys/poll.h>
 
-
+#include "dset.h"
 #include "ip_addr.h"
 #include "pass_fd.h"
 #include "tcp_conn.h"
@@ -3018,6 +3018,55 @@ inline static int tcpconn_chld_put(struct tcp_connection* tcpconn)
 
 
 
+/* Fake message done the "old fashioned" way here so as not to add a dependency
+   on lib/kcore */
+#define FAKED_SIP_MSG "OPTIONS sip:you@kamailio.org SIP/2.0\r\nVia: SIP/2.0/UDP 127.0.0.1\r\nFrom: <you@kamailio.org>;tag=123\r\nTo: <you@kamailio.org>\r\nCall-ID: 123\r\nCSeq: 1 OPTIONS\r\nContent-Length: 0\r\n\r\n"
+#define FAKED_SIP_MSG_LEN (sizeof(FAKED_SIP_MSG)-1)
+static char _faked_sip_msg[FAKED_SIP_MSG_LEN+1];
+static struct sip_msg _faked_msg;
+static unsigned int _faked_msg_no = 0;
+
+inline static void tcp_close_run_route(struct tcp_connection *tcpconn)
+{
+	int rt, backup_rt;
+	struct run_act_ctx ctx;
+
+	WARN("tcp_close_run_route event_route[tcp:closed]\n");
+
+	rt = route_get(&event_rt, "tcp:closed");
+	if (rt < 0 || event_rt.rlist[rt] == NULL)
+		return;
+
+	if (_faked_msg_no == 0) {
+		memcpy(_faked_sip_msg, FAKED_SIP_MSG, FAKED_SIP_MSG_LEN);
+		_faked_sip_msg[FAKED_SIP_MSG_LEN] = 0;
+
+		memset(&_faked_msg, 0, sizeof(struct sip_msg));
+		_faked_msg.buf = _faked_sip_msg;
+		_faked_msg.len = FAKED_SIP_MSG_LEN;
+		_faked_msg.set_global_address = default_global_address;
+		_faked_msg.set_global_port=default_global_port;
+
+		if (parse_msg(_faked_msg.buf, _faked_msg.len,
+					&_faked_msg) != 0) {
+			LM_ERR("parse_msg failed\n");
+			return;
+		}
+	}
+
+	_faked_msg.id = 1 + _faked_msg_no++;
+	_faked_msg.pid = my_pid();
+	memset(&_faked_msg.tval, 0, sizeof(struct timeval));
+	_faked_msg.rcv = tcpconn->rcv;
+	clear_branches();
+	
+	backup_rt = get_route_type();
+	set_route_type(REQUEST_ROUTE);
+	init_run_actions_ctx(&ctx);
+	run_top_route(event_rt.rlist[rt], &_faked_msg, 0);
+	set_route_type(backup_rt);
+}
+
 /* simple destroy function (the connection should be already removed
  * from the hashes. refcnt 0 and the fds should not be watched anymore for IO)
  */
@@ -3026,6 +3075,9 @@ inline static void tcpconn_destroy(struct tcp_connection* tcpconn)
 		DBG("tcpconn_destroy: destroying connection %p (%d, %d) "
 				"flags %04x\n", tcpconn, tcpconn->id,
 				tcpconn->s, tcpconn->flags);
+
+		tcp_close_run_route(tcpconn);
+
 		if (unlikely(tcpconn->flags & F_CONN_HASHED)){
 			LOG(L_CRIT, "BUG: tcpconn_destroy: called with hashed"
 						" connection (%p)\n", tcpconn);
