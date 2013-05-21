@@ -121,6 +121,7 @@ sruid_t _reg_sruid;
 
 int reg_gruu_enabled = 1;
 int reg_outbound_mode = 0;
+int reg_regid_mode = 0;
 int reg_flow_timer = 0;
 
 /* Populate this AVP if testing for specific registration instance. */
@@ -231,6 +232,7 @@ static param_export_t params[] = {
 	{"xavp_rcd",           STR_PARAM, &reg_xavp_rcd.s     					},
 	{"gruu_enabled",       INT_PARAM, &reg_gruu_enabled    					},
 	{"outbound_mode",      INT_PARAM, &reg_outbound_mode					},
+	{"regid_mode",         INT_PARAM, &reg_regid_mode					},
 	{"flow_timer",         INT_PARAM, &reg_flow_timer					},
 	{0, 0, 0}
 };
@@ -402,6 +404,11 @@ static int mod_init(void)
 		return -1;
 	}
 
+	if (reg_regid_mode < 0 || reg_regid_mode > 1) {
+		LM_ERR("regid_mode modparam must be 0 (use with outbound), 1 (use always)\n");
+		return -1;
+	}
+
 	if (reg_flow_timer < 0 || reg_flow_timer > REG_FLOW_TIMER_MAX
 			|| (reg_flow_timer > 0 && reg_outbound_mode == REG_OUTBOUND_NONE)) {
 		LM_ERR("bad value for flow_timer\n");
@@ -509,11 +516,11 @@ static int w_unregister(struct sip_msg* _m, char* _d, char* _uri)
 
 static int w_unregister2(struct sip_msg* _m, char* _d, char* _uri, char *_ruid)
 {
-	str uri = {0};
+        str uri = {0, 0};
 	str ruid = {0};
-	if(fixup_get_svalue(_m, (gparam_p)_uri, &uri)!=0 || uri.len<=0)
+	if(fixup_get_svalue(_m, (gparam_p)_uri, &uri)!=0)
 	{
-		LM_ERR("invalid uri parameter\n");
+	        LM_ERR("invalid uri parameter\n");
 		return -1;
 	}
 	if(fixup_get_svalue(_m, (gparam_p)_ruid, &ruid)!=0 || ruid.len<=0)
