@@ -143,6 +143,9 @@ static pv_export_t mod_pvs[] = {
 	{{"cnt", sizeof("cnt")-1},
 		PVT_OTHER, pv_get_cnt, 0,
 		pv_parse_cnt_name, 0, 0, 0 },
+	{{"conid", (sizeof("conid")-1)}, /* */
+		PVT_OTHER, pv_get_tcpconn_id, 0,
+		0, 0, 0, 0},
 	{{"cs", (sizeof("cs")-1)}, /* */
 		PVT_OTHER, pv_get_cseq, 0,
 		0, 0, 0, 0},
@@ -412,6 +415,9 @@ static pv_export_t mod_pvs[] = {
 		0, 0, 0, 0},
 	{{"ruid", (sizeof("ruid")-1)}, /* */
 		PVT_OTHER, pv_get_ruid, 0,
+		0, 0, 0, 0},
+	{{"location_ua", (sizeof("location_ua")-1)}, /* */
+		PVT_OTHER, pv_get_location_ua, 0,
 		0, 0, 0, 0},
 
 	{ {"shv", (sizeof("shv")-1)}, PVT_OTHER, pv_get_shvar,

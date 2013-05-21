@@ -58,12 +58,14 @@ typedef struct uac_req {
 	int	cb_flags;
 	transaction_cb	*cb;
 	void	*cbp;
+	str	*callid;
 } uac_req_t;
 
 /* macro for setting the values of uac_req_t struct */
 #define set_uac_req(_req, \
 		_m, _h, _b, _dlg, _cb_flags, _cb, _cbp) \
 	do { \
+		memset((_req), 0, sizeof(uac_req_t)); \
 		(_req)->method = (_m); \
 		(_req)->headers = (_h); \
 		(_req)->body = (_b); \

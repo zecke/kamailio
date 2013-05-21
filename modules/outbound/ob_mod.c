@@ -107,12 +107,21 @@ static int mod_init(void)
 		LM_ERR("unable to get %d cryptographically strong pseudo-"
 		       "random bytes\n", ob_key.len);
 	}
+
 	if (cfg_declare("outbound", outbound_cfg_def, &default_outbound_cfg,
-			cfg_sizeof(outbound), &outbound_cfg)) {
+			cfg_sizeof(outbound), &outbound_cfg))
+	{
 		LM_ERR("declaring config framework variable\n");
 		return -1;
 	}
 	default_outbound_cfg.outbound_active = 1;
+
+	if (!module_loaded("stun"))
+	{
+		LM_WARN("\"stun\" module is not loaded. STUN is required to use"
+			" outbound with UDP.\n");
+	}
+
 	return 0;
 }
 
@@ -215,7 +224,7 @@ int decode_flow_token(struct sip_msg *msg, struct receive_info **rcv, str flow_t
 
 	if (flow_token.len == 0)
 	{
-		LM_ERR("no flow-token found\n");
+		LM_DBG("no flow-token found\n");
 		return -2;
 	}
 
@@ -225,7 +234,7 @@ int decode_flow_token(struct sip_msg *msg, struct receive_info **rcv, str flow_t
 	if (flow_length != UNENC_FLOW_TOKEN_MIN_LENGTH
 		&& flow_length != UNENC_FLOW_TOKEN_MAX_LENGTH)
 	{
-		LM_INFO("no flow-token found - bad length (%d)\n", flow_length);
+		LM_DBG("no flow-token found - bad length (%d)\n", flow_length);
 		return -2;
 	}
 
@@ -240,13 +249,13 @@ int decode_flow_token(struct sip_msg *msg, struct receive_info **rcv, str flow_t
 		flow_length - FLOW_TOKEN_START_POS,
 		hmac_sha1, NULL) == NULL)
 	{
-		LM_ERR("HMAC-SHA1 failed\n");
+		LM_INFO("HMAC-SHA1 failed\n");
 		return -1;
 	}
 	if (memcmp(unenc_flow_token, &hmac_sha1[SHA1_LENGTH - SHA1_80_LENGTH],
 		SHA1_80_LENGTH) != 0)
 	{
-		LM_ERR("flow-token failed validation\n");
+		LM_INFO("flow-token failed validation\n");
 		return -1;
 	}
 
@@ -332,14 +341,6 @@ static int use_outbound_non_reg(struct sip_msg *msg)
 	int ret;
 	struct receive_info *rcv = NULL;
 
-	/* Check if Supported: outbound is included */
-	if (parse_supported(msg) == 0) {
-                if (!(get_supported(msg) & F_OPTION_TAG_OUTBOUND)) {
-		        LM_DBG("outbound is not supported and thus not used\n");
-		        return 0;
-		}
-	}
-
 	/* Check to see if the top Route-URI is me and has a ;ob parameter */
 	if (msg->route
 		|| (parse_headers(msg, HDR_ROUTE_F, 0) != -1 && msg->route))
@@ -396,6 +397,14 @@ static int use_outbound_non_reg(struct sip_msg *msg)
 
 			LM_DBG("\"outgoing\" request found\n");
 			return 1;
+		}
+	}
+
+	/* Check if Supported: outbound is included */
+	if (parse_supported(msg) == 0) {
+                if (!(get_supported(msg) & F_OPTION_TAG_OUTBOUND)) {
+		        LM_DBG("outbound is not supported and thus not used\n");
+		        return 0;
 		}
 	}
 
@@ -463,7 +472,8 @@ int use_outbound(struct sip_msg *msg)
 		return 1;
 	}
 
-	/* If Outbound is turned off, return failure without any further checks */
+	/* If Outbound is turned off, return failure without any further
+	   checks */
 	if (ob_force_no_flag != -1 && isflagset(msg, ob_force_no_flag) > 0)
 	{
 		LM_DBG("outbound not used by force\n");

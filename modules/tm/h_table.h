@@ -231,6 +231,7 @@ typedef struct ua_client
 	str path;
 	str instance;
 	str ruid;
+	str location_ua;
 	/* if we don't store, we at least want to know the status */
 	int             last_received;
 
@@ -238,7 +239,11 @@ typedef struct ua_client
 	/* internal flags per tm uac */
 	unsigned int flags;
 #endif
+	/* per branch flags */
 	flag_t branch_flags;
+	/* internal processing code - (mapping over sip warning codes)
+	 * - storing the code giving a clue of what happened internally */
+	int icode;
 #ifdef WITH_AS_SUPPORT
 	/**
 	 * Resent for every rcvd 2xx reply.
@@ -255,6 +260,8 @@ typedef struct ua_client
 	unsigned short on_branch_failure;
 	/* the onreply_route to be processed if registered to do so */
 	unsigned short on_reply;
+	/* unused - keep the structure aligned to 32b */
+	unsigned short on_unused;
 }ua_client_type;
 
 

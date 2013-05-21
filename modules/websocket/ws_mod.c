@@ -32,6 +32,7 @@
 #include "../../lib/kcore/kstats_wrapper.h"
 #include "../../lib/kmi/mi.h"
 #include "../../mem/mem.h"
+#include "../../mod_fix.h"
 #include "../../parser/msg_parser.h"
 #include "ws_conn.h"
 #include "ws_handshake.h"
@@ -47,6 +48,7 @@ MODULE_VERSION
 static int mod_init(void);
 static int child_init(int rank);
 static void destroy(void);
+static int ws_close_fixup(void** param, int param_no);
 
 sl_api_t ws_slb;
 
@@ -60,6 +62,17 @@ static int ws_keepalive_processes = DEFAULT_KEEPALIVE_PROCESSES;
 
 static cmd_export_t cmds[]= 
 {
+	/* ws_frame.c */
+	{ "ws_close", (cmd_function) ws_close,
+	  0, 0, 0,
+	  ANY_ROUTE },
+	{ "ws_close", (cmd_function) ws_close2,
+	  2, ws_close_fixup, 0,
+	  ANY_ROUTE },
+	{ "ws_close", (cmd_function) ws_close3,
+	  3, ws_close_fixup, 0,
+	  ANY_ROUTE },
+
 	/* ws_handshake.c */
 	{ "ws_handle_handshake", (cmd_function) ws_handle_handshake,
 	  0, 0, 0,
@@ -73,10 +86,11 @@ static param_export_t params[]=
 	/* ws_frame.c */
 	{ "keepalive_mechanism",	INT_PARAM, &ws_keepalive_mechanism },
 	{ "keepalive_timeout",		INT_PARAM, &ws_keepalive_timeout },
-	{ "ping_application_data",	STR_PARAM, &ws_ping_application_data.s},
+	{ "ping_application_data",	STR_PARAM, &ws_ping_application_data.s },
 
 	/* ws_handshake.c */
-	{ "sub_protocols",		INT_PARAM, &ws_sub_protocols},
+	{ "sub_protocols",		INT_PARAM, &ws_sub_protocols },
+	{ "cors_mode",			INT_PARAM, &ws_cors_mode },
 
 	/* ws_mod.c */
 	{ "keepalive_interval",		INT_PARAM, &ws_keepalive_interval },
@@ -244,12 +258,34 @@ static int mod_init(void)
 		goto error;
 	}
 
+	if (ws_cors_mode < 0 || ws_cors_mode > 2)
+	{
+		LM_ERR("bad value for cors_mode\n");
+		goto error;
+	}
+
 	if (cfg_declare("websocket", ws_cfg_def, &default_ws_cfg,
-			cfg_sizeof(websocket), &ws_cfg)) {
+			cfg_sizeof(websocket), &ws_cfg))
+	{
 		LM_ERR("declaring configuration\n");
 		return -1;
 	}
 	cfg_get(websocket, ws_cfg, keepalive_timeout) = ws_keepalive_timeout;
+
+	if (!module_loaded("xhttp"))
+	{
+		LM_ERR("\"xhttp\" must be loaded to use WebSocket.\n");
+		return -1;
+	}
+
+	if (((ws_sub_protocols & SUB_PROTOCOL_SIP) == SUB_PROTOCOL_SIP)
+			&& !module_loaded("nathelper")
+			&& !module_loaded("outbound"))
+	{
+		LM_WARN("neither \"nathelper\" nor \"outbound\" modules are"
+			" loaded. At least one of these is required for correct"
+			" routing of SIP over WebSocket.\n");
+	}
 
 	return 0;
 
@@ -287,4 +323,17 @@ static int child_init(int rank)
 static void destroy(void)
 {
 	wsconn_destroy();
+}
+
+static int ws_close_fixup(void** param, int param_no)
+{
+	switch(param_no) {
+	case 1:
+	case 3:
+		return fixup_var_int_1(param, 1);
+	case 2:
+		return fixup_spve_null(param, 1);
+	default:
+		return 0;
+	}
 }
