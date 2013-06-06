@@ -135,7 +135,7 @@
 #include "flags.h"
 #include "tcp_init.h"
 #include "tcp_options.h"
-#include "sctp_options.h"
+#include "sctp_core.h"
 #include "pvar.h"
 #include "lvalue.h"
 #include "rvalue.h"
@@ -440,7 +440,6 @@ extern char *finame;
 %token SOCKET_WORKERS
 %token CHECK_VIA
 %token PHONE2TEL
-%token SYN_BRANCH
 %token MEMLOG
 %token MEMDBG
 %token MEMSUM
@@ -510,25 +509,6 @@ extern char *finame;
 %token DISABLE_SCTP
 %token ENABLE_SCTP
 %token SCTP_CHILDREN
-%token SCTP_SOCKET_RCVBUF
-%token SCTP_SOCKET_SNDBUF
-%token SCTP_AUTOCLOSE
-%token SCTP_SEND_TTL
-%token SCTP_SEND_RETRIES
-%token SCTP_ASSOC_TRACKING
-%token SCTP_ASSOC_REUSE
-%token SCTP_MAX_ASSOCS
-%token SCTP_SRTO_INITIAL
-%token SCTP_SRTO_MAX
-%token SCTP_SRTO_MIN
-%token SCTP_ASOCMAXRXT
-%token SCTP_INIT_MAX_ATTEMPTS
-%token SCTP_INIT_MAX_TIMEO
-%token SCTP_HBINTERVAL
-%token SCTP_PATHMAXRXT
-%token SCTP_SACK_DELAY
-%token SCTP_SACK_FREQ
-%token SCTP_MAX_BURST
 %token ADVERTISED_ADDRESS
 %token ADVERTISED_PORT
 %token DISABLE_CORE
@@ -958,8 +938,6 @@ assign_stm:
 	| CHECK_VIA EQUAL error { yyerror("boolean value expected"); }
 	| PHONE2TEL EQUAL NUMBER { phone2tel=$3; }
 	| PHONE2TEL EQUAL error { yyerror("boolean value expected"); }
-	| SYN_BRANCH EQUAL NUMBER { syn_branch=$3; }
-	| SYN_BRANCH EQUAL error { yyerror("boolean value expected"); }
 	| MEMLOG EQUAL intno { default_core_cfg.memlog=$3; }
 	| MEMLOG EQUAL error { yyerror("int value expected"); }
 	| MEMDBG EQUAL intno { default_core_cfg.memdbg=$3; }
@@ -1411,122 +1389,6 @@ assign_stm:
 		#endif
 	}
 	| SCTP_CHILDREN EQUAL error { yyerror("number expected"); }
-	| SCTP_SOCKET_RCVBUF EQUAL NUMBER {
-		#ifdef USE_SCTP
-			sctp_default_cfg.so_rcvbuf=$3;
-		#else
-			warn("sctp support not compiled in");
-		#endif
-	}
-	| SCTP_SOCKET_RCVBUF EQUAL error { yyerror("number expected"); }
-	| SCTP_SOCKET_SNDBUF EQUAL NUMBER {
-		#ifdef USE_SCTP
-			sctp_default_cfg.so_sndbuf=$3;
-		#else
-			warn("sctp support not compiled in");
-		#endif
-	}
-	| SCTP_SOCKET_SNDBUF EQUAL error { yyerror("number expected"); }
-	| SCTP_AUTOCLOSE EQUAL NUMBER {
-		#ifdef USE_SCTP
-			sctp_default_cfg.autoclose=$3;
-		#else
-			warn("sctp support not compiled in");
-		#endif
-	}
-	| SCTP_AUTOCLOSE EQUAL error { yyerror("number expected"); }
-	| SCTP_SEND_TTL EQUAL NUMBER {
-		#ifdef USE_SCTP
-			sctp_default_cfg.send_ttl=$3;
-		#else
-			warn("sctp support not compiled in");
-		#endif
-	}
-	| SCTP_SEND_TTL EQUAL error { yyerror("number expected"); }
-	| SCTP_SEND_RETRIES EQUAL NUMBER {
-		#ifdef USE_SCTP
-			sctp_default_cfg.send_retries=$3;
-		#else
-			warn("sctp support not compiled in");
-		#endif
-	}
-	| SCTP_SEND_RETRIES EQUAL error { yyerror("number expected"); }
-	| SCTP_ASSOC_TRACKING EQUAL NUMBER {
-		#ifdef USE_SCTP
-			#ifdef SCTP_CONN_REUSE
-				sctp_default_cfg.assoc_tracking=$3;
-			#else
-				if ($3)
-					warn("sctp association tracking/reuse (SCTP_CONN_REUSE) "
-							"support not compiled in");
-			#endif /* SCTP_CONN_REUSE */
-		#else
-			warn("sctp support not compiled in");
-		#endif /* USE_SCTP */
-	}
-	| SCTP_ASSOC_TRACKING EQUAL error { yyerror("number expected"); }
-	| SCTP_ASSOC_REUSE EQUAL NUMBER {
-		#ifdef USE_SCTP
-			#ifdef SCTP_CONN_REUSE
-				sctp_default_cfg.assoc_reuse=$3;
-			#else
-				if ($3)
-					warn("sctp association reuse (SCTP_CONN_REUSE) support"
-							" not compiled in");
-			#endif /* SCTP_CONN_REUSE */
-		#else
-			warn("sctp support not compiled in");
-		#endif /* USE_SCTP */
-	}
-	| SCTP_ASSOC_REUSE EQUAL error { yyerror("number expected"); }
-	| SCTP_MAX_ASSOCS EQUAL intno {
-			IF_SCTP(sctp_default_cfg.max_assocs=$3);
-	}
-	| SCTP_MAX_ASSOCS EQUAL error { yyerror("number expected"); }
-	| SCTP_SRTO_INITIAL EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.srto_initial=$3);
-	}
-	| SCTP_SRTO_INITIAL EQUAL error { yyerror("number expected"); }
-	| SCTP_SRTO_MAX EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.srto_max=$3);
-	}
-	| SCTP_SRTO_MAX EQUAL error { yyerror("number expected"); }
-	| SCTP_SRTO_MIN EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.srto_min=$3);
-	}
-	| SCTP_SRTO_MIN EQUAL error { yyerror("number expected"); }
-	| SCTP_ASOCMAXRXT EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.asocmaxrxt=$3);
-	}
-	| SCTP_ASOCMAXRXT EQUAL error { yyerror("number expected"); }
-	| SCTP_INIT_MAX_ATTEMPTS EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.init_max_attempts=$3);
-	}
-	| SCTP_INIT_MAX_ATTEMPTS EQUAL error { yyerror("number expected"); }
-	| SCTP_INIT_MAX_TIMEO EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.init_max_timeo=$3);
-	}
-	| SCTP_INIT_MAX_TIMEO EQUAL error { yyerror("number expected"); }
-	| SCTP_HBINTERVAL EQUAL intno {
-			IF_SCTP(sctp_default_cfg.hbinterval=$3);
-	}
-	| SCTP_HBINTERVAL EQUAL error { yyerror("number expected"); }
-	| SCTP_PATHMAXRXT EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.pathmaxrxt=$3);
-	}
-	| SCTP_PATHMAXRXT EQUAL error { yyerror("number expected"); }
-	| SCTP_SACK_DELAY EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.sack_delay=$3);
-	}
-	| SCTP_SACK_DELAY EQUAL error { yyerror("number expected"); }
-	| SCTP_SACK_FREQ EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.sack_freq=$3);
-	}
-	| SCTP_SACK_FREQ EQUAL error { yyerror("number expected"); }
-	| SCTP_MAX_BURST EQUAL NUMBER {
-			IF_SCTP(sctp_default_cfg.max_burst=$3);
-	}
-	| SCTP_MAX_BURST EQUAL error { yyerror("number expected"); }
 	| SERVER_SIGNATURE EQUAL NUMBER { server_signature=$3; }
 	| SERVER_SIGNATURE EQUAL error { yyerror("boolean value expected"); }
 	| SERVER_HEADER EQUAL STRING { server_hdr.s=$3;
@@ -2749,17 +2611,10 @@ attr_id_any_str:
 	;
 
 pvar:	PVAR {
-			pv_spec=pkg_malloc(sizeof(*pv_spec));
-			if (!pv_spec) {
-				yyerror("Not enough memory");
-				YYABORT;
-			}
-			memset(pv_spec, 0, sizeof(*pv_spec));
 			s_tmp.s=$1; s_tmp.len=strlen($1);
-			if (pv_parse_spec(&s_tmp, pv_spec)==0){
-				yyerror("unknown script pseudo variable %s", $1 );
-				pkg_free(pv_spec);
-				pv_spec=0;
+			pv_spec=pv_cache_get(&s_tmp);
+			if (!pv_spec) {
+				yyerror("Can't get from cache: %s", $1);
 				YYABORT;
 			}
 			$$=pv_spec;
@@ -2774,12 +2629,8 @@ avp_pvar:	AVP_OR_PVAR {
 				}
 				memset(lval_tmp, 0, sizeof(*lval_tmp));
 				s_tmp.s=$1; s_tmp.len=strlen(s_tmp.s);
-				if (pv_parse_spec2(&s_tmp, &lval_tmp->lv.pvs, 1)==0){
-					/* not a pvar, try avps */
-					/* lval_tmp might be partially filled by the failed
-					   pv_parse_spec2() (especially if the avp name is the
-					   same as a pv class) => clean it again */
-					memset(lval_tmp, 0, sizeof(*lval_tmp));
+				lval_tmp->lv.pvs = pv_cache_get(&s_tmp);
+				if (lval_tmp->lv.pvs==NULL){
 					lval_tmp->lv.avps.type|= AVP_NAME_STR;
 					lval_tmp->lv.avps.name.s.s = s_tmp.s+1;
 					lval_tmp->lv.avps.name.s.len = s_tmp.len-1;
@@ -2826,15 +2677,14 @@ lval: attr_id_ass {
 						yyerror("Not enough memory");
 						YYABORT;
 					}
-					lval_tmp->type=LV_PVAR; lval_tmp->lv.pvs=*($1);
-					pkg_free($1); /* free the pvar spec we just copied */
+					lval_tmp->type=LV_PVAR; lval_tmp->lv.pvs=$1;
 					$$=lval_tmp;
 				}
 	| avp_pvar    {
 					if (($1)->type==LV_PVAR){
-						if (!pv_is_w(&($1)->lv.pvs))
+						if (!pv_is_w($1->lv.pvs))
 							yyerror("read only pvar in assignment left side");
-						if ($1->lv.pvs.trans!=0)
+						if ($1->lv.pvs->trans!=0)
 							yyerror("pvar with transformations in assignment"
 									" left side");
 					}
@@ -2846,14 +2696,14 @@ rval: intno			{$$=mk_rve_rval(RV_INT, (void*)$1); }
 	| STRING			{	s_tmp.s=$1; s_tmp.len=strlen($1);
 							$$=mk_rve_rval(RV_STR, &s_tmp); }
 	| attr_id_any		{$$=mk_rve_rval(RV_AVP, $1); pkg_free($1); }
-	| pvar				{$$=mk_rve_rval(RV_PVAR, $1); pkg_free($1); }
+	| pvar				{$$=mk_rve_rval(RV_PVAR, $1); }
 	| avp_pvar			{
 							switch($1->type){
 								case LV_AVP:
 									$$=mk_rve_rval(RV_AVP, &$1->lv.avps);
 									break;
 								case LV_PVAR:
-									$$=mk_rve_rval(RV_PVAR, &$1->lv.pvs);
+									$$=mk_rve_rval(RV_PVAR, $1->lv.pvs);
 									break;
 								default:
 									yyerror("BUG: invalid lvalue type ");
@@ -3145,7 +2995,7 @@ cmd:
 	}
 	| FORWARD_SCTP error { $$=0; yyerror("missing '(' or ')' ?"); }
 	| FORWARD_SCTP LPAREN error RPAREN { $$=0; 
-									yyerror("bad forward_tls argument"); }
+									yyerror("bad forward_sctp argument"); }
 	| LOG_TOK LPAREN STRING RPAREN	{$$=mk_action(LOG_T, 2, NUMBER_ST,
 										(void*)(L_DBG+1), STRING_ST, $3);
 									set_cfg_pos($$); }
