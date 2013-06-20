@@ -95,13 +95,13 @@ void async_aar_callback(int is_timeout, void *param, AAAMessage *aaa, long elaps
 
     LM_DBG("Received AAR callback\n");
     saved_transaction_t* data = (saved_transaction_t*) param;
-    
+
     LM_DBG("received AAA answer");
 
     if (tmb.t_lookup_ident(&t, data->tindex, data->tlabel) < 0) {
         LM_ERR("t_continue: transaction not found\n");
         goto error;
-    }else{
+    } else {
         LM_DBG("t_continue: transaction found\n");
     }
     //we have T, lets restore our state (esp. for AVPs)
@@ -261,7 +261,7 @@ void async_aar_reg_callback(int is_timeout, void *param, AAAMessage *aaa, long e
             ul.unlock_udomain(domain_t, &local_data->contact);
             goto error;
         }
-        memset(&ci, 0, sizeof(struct pcontact_info));
+        memset(&ci, 0, sizeof (struct pcontact_info));
         ci.reg_state = PCONTACT_REG_PENDING_AAR;
         ci.num_service_routes = 0;
         ci.num_public_ids = 0;
@@ -696,9 +696,10 @@ void free_saved_transaction_global_data(saved_transaction_t* data) {
         shm_free(data->ttag.s);
         data->ttag.len = 0;
     }
-
-    lock_dealloc(data->lock);
-    lock_destroy(data->lock);
+    if (data->lock) {
+        lock_dealloc(data->lock);
+        lock_destroy(data->lock);
+    }
     shm_free(data);
 }
 
