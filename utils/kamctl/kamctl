@@ -7,7 +7,7 @@
 #===================================================================
 
 ### version for this script
-VERSION='3.3.0'
+VERSION='4.1.0'
 
 PATH=$PATH:/usr/local/sbin/
 
@@ -2151,6 +2151,28 @@ subscriber() {
 			fi
 			;;
 
+		show)
+			if [ $# -ne 2 ] ; then
+				usage_subscriber
+				exit 1
+			fi
+			shift
+
+			set_user $1
+
+			case $DBENGINE in
+				MYSQL|mysql|MySQL)
+					QUERY="SELECT * FROM $SUB_TABLE \
+WHERE $SUBSCRIBER_COLUMN='$OSERUSER' AND $REALM_COLUMN='$OSERDOMAIN'\G"
+				;;
+				*)
+					QUERY="SELECT * FROM $SUB_TABLE \
+WHERE $SUBSCRIBER_COLUMN='$OSERUSER' AND $REALM_COLUMN='$OSERDOMAIN';"
+				;;
+			esac
+			$DBROCMD "$QUERY"
+			;;
+
 		passwd)
 			if [ $# -ne 3 ] ; then
 				usage_subscriber
@@ -2502,6 +2524,25 @@ tls_ca() {
 	fi
 }
 
+extcmd() {
+	if [ -f $ETCDIR/kamctl.${1}.ext ]; then
+		. $ETCDIR/kamctl.${1}.ext
+	else
+		if [ -f ~/.kamctl/kamctl.${1}.ext ]; then
+			. ~/.kamctl/kamctl.${1}.ext
+		else
+			return
+		fi
+	fi
+
+	XCMD=cmd_${1}
+
+	shift
+	$XCMD "$@"
+
+	exit 1
+}
+
 #
 ##### ================================================ #####
 ### main command switch
@@ -2513,6 +2554,10 @@ case $1 in
 		;;
 
 	add)
+		subscriber "$@"
+		;;
+
+	show)
 		subscriber "$@"
 		;;
 
@@ -2679,6 +2724,8 @@ case $1 in
 		;;
 		
 	*)
+		extcmd "$@"
+
 		usage
 		exit 1
 		;;

@@ -78,7 +78,7 @@ enum _pv_type {
 	PVT_DSTURI,           PVT_COLOR,             PVT_BRANCH,
 	PVT_FROM,             PVT_TO,                PVT_OURI,
 	PVT_SCRIPTVAR,        PVT_MSG_BODY,          PVT_CONTEXT,
-	PVT_OTHER,            PVT_EXTRA /* keep it last */
+	PVT_XAVP,             PVT_OTHER,             PVT_EXTRA /* keep it last */
 };
 
 typedef enum _pv_type pv_type_t;
@@ -224,6 +224,22 @@ int pv_get_strintval(struct sip_msg *msg, pv_param_t *param,
 		pv_value_t *res, str *sval, int ival);
 int pv_get_intstrval(struct sip_msg *msg, pv_param_t *param,
 		pv_value_t *res, int ival, str *sval);
+
+/**
+ * Core PV Cache
+ */
+typedef struct _pv_cache
+{
+	str pvname;
+	unsigned int pvid;
+	pv_spec_t spec;
+	struct _pv_cache *next;
+} pv_cache_t;
+
+#define PV_CACHE_SIZE	32  /*!< pseudo-variables cache table size */
+
+pv_cache_t **pv_cache_get_table(void);
+
 
 /**
  * Transformations
