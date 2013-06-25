@@ -57,17 +57,6 @@
 struct cdp_binds cdpb;
 cdp_avp_bind_t *cdp_avp;
 
-/*storage for data coming into AAR_register from config file
- * holds next action (async CDP) and domain
- */
-typedef struct aar_param {
-	int type;
-	udomain_t* domain;
-	cfg_action_t *paction;
-        char *direction;
-} aar_param_t;
-
-
 /*this is the parcel to pass for CDP async for AAR*/
 typedef struct saved_transaction {
 	gen_lock_t *lock;

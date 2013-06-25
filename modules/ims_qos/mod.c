@@ -113,12 +113,12 @@ char* rx_forced_peer_s = "";
 str rx_forced_peer;
 
 /* commands wrappers and fixups */
-static int w_rx_aar(struct sip_msg *msg, char* direction, char *bar);
-static int w_rx_aar_register(struct sip_msg *msg, char* str1, char *bar);
+static int w_rx_aar(struct sip_msg *msg, char *route, char* direction, char *bar);
+static int w_rx_aar_register(struct sip_msg *msg, char *route, char* str1, char *bar);
 
 static cmd_export_t cmds[] = {
-    { "Rx_AAR", (cmd_function) w_rx_aar, 1, fixup_aar, 0, REQUEST_ROUTE | ONREPLY_ROUTE},
-    { "Rx_AAR_Register", (cmd_function) w_rx_aar_register, 1, fixup_aar_register, 0, REQUEST_ROUTE},
+    { "Rx_AAR", (cmd_function) w_rx_aar, 2, fixup_aar, 0, REQUEST_ROUTE | ONREPLY_ROUTE},
+    { "Rx_AAR_Register", (cmd_function) w_rx_aar_register, 2, fixup_aar_register, 0, REQUEST_ROUTE},
     { 0, 0, 0, 0, 0, 0}
 };
 
@@ -391,7 +391,7 @@ void callback_pcscf_contact_cb(struct pcontact *c, int type, void *param) {
 /* Wrapper to send AAR from config file - this only allows for AAR for calls - not register, which uses r_rx_aar_register
  * return: 1 - success, <=0 failure. 2 - message not a AAR generating message (ie proceed without PCC if you wish)
  */
-static int w_rx_aar(struct sip_msg *msg, char* str1, char* bar) {
+static int w_rx_aar(struct sip_msg *msg, char *route, char* str1, char* bar) {
 
     int ret = CSCF_RETURN_ERROR;
     struct cell *t;
@@ -402,12 +402,28 @@ static int w_rx_aar(struct sip_msg *msg, char* str1, char* bar) {
     str callid = {0, 0};
     str ftag = {0, 0};
     str ttag = {0, 0};
+    
+    str route_name;
 
     cfg_action_t* cfg_action = 0;
     saved_transaction_t* saved_t_data = 0; //data specific to each contact's AAR async call
-    aar_param_t* ap = (aar_param_t*) str1;
-    char* direction = ap->direction;
-    cfg_action = ap->paction->next;
+    char* direction = str1;
+    if (fixup_get_svalue(msg, (gparam_t*) route, &route_name) != 0) {
+        LM_ERR("no async route block for assign_server_unreg\n");
+        return -1;
+    }
+    
+    LM_DBG("Looking for route block [%.*s]\n", route_name.len, route_name.s);
+    int ri = route_get(&main_rt, route_name.s);
+    if (ri < 0) {
+        LM_ERR("unable to find route block [%.*s]\n", route_name.len, route_name.s);
+        return -1;
+    }
+    cfg_action = main_rt.rlist[ri];
+    if (cfg_action == NULL) {
+        LM_ERR("empty action lists in route block [%.*s]\n", route_name.len, route_name.s);
+        return -1;
+    }
 
     LM_DBG("Rx AAR called\n");
     //create the default return code AVP
@@ -591,7 +607,7 @@ error:
 }
 
 /* Wrapper to send AAR from config file - only used for registration */
-static int w_rx_aar_register(struct sip_msg *msg, char* str1, char* bar) {
+static int w_rx_aar_register(struct sip_msg *msg, char* route, char* str1, char* bar) {
 
     int ret = CSCF_RETURN_ERROR;
     struct pcontact_info ci;
@@ -603,13 +619,31 @@ static int w_rx_aar_register(struct sip_msg *msg, char* str1, char* bar) {
     AAASession* auth;
     rx_authsessiondata_t* rx_regsession_data_p;
     cfg_action_t* cfg_action = 0;
+    str route_name;
     char* p;
     int aar_sent = 0;
     saved_transaction_local_t* local_data = 0; //data to be shared across all async calls
     saved_transaction_t* saved_t_data = 0; //data specific to each contact's AAR async call
-    aar_param_t* ap = (aar_param_t*) str1;
-    udomain_t* domain_t = ap->domain;
-    cfg_action = ap->paction->next;
+    
+    if (fixup_get_svalue(msg, (gparam_t*) route, &route_name) != 0) {
+        LM_ERR("no async route block for assign_server_unreg\n");
+        return -1;
+    }
+    
+    LM_DBG("Looking for route block [%.*s]\n", route_name.len, route_name.s);
+    int ri = route_get(&main_rt, route_name.s);
+    if (ri < 0) {
+        LM_ERR("unable to find route block [%.*s]\n", route_name.len, route_name.s);
+        return -1;
+    }
+    cfg_action = main_rt.rlist[ri];
+    if (cfg_action == NULL) {
+        LM_ERR("empty action lists in route block [%.*s]\n", route_name.len, route_name.s);
+        return -1;
+    }
+    
+    udomain_t* domain_t = (udomain_t*) str1;
+    
     int is_rereg = 0; //is this a reg/re-reg
 
     LM_DBG("Rx AAR Register called\n");
@@ -872,44 +906,61 @@ error:
 }
 
 static int fixup_aar_register(void** param, int param_no) {
-    udomain_t* d;
-    aar_param_t *ap;
-
-    if (param_no != 1)
-        return 0;
-    ap = (aar_param_t*) pkg_malloc(sizeof (aar_param_t));
-    if (ap == NULL) {
-        LM_ERR("no more pkg\n");
+//    udomain_t* d;
+//    aar_param_t *ap;
+//
+//    if (param_no != 1)
+//        return 0;
+//    ap = (aar_param_t*) pkg_malloc(sizeof (aar_param_t));
+//    if (ap == NULL) {
+//        LM_ERR("no more pkg\n");
+//        return -1;
+//    }
+//    memset(ap, 0, sizeof (aar_param_t));
+//    ap->paction = get_action_from_param(param, param_no);
+//
+//    if (ul.register_udomain((char*) *param, &d) < 0) {
+//        LM_ERR("failed to register domain\n");
+//        return E_UNSPEC;
+//    }
+//    ap->domain = d;
+//
+//    *param = (void*) ap;
+//    return 0;
+    if (strlen((char*) *param) <= 0) {
+        LM_ERR("empty parameter %d not allowed\n", param_no);
         return -1;
     }
-    memset(ap, 0, sizeof (aar_param_t));
-    ap->paction = get_action_from_param(param, param_no);
 
-    if (ul.register_udomain((char*) *param, &d) < 0) {
-        LM_ERR("failed to register domain\n");
-        return E_UNSPEC;
+    if (param_no == 1) {        //route name - static or dynamic string (config vars)
+        if (fixup_spve_null(param, param_no) < 0)
+            return -1;
+        return 0;
+    } else if (param_no == 2) {
+        udomain_t* d;
+
+        if (ul.register_udomain((char*) *param, &d) < 0) {
+            LM_ERR("Error doing fixup on assign save");
+            return -1;
+        }
+        *param = (void*) d;
     }
-    ap->domain = d;
 
-    *param = (void*) ap;
     return 0;
 }
 
 static int fixup_aar(void** param, int param_no) {
-    aar_param_t *ap;
-
-    if (param_no != 1)
-        return 0;
-    ap = (aar_param_t*) pkg_malloc(sizeof (aar_param_t));
-    if (ap == NULL) {
-        LM_ERR("no more pkg\n");
+    if (strlen((char*) *param) <= 0) {
+        LM_ERR("empty parameter %d not allowed\n", param_no);
         return -1;
     }
-    memset(ap, 0, sizeof (aar_param_t));
-    ap->paction = get_action_from_param(param, param_no);
-    ap->direction = (char*) *param;
 
-    *param = (void*) ap;
+    if (param_no == 1) {        //route name - static or dynamic string (config vars)
+        if (fixup_spve_null(param, param_no) < 0)
+            return -1;
+        return 0;
+    }
+
     return 0;
 }
 
