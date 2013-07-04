@@ -42,6 +42,8 @@
 #include "t_fwd.h"
 #include "t_funcs.h"
 #include "timer.h"
+#include "t_cancel.h"
+
 #include "t_suspend.h"
 
 /* Suspends the transaction for later use.
@@ -326,12 +328,14 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
 		struct action *route, int branch)
 {
 	struct cell	*t;
-
+        struct sip_msg	faked_resp;
+        struct cancel_info cancel_data;
+        
 	if (t_lookup_ident(&t, hash_index, label) < 0) {
 		LOG(L_ERR, "ERROR: t_continue: transaction not found\n");
 		return -1;
 	}
-
+        
 	if (t->flags & T_CANCELED) {
 		/* The transaction has already been canceled,
 		 * needless to continue */
@@ -340,6 +344,8 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
 		set_t(T_UNDEFINED, T_BR_UNDEFINED);
 		return 1;
 	}
+        
+        init_cancel_info(&cancel_data);
 
 	/* The transaction has to be locked to protect it
 	 * form calling t_continue() multiple times simultaneously */
@@ -351,41 +357,78 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         LOG(L_DBG,"Disabling suspend branch");
         t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
         if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
-                            
-        LOG(L_DBG,"DEBUG: Running pre script\n");
         
-        if (exec_pre_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE)>0) {
-                if (run_top_route(route, t->uac[branch].reply, 0)<0){
+        LOG(L_DBG,"Setting up faked environment");
+        if (!fake_resp(&faked_resp, t->uac[branch].reply, 0 /* extra flags */, 0)) {
+		LOG(L_ERR, "ERROR: t_continue: fake_req failed\n");
+		return 0;
+	}
+        
+        faked_env_resp( t, &faked_resp);
+        
+        LOG(L_DBG,"DEBUG: Running pre script\n");
+        if (exec_pre_script_cb(&faked_resp, ONREPLY_CB_TYPE)>0) {
+                if (run_top_route(route, &faked_resp, 0)<0){
                         LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
                 }
                 LOG(L_DBG,"DEBUG: Running exec post script\n");
-                exec_post_script_cb(t->uac[branch].reply, ONREPLY_CB_TYPE);
+                exec_post_script_cb(&faked_resp, ONREPLY_CB_TYPE);
         }
+
+        LOG(L_DBG,"Restoring previous environment");
+        faked_env_resp( t, 0);
+	free_faked_resp(&faked_resp, t, branch);
+        
         int reply_status;
-                                                        
         if ( is_local(t) ) {
                 LOG(L_DBG,"DEBUG: t is local sending local reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
-                reply_status = local_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, 0 );
-                                    
+                reply_status = local_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, &cancel_data );
+                if (reply_status == RPS_COMPLETED) {
+			     /* no more UAC FR/RETR (if I received a 2xx, there may
+			      * be still pending branches ...
+			      */
+			cleanup_uac_timers( t );
+			if (is_invite(t)) cancel_uacs(t, &cancel_data, F_CANCEL_B_KILL);
+			/* There is no need to call set_final_timer because we know
+			 * that the transaction is local */
+			put_on_wait(t);
+		}else if (unlikely(cancel_data.cancel_bitmap)){
+			/* cancel everything, even non-INVITEs (e.g in case of 6xx), use
+			 * cancel_b_method for canceling unreplied branches */
+			cancel_uacs(t, &cancel_data, cfg_get(tm,tm_cfg, cancel_b_flags));
+		}
+                
         } else {
                 LOG(L_DBG,"DEBUG: t is NOT local sending relaying reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
                 int do_put_on_wait = 0;
                 if(t->uac[branch].reply->first_line.u.reply.statuscode>=200){
                         do_put_on_wait = 1;
                 }
-                reply_status=relay_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode,0, do_put_on_wait );
+                reply_status=relay_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, &cancel_data, do_put_on_wait );
+                if (reply_status == RPS_COMPLETED) {
+			     /* no more UAC FR/RETR (if I received a 2xx, there may
+				be still pending branches ...
+			     */
+			cleanup_uac_timers( t );
+			/* 2xx is a special case: we can have a COMPLETED request
+			 * with branches still open => we have to cancel them */
+			if (is_invite(t) && cancel_data.cancel_bitmap) 
+				cancel_uacs( t, &cancel_data,  F_CANCEL_B_KILL);
+			/* FR for negative INVITES, WAIT anything else */
+			/* Call to set_final_timer is embedded in relay_reply to avoid
+			 * race conditions when reply is sent out and an ACK to stop
+			 * retransmissions comes before retransmission timer is set.*/
+		}else if (unlikely(cancel_data.cancel_bitmap)){
+			/* cancel everything, even non-INVITEs (e.g in case of 6xx), use
+			 * cancel_b_method for canceling unreplied branches */
+			cancel_uacs(t, &cancel_data, cfg_get(tm,tm_cfg, cancel_b_flags));
+		}
                 
         }
         t->uac[branch].request.flags|=F_RB_REPLIED;
 
         if (reply_status==RPS_ERROR){
-                LOG(L_DBG,"DEBUG: Unreffing the transaction\n");
-                /* unref the transaction */
-                t_unref(t->uac[branch].reply);
-                
-                sip_msg_free(t->uac[branch].reply);
-                t->uac[branch].reply = 0;       
-                goto done;
+            goto done;
         }
 
         /* update FR/RETR timers on provisional replies */
@@ -401,15 +444,17 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
                 restart_rb_fr(& t->uac[branch].request, t->fr_inv_timeout);
                 t->uac[branch].request.flags|=F_RB_FR_INV; /* mark fr_inv */
         } 
-        LOG(L_DBG,"DEBUG: Unreffing the transaction");
+        
+        
+done:
+        
+        tm_ctx_set_branch_index(T_BR_UNDEFINED);        
         /* unref the transaction */
         t_unref(t->uac[branch].reply);
-                            
         LOG(L_DBG,"DEBUG: Freeing earlier cloned reply\n");
         sip_msg_free(t->uac[branch].reply);
         t->uac[branch].reply = 0;
-                                
-done:
+        
         return 0;
         
 }
