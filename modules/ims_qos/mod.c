@@ -293,7 +293,7 @@ void callback_for_cdp_session(int event, void *session) {
     //only put the events we care about on the event stack
     if (event == AUTH_EV_SESSION_TIMEOUT ||
             event == AUTH_EV_SESSION_GRACE_TIMEOUT ||
-            event == AUTH_EV_SESSION_LIFETIME_TIMEOUT ||
+            event == AUTH_EV_RECV_ASR ||
             event == AUTH_EV_SERVICE_TERMINATED) {
 
         LOG(L_DBG, "callback_for_cdp session(): called with event %d and session id [%.*s]\n", event, rx_session_id->len, rx_session_id->s);
