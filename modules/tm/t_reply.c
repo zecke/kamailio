@@ -882,17 +882,15 @@ void free_faked_resp(struct sip_msg *faked_resp, struct cell *t, int branch)
 		faked_resp->dst_uri.s = 0;
 	}
 
-	/* free all types of lump that were added in failure handlers */
+	/* free all types of lump that were added */
 	del_nonshm_lump( &(faked_resp->add_rm) );
 	del_nonshm_lump( &(faked_resp->body_lumps) );
 	del_nonshm_lump_rpl( &(faked_resp->reply_lump) );
 
-	/* free header's parsed structures that were added by failure handlers */
+	/* free header's parsed structures that were added */
 	for( hdr=faked_resp->headers ; hdr ; hdr=hdr->next ) {
 		if ( hdr->parsed && hdr_allocs_parse(hdr) &&
 		(hdr->parsed<(void*)t->uac[branch].reply)) {
-			/* header parsed filed doesn't point inside uas.request memory
-			 * chunck -> it was added by failure funcs.-> free it as pkg */
 			DBG("DBG:free_faked_resp: removing hdr->parsed %d\n",
 					hdr->type);
 			
@@ -908,7 +906,8 @@ void free_faked_resp(struct sip_msg *faked_resp, struct cell *t, int branch)
 	}
 }
 
-/** create or restore a "fake environment" for running a failure_route.
+/** create or restore a "fake environment" for running a TM_ONREPLY_ROUTE.
+ * This used for suspending and continuing on SIP replies
  *if msg is set -> it will fake the env. vars conforming with the msg; if NULL
  * the env. will be restore to original.
  * Side-effect: mark_ruri_consumed().
@@ -933,13 +932,13 @@ void faked_env_resp( struct cell *t, struct sip_msg *msg)
 
 
 	if (msg) {
-		/* remember we are back in request processing, but process
-		 * a shmem-ed replica of the request; advertise it in route type;
+		/* remember we are back in reply processing, but process
+		 * a shmem-ed replica of the reply; advertise it in route type;
 		 * for example t_reply needs to know that
 		 */
 		backup_route_type=get_route_type();
                 
-                /*This is reponse so route type is TM_ONREPLY_ROUTE*/
+                /*This is response so route type is TM_ONREPLY_ROUTE*/
 		set_route_type(TM_ONREPLY_ROUTE);
 		/* don't bother backing up ruri state, since failure route
 		   is called either on reply or on timer and in both cases

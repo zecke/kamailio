@@ -111,7 +111,7 @@ int t_suspend(struct sip_msg *msg,
 
 /* Suspends the transaction for later use.
  * Save the returned hash_index and label to get
- * back to the SIP request processing, see the readme.
+ * back to the SIP response processing, see the readme.
  * This method is specifically for suspending replies
  * 
  * Return value:
@@ -126,45 +126,42 @@ int t_suspend_reply(struct sip_msg *msg,
 
 	t = get_t();
 	if (!t || t == T_UNDEFINED) {
-		LOG(L_ERR, "ERROR: t_suspend: " \
+		LOG(L_ERR, "ERROR: t_suspend_reply: " \
 			"transaction has not been created yet\n");
 		return -1;
 	}
 
 	if (t->flags & T_CANCELED) {
                	/* The transaction has already been canceled */
-		LOG(L_DBG, "DEBUG: t_suspend: " \
+		LOG(L_DBG, "DEBUG: t_suspend_reply: " \
 			"trying to suspend an already canceled transaction\n");
 		ser_error = E_CANCELED;
 		return 1;
 	}
         
-	LOG(L_DBG,"DEBUG: This is a suspend on reply - setting msg flag to SUSPEND\n");
+	LOG(L_DBG,"DEBUG: t_suspend_reply: This is a suspend on reply - setting msg flag to SUSPEND\n");
         msg->flags |= FL_RPL_SUSPENDED;
         /* this is a reply suspend find which branch */
             
         if (t_check( msg  , &branch )==-1){
-                LOG(L_ERR, "ERROR: t_suspend: " \
+                LOG(L_ERR, "ERROR: t_suspend_reply: " \
                         "failed find UAC branch\n");
                 return -1; 
         }
-        LOG(L_DBG,"DEBUG: Found a a match with branch id [%d]\n", branch);
+        LOG(L_DBG,"DEBUG: t_suspend_reply:Found a a match with branch id [%d]\n", branch);
         
-        LOG(L_DBG,"DEBUG: Cloning reply message to t->uac[branch].reply\n");
+        LOG(L_DBG,"DEBUG: t_suspend_reply:Cloning reply message to t->uac[branch].reply\n");
             
         t->uac[branch].reply = sip_msg_cloner( msg, 0 );
 
         if (! t->uac[branch].reply ) {
-                LOG(L_ERR, "ERROR: t_suspend: can't alloc' clone memory\n");
+                LOG(L_ERR, "ERROR: t_suspend_reply: can't alloc' clone memory\n");
                 return -1;
         }
             
-        LOG(L_DBG,"DEBUG: Saving stuff to transaction\n");
-		
-        LOG(L_DBG,"DEBUG: Saving transaction hash and label\n");
+        LOG(L_DBG,"DEBUG: t_suspend_reply: Saving transaction hash and label\n");
         *hash_index = t->hash_index;
         *label = t->label;
-        LOG(L_DBG,"DEBUG: Done");
 
 	return 0;
 }
@@ -314,7 +311,7 @@ kill_trans:
 }
 
 /* Continues the SIP reply processing previously saved by
- * t_suspend(). The script does not continue from the same
+ * t_suspend_reply(). The script does not continue from the same
  * point, but a separate route block is executed instead.
  *
  * Parameter:
@@ -332,7 +329,7 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         struct cancel_info cancel_data;
         
 	if (t_lookup_ident(&t, hash_index, label) < 0) {
-		LOG(L_ERR, "ERROR: t_continue: transaction not found\n");
+		LOG(L_ERR, "ERROR: t_continue_reply: transaction not found\n");
 		return -1;
 	}
         
@@ -348,19 +345,19 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         init_cancel_info(&cancel_data);
 
 	/* The transaction has to be locked to protect it
-	 * form calling t_continue() multiple times simultaneously */
+	 * form calling t_continue_reply() multiple times simultaneously */
 	LOCK_REPLIES(t);
 
-        LOG(L_DBG,"DEBUG: This a continue from a reply suspend\n");
+        LOG(L_DBG,"DEBUG: t_continue_reply: This a continue from a reply suspend\n");
         /* this is a continue from a reply suspend */
             
-        LOG(L_DBG,"Disabling suspend branch");
+        LOG(L_DBG,"DEBUG: t_continue_reply: Disabling suspend branch");
         t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
         if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
         
-        LOG(L_DBG,"Setting up faked environment");
+        LOG(L_DBG,"DEBUG: t_continue_reply: Setting up faked environment");
         if (!fake_resp(&faked_resp, t->uac[branch].reply, 0 /* extra flags */, 0)) {
-		LOG(L_ERR, "ERROR: t_continue: fake_req failed\n");
+		LOG(L_ERR, "ERROR: t_continue_reply: fake_resp failed\n");
 		return 0;
 	}
         
@@ -369,19 +366,19 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         LOG(L_DBG,"DEBUG: Running pre script\n");
         if (exec_pre_script_cb(&faked_resp, ONREPLY_CB_TYPE)>0) {
                 if (run_top_route(route, &faked_resp, 0)<0){
-                        LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
+                        LOG(L_ERR, "ERROR: t_continue_reply: Error in run_top_route\n");
                 }
-                LOG(L_DBG,"DEBUG: Running exec post script\n");
+                LOG(L_DBG,"DEBUG: t_continue_reply: Running exec post script\n");
                 exec_post_script_cb(&faked_resp, ONREPLY_CB_TYPE);
         }
 
-        LOG(L_DBG,"Restoring previous environment");
+        LOG(L_DBG,"DEBUG: t_continue_reply: Restoring previous environment");
         faked_env_resp( t, 0);
 	free_faked_resp(&faked_resp, t, branch);
         
         int reply_status;
         if ( is_local(t) ) {
-                LOG(L_DBG,"DEBUG: t is local sending local reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
+                LOG(L_DBG,"DEBUG: t_continue_reply: t is local sending local reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
                 reply_status = local_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, &cancel_data );
                 if (reply_status == RPS_COMPLETED) {
 			     /* no more UAC FR/RETR (if I received a 2xx, there may
@@ -399,7 +396,7 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
 		}
                 
         } else {
-                LOG(L_DBG,"DEBUG: t is NOT local sending relaying reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
+                LOG(L_DBG,"DEBUG: t_continue_reply: t is NOT local sending relaying reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
                 int do_put_on_wait = 0;
                 if(t->uac[branch].reply->first_line.u.reply.statuscode>=200){
                         do_put_on_wait = 1;
@@ -451,7 +448,7 @@ done:
         tm_ctx_set_branch_index(T_BR_UNDEFINED);        
         /* unref the transaction */
         t_unref(t->uac[branch].reply);
-        LOG(L_DBG,"DEBUG: Freeing earlier cloned reply\n");
+        LOG(L_DBG,"DEBUG: t_continue_reply: Freeing earlier cloned reply\n");
         sip_msg_free(t->uac[branch].reply);
         t->uac[branch].reply = 0;
         
@@ -523,7 +520,7 @@ int t_cancel_suspend(unsigned int hash_index, unsigned int label)
 
 /* Revoke the suspension of the SIP reply, 
  * This function can be called when something fails
- * after t_suspend() has already been executed in the same
+ * after t_suspend_reply() has already been executed in the same
  * process, and it turns out that the transaction should
  * not have been suspended.
  * 
@@ -540,7 +537,7 @@ int t_cancel_suspend_reply(unsigned int hash_index, unsigned int label, int bran
 	
 	t = get_t();
 	if (!t || t == T_UNDEFINED) {
-		LOG(L_ERR, "ERROR: t_revoke_suspend: " \
+		LOG(L_ERR, "ERROR: t_cancel_suspend_reply: " \
 			"no active transaction\n");
 		return -1;
 	}
@@ -548,12 +545,12 @@ int t_cancel_suspend_reply(unsigned int hash_index, unsigned int label, int bran
 	if ((t->hash_index != hash_index)
 		|| (t->label != label)
 	) {
-		LOG(L_ERR, "ERROR: t_revoke_suspend: " \
+		LOG(L_ERR, "ERROR: t_cancel_suspend_reply: " \
 			"transaction id mismatch\n");
 		return -1;
 	}
 	
-        LOG(L_DBG,"This is a cancel suspend for a response\n");
+        LOG(L_DBG,"DEBUG: t_cancel_suspend_reply: This is a cancel suspend for a response\n");
         
         t->uac[branch].reply->flags &= ~FL_RPL_SUSPENDED;
         if (t->uas.request) t->uas.request->flags&= ~FL_RPL_SUSPENDED;
