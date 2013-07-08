@@ -825,62 +825,15 @@ int fake_resp(struct sip_msg *faked_resp,
 	
 	faked_resp->msg_flags|=extra_flags; /* set the extra tm flags */
         
-	/* dst_uri can change ALSO!!! -- make a private copy */
-	if (shmem_msg->dst_uri.s!=0 && shmem_msg->dst_uri.len!=0) {
-		faked_resp->dst_uri.s=pkg_malloc(shmem_msg->dst_uri.len+1);
-		if (!faked_resp->dst_uri.s) {
-			LOG(L_ERR, "ERROR: fake_resp: no uri/pkg mem\n");
-			goto error01;
-		}
-		faked_resp->dst_uri.len=shmem_msg->dst_uri.len;
-		memcpy( faked_resp->dst_uri.s, shmem_msg->dst_uri.s,
-			faked_resp->dst_uri.len);
-		faked_resp->dst_uri.s[faked_resp->dst_uri.len]=0;
-	}else{
-		/* in case len==0, but shmem_msg->dst_uri.s!=0 (extra safety) */
-		faked_resp->dst_uri.s = 0;
-	}
-	/* new_uri can change -- make a private copy */
-	if (shmem_msg->new_uri.s!=0 && shmem_msg->new_uri.len!=0) {
-		faked_resp->new_uri.s=pkg_malloc(shmem_msg->new_uri.len+1);
-		if (!faked_resp->new_uri.s) {
-			LOG(L_ERR, "ERROR: fake_resp: no uri/pkg mem\n");
-			goto error00;
-		}
-		faked_resp->new_uri.len=shmem_msg->new_uri.len;
-		memcpy( faked_resp->new_uri.s, shmem_msg->new_uri.s,
-			faked_resp->new_uri.len);
-		faked_resp->new_uri.s[faked_resp->new_uri.len]=0;
-	}else{
-		/* in case len==0, but shmem_msg->new_uri.s!=0  (extra safety)*/
-		faked_resp->new_uri.s = 0;
-	}
 	if(uac) setbflagsval(0, uac->branch_flags);
 	else setbflagsval(0, 0);
         
 	return 1;
-error00:
-	if (faked_resp->dst_uri.s) {
-		pkg_free(faked_resp->dst_uri.s);
-		faked_resp->dst_uri.s = 0;
-	}
-error01:
-	return 0;
 }
 
 void free_faked_resp(struct sip_msg *faked_resp, struct cell *t, int branch)
 {
         struct hdr_field *hdr;
-
-	if (faked_resp->new_uri.s) {
-		pkg_free(faked_resp->new_uri.s);
-		faked_resp->new_uri.s = 0;
-	}
-
-	if (faked_resp->dst_uri.s) {
-		pkg_free(faked_resp->dst_uri.s);
-		faked_resp->dst_uri.s = 0;
-	}
 
 	/* free all types of lump that were added */
 	del_nonshm_lump( &(faked_resp->add_rm) );
