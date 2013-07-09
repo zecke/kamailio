@@ -91,6 +91,7 @@ struct cell;
 struct timer;
 struct retr_buf;
 struct ua_client;
+struct async_state;
 
 #include "../../mem/shm_mem.h"
 #include "lock.h"
@@ -264,6 +265,13 @@ typedef struct ua_client
 	unsigned short on_unused;
 }ua_client_type;
 
+/* structure for storing trnasaction state prior to suspending for async transactions */
+typedef struct async_state
+{        
+        unsigned int backup_route;
+        unsigned int backup_branch;
+        unsigned int ruri_new;
+}async_state_type;
 
 struct totag_elem {
 	struct totag_elem *next;
@@ -403,6 +411,9 @@ typedef struct cell
 	   outbound buffer, for proxies transactions pointer to
 	   original message; needed for reply matching */
 	str method;
+        
+        /* store transaction state to be used with async transactions */
+        struct async_state async_backup;
 
 	/* head of callback list */
 	struct tmcb_head_list tmcb_hl;
@@ -459,7 +470,6 @@ typedef struct cell
 	char md5[0];
 
 } tm_cell_t;
-
 
 #if 0
 /* warning: padding too much => big size increase */

@@ -33,6 +33,7 @@
 
 #include "../../action.h"
 #include "../../script_cb.h"
+#include "../../dset.h"
 
 #include "config.h"
 #include "sip_msg.h"
@@ -95,7 +96,10 @@ int t_suspend(struct sip_msg *msg,
 	}
 	/* save the message flags */
 	t->uas.request->flags = msg->flags;
-
+        t->async_backup.backup_route = get_route_type();
+        t->async_backup.backup_branch = get_t_branch();
+        t->async_backup.ruri_new = ruri_get_forking_state();
+        
 	*hash_index = t->hash_index;
 	*label = t->label;
 
@@ -242,16 +246,32 @@ int t_continue(unsigned int hash_index, unsigned int label,
 		ret = -1;
 		goto kill_trans;
 	}
-	faked_env( t, &faked_req);
+	faked_env_async( t, &faked_req);
 
 	/* The sip msg is a faked msg just like in failure route
 	 * therefore execute the pre- and post-script callbacks
 	 * of failure route (Miklos)
 	 */
-	if (exec_pre_script_cb(&faked_req, FAILURE_CB_TYPE)>0) {
+        
+        int cb_type = REQUEST_CB_TYPE;
+        switch (t->async_backup.backup_route) {
+            case REQUEST_ROUTE:
+                cb_type = REQUEST_CB_TYPE;
+                break;
+            case FAILURE_ROUTE:
+                cb_type = FAILURE_CB_TYPE;
+                break;
+            case TM_ONREPLY_ROUTE:
+                 cb_type = ONREPLY_CB_TYPE;
+                break;
+            case BRANCH_ROUTE:
+                cb_type = BRANCH_CB_TYPE;
+                break;
+        }
+	if (exec_pre_script_cb(&faked_req, cb_type)>0) {
 		if (run_top_route(route, &faked_req, 0)<0)
 			LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
-		exec_post_script_cb(&faked_req, FAILURE_CB_TYPE);
+		exec_post_script_cb(&faked_req, cb_type);
 	}
 
 	/* TODO: save_msg_lumps should clone the lumps to shm mem */

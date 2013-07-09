@@ -951,6 +951,96 @@ void faked_env_resp( struct cell *t, struct sip_msg *msg)
 	}
 }
 
+void faked_env_async( struct cell *t, struct sip_msg *msg) {
+       	static int backup_route_type;
+	static struct cell *backup_t;
+	static int backup_branch;
+	static unsigned int backup_msgid;
+	static avp_list_t* backup_user_from, *backup_user_to;
+	static avp_list_t* backup_domain_from, *backup_domain_to;
+	static avp_list_t* backup_uri_from, *backup_uri_to;
+#ifdef WITH_XAVP
+	static sr_xavp_t **backup_xavps;
+#endif
+	static struct socket_info* backup_si;
+
+	static struct lump *backup_add_rm;
+	static struct lump *backup_body_lumps;
+	static struct lump_rpl *backup_reply_lump;
+
+
+	if (msg) {
+		/* remember we are back in request processing, but process
+		 * a shmem-ed replica of the request; advertise it in route type;
+		 * for example t_reply needs to know that
+		 */
+		backup_route_type=get_route_type();
+		set_route_type(t->async_backup.backup_route);
+                if (t->async_backup.ruri_new) {
+                    ruri_mark_new();
+                }
+                
+                if (!is_route_type(REQUEST_ROUTE)) {
+                    /* don't bother backing up ruri state, since failure route
+                       is called either on reply or on timer and in both cases
+                       the ruri should not be used again for forking */
+                    ruri_mark_consumed(); /* in failure route we assume ruri
+                                             should not be used again for forking */
+                }
+		/* also, tm actions look in beginning whether transaction is
+		 * set -- whether we are called from a reply-processing
+		 * or a timer process, we need to set current transaction;
+		 * otherwise the actions would attempt to look the transaction
+		 * up (unnecessary overhead, refcounting)
+		 */
+		/* backup */
+		backup_t=get_t();
+		backup_branch=get_t_branch();
+		backup_msgid=global_msg_id;
+		/* fake transaction and message id */
+		global_msg_id=msg->id;
+		set_t(t, t->async_backup.backup_branch);
+		/* make available the avp list from transaction */
+
+		backup_uri_from = set_avp_list(AVP_TRACK_FROM | AVP_CLASS_URI, &t->uri_avps_from );
+		backup_uri_to = set_avp_list(AVP_TRACK_TO | AVP_CLASS_URI, &t->uri_avps_to );
+		backup_user_from = set_avp_list(AVP_TRACK_FROM | AVP_CLASS_USER, &t->user_avps_from );
+		backup_user_to = set_avp_list(AVP_TRACK_TO | AVP_CLASS_USER, &t->user_avps_to );
+		backup_domain_from = set_avp_list(AVP_TRACK_FROM | AVP_CLASS_DOMAIN, &t->domain_avps_from );
+		backup_domain_to = set_avp_list(AVP_TRACK_TO | AVP_CLASS_DOMAIN, &t->domain_avps_to );
+#ifdef WITH_XAVP
+		backup_xavps = xavp_set_list(&t->xavps_list);
+#endif
+		/* set default send address to the saved value */
+		backup_si=bind_address;
+		bind_address=t->uac[0].request.dst.send_sock;
+		/* backup lump lists */
+		backup_add_rm = t->uas.request->add_rm;
+		backup_body_lumps = t->uas.request->body_lumps;
+		backup_reply_lump = t->uas.request->reply_lump;
+	} else {
+		/* restore original environment */
+		set_t(backup_t, backup_branch);
+		global_msg_id=backup_msgid;
+		set_route_type(backup_route_type);
+		/* restore original avp list */
+		set_avp_list(AVP_TRACK_FROM | AVP_CLASS_USER, backup_user_from );
+		set_avp_list(AVP_TRACK_TO | AVP_CLASS_USER, backup_user_to );
+		set_avp_list(AVP_TRACK_FROM | AVP_CLASS_DOMAIN, backup_domain_from );
+		set_avp_list(AVP_TRACK_TO | AVP_CLASS_DOMAIN, backup_domain_to );
+		set_avp_list(AVP_TRACK_FROM | AVP_CLASS_URI, backup_uri_from );
+		set_avp_list(AVP_TRACK_TO | AVP_CLASS_URI, backup_uri_to );
+#ifdef WITH_XAVP
+		xavp_set_list(backup_xavps);
+#endif
+		bind_address=backup_si;
+		/* restore lump lists */
+		t->uas.request->add_rm = backup_add_rm;
+		t->uas.request->body_lumps = backup_body_lumps;
+		t->uas.request->reply_lump = backup_reply_lump;
+	}
+}
+
 /** create or restore a "fake environment" for running a failure_route.
  *if msg is set -> it will fake the env. vars conforming with the msg; if NULL
  * the env. will be restore to original.
