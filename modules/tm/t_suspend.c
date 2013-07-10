@@ -277,7 +277,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
 	/* TODO: save_msg_lumps should clone the lumps to shm mem */
 
 	/* restore original environment and free the fake msg */
-	faked_env( t, 0);
+	faked_env_async( t, 0);
 	free_faked_req(&faked_req, t);
 
 	/* update the flags */

@@ -1019,25 +1019,9 @@ void faked_env_async( struct cell *t, struct sip_msg *msg) {
 		backup_body_lumps = t->uas.request->body_lumps;
 		backup_reply_lump = t->uas.request->reply_lump;
 	} else {
-		/* restore original environment */
-		set_t(backup_t, backup_branch);
-		global_msg_id=backup_msgid;
-		set_route_type(backup_route_type);
-		/* restore original avp list */
-		set_avp_list(AVP_TRACK_FROM | AVP_CLASS_USER, backup_user_from );
-		set_avp_list(AVP_TRACK_TO | AVP_CLASS_USER, backup_user_to );
-		set_avp_list(AVP_TRACK_FROM | AVP_CLASS_DOMAIN, backup_domain_from );
-		set_avp_list(AVP_TRACK_TO | AVP_CLASS_DOMAIN, backup_domain_to );
-		set_avp_list(AVP_TRACK_FROM | AVP_CLASS_URI, backup_uri_from );
-		set_avp_list(AVP_TRACK_TO | AVP_CLASS_URI, backup_uri_to );
-#ifdef WITH_XAVP
-		xavp_set_list(backup_xavps);
-#endif
-		bind_address=backup_si;
-		/* restore lump lists */
-		t->uas.request->add_rm = backup_add_rm;
-		t->uas.request->body_lumps = backup_body_lumps;
-		t->uas.request->reply_lump = backup_reply_lump;
+		/* on async restore - we don't need to do anything because we never really had 
+                   an environment to restore prior to the suspend anyway ;) */
+            LM_DBG("nothing to restore for async...\n");
 	}
 }
 
