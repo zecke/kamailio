@@ -203,7 +203,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
 
 	/* The transaction has to be locked to protect it
 	 * form calling t_continue() multiple times simultaneously */
-	LOCK_REPLIES(t);
+	LOCK_ASYNC_CONTINUE(t);
 
 	/* Try to find the blind UAC, and cancel its fr timer.
 	 * We assume that the last blind uac called t_continue(). */
@@ -303,7 +303,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
 		}
 	}
 
-	UNLOCK_REPLIES(t);
+	UNLOCK_ASYNC_CONTINUE(t);
 
 	/* unref the transaction */
 	t_unref(t->uas.request);

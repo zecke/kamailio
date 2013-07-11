@@ -148,6 +148,8 @@ int t_get_reply_totag(struct sip_msg *msg, str *totag);
 
 #define LOCK_REPLIES(_t) lock(&(_t)->reply_mutex )
 #define UNLOCK_REPLIES(_t) unlock(&(_t)->reply_mutex )
+#define LOCK_ASYNC_CONTINUE(_t) lock(&(_t)->async_mutex )
+#define UNLOCK_ASYNC_CONTINUE(_t) unlock(&(_t)->async_mutex )
 
 /* This function is called whenever a reply for our module is received;
  * we need to register this function on module initialization;
