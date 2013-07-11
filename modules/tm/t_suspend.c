@@ -294,13 +294,6 @@ int t_continue(unsigned int hash_index, unsigned int label,
 			if (t->uac[branch].last_received < 200)
 				break;
 		}
-
-		if (branch == t->nr_of_outgoings) {
-			/* There is not any open branch so there is
-			 * no chance that a final response will be received. */
-			ret = 0;
-			goto kill_trans;
-		}
 	}
 
 	UNLOCK_ASYNC_CONTINUE(t);
@@ -320,10 +313,10 @@ kill_trans:
 			"reply generation failed\n");
 		/* The transaction must be explicitely released,
 		 * no more timer is running */
-		UNLOCK_REPLIES(t);
+		UNLOCK_ASYNC_CONTINUE(t);
 		t_release_transaction(t);
 	} else {
-		UNLOCK_REPLIES(t);
+		UNLOCK_ASYNC_CONTINUE(t);
 	}
 
 	t_unref(t->uas.request);
