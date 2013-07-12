@@ -103,7 +103,7 @@ int t_suspend(struct sip_msg *msg,
 	*hash_index = t->hash_index;
 	*label = t->label;
 
-	/* add a bling UAC to let the fr timer running */
+	/* add a blind UAC to let the fr timer running */
 	if (add_blind_uac() < 0) {
 		LOG(L_ERR, "ERROR: t_suspend: " \
 			"failed to add the blind UAC\n");
@@ -205,15 +205,12 @@ int t_continue(unsigned int hash_index, unsigned int label,
 	 * form calling t_continue() multiple times simultaneously */
 	LOCK_ASYNC_CONTINUE(t);
 
-	/* Try to find the blind UAC, and cancel its fr timer.
-	 * We assume that the last blind uac called t_continue(). */
-	for (	branch = t->nr_of_outgoings-1;
-		branch >= 0 && t->uac[branch].request.buffer;
-		branch--);
-
-	if (branch >= 0) {
+        t->flags |= T_ASYNC_CONTINUE;   //we can now know anywhere in kamailio that we are executing post a suspend.
+        
+	
+        branch = t->async_backup.blind_uac;
+        if (branch >= 0) {
 		stop_rb_timers(&t->uac[branch].request);
-
 		if (t->uac[branch].last_received != 0) {
 			/* Either t_continue() has already been
 			 * called or the branch has already timed out.
@@ -231,7 +228,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
 		 * for example when t_reply() is called from
 		 * a failure route => deadlock, because both
 		 * of them need the reply lock to be held. */
-		t->uac[branch].last_received=500;
+		//t->uac[branch].last_received=500; we dont need this anymore, we are not locking replies
 		uac = &t->uac[branch];
 	}
 	/* else

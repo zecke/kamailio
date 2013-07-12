@@ -755,6 +755,8 @@ int add_blind_uac( /*struct cell *t*/ )
 	membar_write(); /* to allow lockless prepare_to_cancel() we want to be sure
 					   all the writes finished before updating branch number*/
 	t->nr_of_outgoings=(branch+1);
+	t->async_backup.blind_uac = branch;
+        
 	/* start FR timer -- protocol set by default to PROTO_NONE,
        which means retransmission timer will not be started
     */

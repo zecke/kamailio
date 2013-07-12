@@ -270,6 +270,7 @@ typedef struct async_state
 {        
         unsigned int backup_route;
         unsigned int backup_branch;
+        unsigned int blind_uac;
         unsigned int ruri_new;
 }async_state_type;
 
@@ -317,6 +318,7 @@ struct totag_elem {
 #	define T_PASS_PROVISIONAL_FLAG (1<<11)
 #	define pass_provisional(_t_)	((_t_)->flags&T_PASS_PROVISIONAL_FLAG)
 #endif
+#define T_ASYNC_CONTINUE (1<<9) /* Is this transaction in a continuation after being suspended */
 
 /* unsigned short should be enough for a retr. timer: max. 65535 ms =>
  * max retr. = 65 s which should be enough and saves us 2*2 bytes */
