@@ -127,155 +127,6 @@ struct module_exports exports = {
 	0            /* per-child init function */
 };
 
-/*! \brief returns the value of boundary parameter from the Contect-Type HF */
-static inline int get_boundary_param(struct sip_msg *msg, str *boundary)
-{
-        str     s;
-        char    *c;
-        param_t *p, *list;
-
-#define is_boundary(c) \
-        (((c)[0] == 'b' || (c)[0] == 'B') && \
-        ((c)[1] == 'o' || (c)[1] == 'O') && \
-        ((c)[2] == 'u' || (c)[2] == 'U') && \
-        ((c)[3] == 'n' || (c)[3] == 'N') && \
-        ((c)[4] == 'd' || (c)[4] == 'D') && \
-        ((c)[5] == 'a' || (c)[5] == 'A') && \
-        ((c)[6] == 'r' || (c)[6] == 'R') && \
-        ((c)[7] == 'y' || (c)[7] == 'Y'))
-
-#define boundary_param_len (sizeof("boundary")-1)
-
-        /* get the pointer to the beginning of the parameter list */
-        s.s = msg->content_type->body.s;
-        s.len = msg->content_type->body.len;
-        c = find_not_quoted(&s, ';');
-        if (!c)
-                return -1;
-        c++;
-        s.len = s.len - (c - s.s);
-        s.s = c;
-        trim_leading(&s);
-
-        if (s.len <= 0)
-                return -1;
-
-        /* parse the parameter list, and search for boundary */
-        if (parse_params(&s, CLASS_ANY, NULL, &list)<0)
-                return -1;
-
-        boundary->s = NULL;
-        for (p = list; p; p = p->next)
-                if ((p->name.len == boundary_param_len) &&
-                        is_boundary(p->name.s)
-                ) {
-                        boundary->s = p->body.s;
-                        boundary->len = p->body.len;
-                        break;
-                }
-        free_params(list);
-        if (!boundary->s || !boundary->len)
-                return -1;
-
-        DBG("boundary is \"%.*s\"\n",
-                boundary->len, boundary->s);
-        return 0;
-}
-
-static char * SDP_HEADER = "Content-Type: application/sdp\r\n\r\n";
-static char * ISUP_HEADER = "Content-Type: application/ISUP; version=ITU-93\r\nContent-Disposition: signal; handling=optional\r\n\r\n";
-
-static int replace_body(struct sip_msg *msg, str * nb)
-{
-	str body;
-        body.s = get_body(msg);
-	struct lump *anchor;
-	char * buf;
-	free_lump_list(msg->body_lumps);
-	msg->body_lumps = NULL;
-
-
-        if (msg->content_length)
-        {
-                body.len = get_content_length( msg );
-                if(body.len > 0)
-                {
-                        if(body.s+body.len>msg->buf+msg->len)
-                        {
-                                LM_ERR("invalid content length: %d\n", body.len);
-                                return -1;
-                        }
-                        if(del_lump(msg, body.s - msg->buf, body.len, 0) == 0)
-                        {
-                                LM_ERR("cannot delete existing body");
-                                return -1;
-                        }
-                }
-        }
-
-        anchor = anchor_lump(msg, msg->unparsed - msg->buf, 0, 0);
-
-        if (anchor == 0)
-        {
-                LM_ERR("failed to get anchor\n");
-                return -1;
-        }
-
-        if (msg->content_length==0)
-        {
-                /* need to add Content-Length */
-                int len = nb->len;
-		int value_len;
-                char* value_s=int2str(len, &value_len);
-                LM_DBG("content-length: %d (%s)\n", value_len, value_s);
-
-                len=CONTENT_LENGTH_LEN+value_len+CRLF_LEN;
-                buf=pkg_malloc(sizeof(char)*(len));
-
-                if (buf==0)
-                {
-                        LM_ERR("out of pkg memory\n");
-                        return -1;
-                }
-
-                memcpy(buf, CONTENT_LENGTH, CONTENT_LENGTH_LEN);
-                memcpy(buf+CONTENT_LENGTH_LEN, value_s, value_len);
-                memcpy(buf+CONTENT_LENGTH_LEN+value_len, CRLF, CRLF_LEN);
-                if (insert_new_lump_after(anchor, buf, len, 0) == 0)
-                {
-                        LM_ERR("failed to insert content-length lump\n");
-                        pkg_free(buf);
-                        return -1;
-                }
-        }
-
-
-        anchor = anchor_lump(msg, body.s - msg->buf, 0, 0);
-
-        if (anchor == 0)
-        {
-                LM_ERR("failed to get body anchor\n");
-                return -1;
-        }
-
-        buf=pkg_malloc(sizeof(char)*(nb->len));
-        if (buf==0)
-        {
-                LM_ERR("out of pkg memory\n");
-                return -1;
-        }
-        memcpy(buf, nb->s, nb->len);
-        if (insert_new_lump_after(anchor, buf, nb->len, 0) == 0)
-        {
-                LM_ERR("failed to insert body lump\n");
-                pkg_free(buf);
-                return -1;
-        }
-        LM_DBG("new body: [%.*s]", nb->len, nb->s);
-
-	return 0;
-}
-
 static int sipt_get_hop_counter(struct sip_msg *msg, pv_param_t *param, pv_value_t *res)
 {
 	str body;
@@ -412,6 +263,7 @@ static int sipt_destination(struct sip_msg *msg, char *_destination, char *_hops
 	unsigned int int_nai = 0;
 	str2int(nai, &int_nai);
 	str * destination = (str*)_destination;
+	struct sdp_mangler mangle;
 
 	// update forwarded iam
 	str body;
@@ -443,91 +295,21 @@ static int sipt_destination(struct sip_msg *msg, char *_destination, char *_hops
 		return -1;
 	}
 
+	mangle.msg = msg;
+	mangle.body_offset = (int)(body.s - msg->buf);
 
 
-	unsigned int offset = 0;
+	char * digits = calloc(1,destination->len+2);
+	memcpy(digits, destination->s, destination->len);
+	digits[destination->len] = '#';
 
-	if(sdp.s != NULL)
+	int res = isup_update_destination(&mangle, digits, hops, int_nai, (unsigned char*)body.s, body.len);
+	free(digits);
+	if(res < 0)
 	{
-		// we need to be clean, handle 2 cases
-		// one with sdp, one without sdp
-		str boundary = {0,0}; 
-		get_boundary_param(msg, &boundary);
-		memcpy(newbuf+offset, "--", 2);
-		offset+=2;
-
-		memcpy(newbuf+offset,boundary.s, boundary.len);
-		offset += boundary.len;
-
-		memcpy(newbuf+offset, "\r\n", 2);
-		offset+=2;
-
-		memcpy(newbuf+offset,SDP_HEADER, strlen(SDP_HEADER));
-		offset += strlen(SDP_HEADER);
-
-
-		memcpy(newbuf+offset,sdp.s, sdp.len);
-		offset += sdp.len;
-
-		memcpy(newbuf+offset, "\r\n", 2);
-		offset+=2;
-		memcpy(newbuf+offset, "\r\n--", 4);
-		offset+=4;
-
-		memcpy(newbuf+offset,boundary.s, boundary.len);
-		offset += boundary.len;
-
-		memcpy(newbuf+offset, "\r\n", 2);
-		offset+=2;
-
-		memcpy(newbuf+offset,ISUP_HEADER, strlen(ISUP_HEADER));
-		offset += strlen(ISUP_HEADER);
-
-		char * digits = calloc(1,destination->len+2);
-		memcpy(digits, destination->s, destination->len);
-		digits[destination->len] = '#';
-
-		int res = isup_update_destination(digits, hops, int_nai, (unsigned char*)body.s, body.len, newbuf+offset, 512);
-
-		if(res == -1)
-		{
-			LM_DBG("error updating IAM\n");
-			return -1;
-		}
-
-		free(digits);
-		offset += res;
-
-		memcpy(newbuf+offset, "\r\n--", 4);
-		offset+=4;
-
-		memcpy(newbuf+offset,boundary.s, boundary.len);
-		offset += boundary.len;
-
-		memcpy(newbuf+offset, "--\r\n", 4);
-		offset+=4;
+		LM_DBG("error updating IAM\n");
+		return -1;
 	}
-	else
-	{
-		// isup only body
-		char * digits = calloc(1,destination->len+2);
-		memcpy(digits, destination->s, destination->len);
-		digits[destination->len] = '#';
-
-		int res = isup_update_destination(digits, hops, int_nai, (unsigned char*)body.s, body.len, newbuf, 512);
-		free(digits);
-		offset = res;
-		if(res == -1)
-		{
-			LM_DBG("error updating IAM\n");
-			return -1;
-		}
-	}
-
-
-
-	str nb = {(char*)newbuf, offset};
-	replace_body(msg, &nb);
 
 	return 1;
 }
@@ -544,6 +326,7 @@ static int sipt_set_calling(struct sip_msg *msg, char *_origin, char *_nai, char
 	unsigned int int_nai = 0;
 	str2int(nai, &int_nai);
 	str * origin = (str*)_origin;
+	struct sdp_mangler mangle;
 
 	// update forwarded iam
 	str body;
@@ -554,11 +337,7 @@ static int sipt_set_calling(struct sip_msg *msg, char *_origin, char *_nai, char
 		LM_ERR("No ISUP Message Found");
 		return -1;
 	}
-	str sdp;
-	sdp.s = get_body_part(msg, TYPE_APPLICATION, SUBTYPE_SDP, &sdp.len);
-	
-	unsigned char newbuf[1024];
-	memset(newbuf, 0, 1024);
+
 	if (body.s==0) {
 		LM_ERR("failed to get the message body\n");
 		return -1;
@@ -576,88 +355,19 @@ static int sipt_set_calling(struct sip_msg *msg, char *_origin, char *_nai, char
 	}
 
 
+	mangle.msg = msg;
+	mangle.body_offset = (int)(body.s - msg->buf);
 
-	unsigned int offset = 0;
+	char * digits = calloc(1,origin->len+1);
+	memcpy(digits, origin->s, origin->len);
 
-	if(sdp.s != NULL)
+	int res = isup_update_calling(&mangle, digits, int_nai, pres, screen, (unsigned char*)body.s, body.len);
+	free(digits);
+	if(res < 0)
 	{
-		// we need to be clean, handle 2 cases
-		// one with sdp, one without sdp
-		str boundary = {0,0}; 
-		get_boundary_param(msg, &boundary);
-		memcpy(newbuf+offset, "--", 2);
-		offset+=2;
-
-		memcpy(newbuf+offset,boundary.s, boundary.len);
-		offset += boundary.len;
-
-		memcpy(newbuf+offset, "\r\n", 2);
-		offset+=2;
-
-		memcpy(newbuf+offset,SDP_HEADER, strlen(SDP_HEADER));
-		offset += strlen(SDP_HEADER);
-
-
-		memcpy(newbuf+offset,sdp.s, sdp.len);
-		offset += sdp.len;
-
-		memcpy(newbuf+offset, "\r\n", 2);
-		offset+=2;
-		memcpy(newbuf+offset, "\r\n--", 4);
-		offset+=4;
-
-		memcpy(newbuf+offset,boundary.s, boundary.len);
-		offset += boundary.len;
-
-		memcpy(newbuf+offset, "\r\n", 2);
-		offset+=2;
-
-		memcpy(newbuf+offset,ISUP_HEADER, strlen(ISUP_HEADER));
-		offset += strlen(ISUP_HEADER);
-
-		char * digits = calloc(1,origin->len+1);
-		memcpy(digits, origin->s, origin->len);
-
-		int res = isup_update_calling(digits, int_nai, pres, screen, (unsigned char*)body.s, body.len, newbuf+offset, 512);
-
-		if(res == -1)
-		{
-			LM_DBG("error updating IAM\n");
-			return -1;
-		}
-
-		free(digits);
-		offset += res;
-
-		memcpy(newbuf+offset, "\r\n--", 4);
-		offset+=4;
-
-		memcpy(newbuf+offset,boundary.s, boundary.len);
-		offset += boundary.len;
-
-		memcpy(newbuf+offset, "--\r\n", 4);
-		offset+=4;
+		LM_DBG("error updating IAM\n");
+		return -1;
 	}
-	else
-	{
-		// isup only body
-		char * digits = calloc(1,origin->len+1);
-		memcpy(digits, origin->s, origin->len);
-
-		int res = isup_update_calling(digits, int_nai, pres, screen, (unsigned char*)body.s, body.len, newbuf, 512);
-		free(digits);
-		offset = res;
-		if(res == -1)
-		{
-			LM_DBG("error updating IAM\n");
-			return -1;
-		}
-	}
-
-
-
-	str nb = {(char*)newbuf, offset};
-	replace_body(msg, &nb);
 
 	return 1;
 }
