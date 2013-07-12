@@ -355,8 +355,8 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         init_cancel_info(&cancel_data);
 
 	/* The transaction has to be locked to protect it
-	 * form calling t_continue_reply() multiple times simultaneously */
-	LOCK_REPLIES(t);
+	 * form calling t_continue() multiple times simultaneously */
+	LOCK_ASYNC_CONTINUE(t);
 
         LOG(L_DBG,"DEBUG: t_continue_reply: This a continue from a reply suspend\n");
         /* this is a continue from a reply suspend */
@@ -371,7 +371,7 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
 		return 0;
 	}
         
-        faked_env_resp( t, &faked_resp);
+        faked_env_async( t, &faked_resp);
         
         LOG(L_DBG,"DEBUG: Running pre script\n");
         if (exec_pre_script_cb(&faked_resp, ONREPLY_CB_TYPE)>0) {
@@ -383,10 +383,13 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         }
 
         LOG(L_DBG,"DEBUG: t_continue_reply: Restoring previous environment");
-        faked_env_resp( t, 0);
+        faked_env_async( t, 0);
 	free_faked_resp(&faked_resp, t, branch);
         
         int reply_status;
+        
+        /*lock transaction replies - will be unlocked when reply is relayed*/
+        LOCK_REPLIES( t );
         if ( is_local(t) ) {
                 LOG(L_DBG,"DEBUG: t_continue_reply: t is local sending local reply with status code: [%d]\n", t->uac[branch].reply->first_line.u.reply.statuscode);
                 reply_status = local_reply( t, t->uac[branch].reply, branch, t->uac[branch].reply->first_line.u.reply.statuscode, &cancel_data );
@@ -455,6 +458,8 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         
 done:
         
+        UNLOCK_ASYNC_CONTINUE(t);
+                    
         tm_ctx_set_branch_index(T_BR_UNDEFINED);        
         /* unref the transaction */
         t_unref(t->uac[branch].reply);
