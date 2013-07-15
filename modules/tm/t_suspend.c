@@ -162,8 +162,13 @@ int t_suspend_reply(struct sip_msg *msg,
                 LOG(L_ERR, "ERROR: t_suspend_reply: can't alloc' clone memory\n");
                 return -1;
         }
-            
-        LOG(L_DBG,"DEBUG: t_suspend_reply: Saving transaction hash and label\n");
+        
+        LOG(L_DBG,"DEBUG: t_suspend_reply: Saving transaction data\n");
+        t->uac[branch].reply->flags = msg->flags;
+        t->async_backup.backup_route = get_route_type();
+        t->async_backup.backup_branch = get_t_branch();
+        t->async_backup.ruri_new = ruri_get_forking_state();
+        
         *hash_index = t->hash_index;
         *label = t->label;
 
@@ -293,6 +298,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
 		}
 	}
 
+        t->flags &= ~T_ASYNC_CONTINUE;   //we can now know anywhere in kamailio that we are executing post a suspend.
 	UNLOCK_ASYNC_CONTINUE(t);
 
 	/* unref the transaction */
@@ -332,11 +338,12 @@ kill_trans:
  * 	<0 - failure
  */
 int t_continue_reply(unsigned int hash_index, unsigned int label,
-		struct action *route, int branch)
+		struct action *route)
 {
 	struct cell	*t;
         struct sip_msg	faked_resp;
         struct cancel_info cancel_data;
+        int branch;
         
 	if (t_lookup_ident(&t, hash_index, label) < 0) {
 		LOG(L_ERR, "ERROR: t_continue_reply: transaction not found\n");
@@ -352,11 +359,14 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
 		return 1;
 	}
         
+        branch = t->async_backup.backup_branch;
+        
         init_cancel_info(&cancel_data);
 
 	/* The transaction has to be locked to protect it
 	 * form calling t_continue() multiple times simultaneously */
 	LOCK_ASYNC_CONTINUE(t);
+        t->flags |= T_ASYNC_CONTINUE;   //we can now know anywhere in kamailio that we are executing post a suspend.
 
         LOG(L_DBG,"DEBUG: t_continue_reply: This a continue from a reply suspend\n");
         /* this is a continue from a reply suspend */
@@ -457,7 +467,7 @@ int t_continue_reply(unsigned int hash_index, unsigned int label,
         
         
 done:
-        
+        t->flags &= ~T_ASYNC_CONTINUE;   //we can now know anywhere in kamailio that we are executing post a suspend.
         UNLOCK_ASYNC_CONTINUE(t);
                     
         tm_ctx_set_branch_index(T_BR_UNDEFINED);        
@@ -546,9 +556,10 @@ int t_cancel_suspend(unsigned int hash_index, unsigned int label)
  * 	0  - success
  * 	<0 - failure
  */
-int t_cancel_suspend_reply(unsigned int hash_index, unsigned int label, int branch)
+int t_cancel_suspend_reply(unsigned int hash_index, unsigned int label)
 {
 	struct cell	*t;
+        int branch;
 	
 	t = get_t();
 	if (!t || t == T_UNDEFINED) {
@@ -564,6 +575,8 @@ int t_cancel_suspend_reply(unsigned int hash_index, unsigned int label, int bran
 			"transaction id mismatch\n");
 		return -1;
 	}
+        
+        branch = t->async_backup.backup_branch;
 	
         LOG(L_DBG,"DEBUG: t_cancel_suspend_reply: This is a cancel suspend for a response\n");
         
