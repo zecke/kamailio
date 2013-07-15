@@ -165,7 +165,7 @@ done:
     if (aaa)
         cdpb.AAAFreeMessage(&aaa);
 
-    tmb.t_continue_reply(data->tindex, data->tlabel, data->act, data->branch);
+    tmb.t_continue_reply(data->tindex, data->tlabel, data->act);
     free_saved_transaction_global_data(data);
 }
 

@@ -527,7 +527,6 @@ static int w_rx_aar(struct sip_msg *msg, char *route, char* str1, char* bar) {
         LOG(L_ERR, "ERROR: t_suspend: failed find UAC branch\n");
         return CSCF_RETURN_ERROR;
     }
-    saved_t_data->branch = branch;
     
     //Check that we dont already have an auth session for this specific dialog
     //if not we create a new one and attach it to the dialog (via session ID).
@@ -588,7 +587,7 @@ static int w_rx_aar(struct sip_msg *msg, char *route, char* str1, char* bar) {
 
     if (!ret) {
         LM_ERR("Failed to send AAR\n");
-        tmb.t_cancel_suspend_reply(saved_t_data->tindex, saved_t_data->tlabel, saved_t_data->branch);
+        tmb.t_cancel_suspend_reply(saved_t_data->tindex, saved_t_data->tlabel);
         goto error;
 
 

@@ -71,7 +71,6 @@ typedef struct saved_transaction {
         str callid;
         str ftag;
         str ttag;
-        int branch;
 } saved_transaction_t;
 
 typedef struct saved_transaction_local {
