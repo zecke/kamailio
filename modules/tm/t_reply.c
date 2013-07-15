@@ -886,7 +886,7 @@ void faked_env_async( struct cell *t, struct sip_msg *msg) {
 		bind_address=t->uac[0].request.dst.send_sock;
 	} else {
 		/* on async restore - we don't need to do anything because we never really had 
-                   an environment to restore prior to the suspend anyway ;) */
+                   an environment to restore prior to calling continue anyway ;) */
             LM_DBG("nothing to restore for async...\n");
 	}
 }
