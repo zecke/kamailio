@@ -127,11 +127,8 @@ int load_tm( struct tm_binds *tmb)
 	tmb->t_get_canceled_ident = t_get_canceled_ident;
 #endif
 	tmb->t_suspend = t_suspend;
-        tmb->t_suspend_reply = t_suspend_reply;
 	tmb->t_continue = t_continue;
-        tmb->t_continue_reply = t_continue_reply;
 	tmb->t_cancel_suspend = t_cancel_suspend;
-        tmb->t_cancel_suspend_reply = t_cancel_suspend_reply;
 	tmb->t_get_reply_totag = t_get_reply_totag;
 	tmb->t_get_picked_branch = t_get_picked_branch;
 	tmb->t_lookup_callid = t_lookup_callid;
