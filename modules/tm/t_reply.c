@@ -973,6 +973,11 @@ void free_faked_req(struct sip_msg *faked_req, struct cell *t)
 		faked_req->dst_uri.s = 0;
 	}
 
+	if (faked_req->path_vec.s) {
+		pkg_free(faked_req->path_vec.s);
+		faked_req->path_vec.len=0;
+	}
+
 	/* free all types of lump that were added in failure handlers */
 	del_nonshm_lump( &(faked_req->add_rm) );
 	del_nonshm_lump( &(faked_req->body_lumps) );
