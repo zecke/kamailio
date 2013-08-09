@@ -975,7 +975,8 @@ void free_faked_req(struct sip_msg *faked_req, struct cell *t)
 
 	if (faked_req->path_vec.s) {
 		pkg_free(faked_req->path_vec.s);
-		faked_req->path_vec.len=0;
+		faked_req->path_vec.s = 0;
+		faked_req->path_vec.len = 0;
 	}
 
 	/* free all types of lump that were added in failure handlers */
