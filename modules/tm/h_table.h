@@ -320,6 +320,8 @@ struct totag_elem {
 #endif
 #define T_ASYNC_CONTINUE (1<<9) /* Is this transaction in a continuation after being suspended */
 
+#define T_DISABLE_INTERNAL_REPLY (1<<12) /* don't send internal negative reply */
+
 /* unsigned short should be enough for a retr. timer: max. 65535 ms =>
  * max retr. = 65 s which should be enough and saves us 2*2 bytes */
 typedef unsigned short retr_timeout_t;

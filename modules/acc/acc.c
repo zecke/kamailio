@@ -90,14 +90,13 @@ extern struct acc_extra *dia_extra;
 static db_func_t acc_dbf;
 static db1_con_t* db_handle=0;
 extern struct acc_extra *db_extra;
-extern int acc_db_insert_mode;
 #endif
 
 /* arrays used to collect the values before being
  * pushed to the storage backend (whatever used) */
-static str val_arr[ACC_CORE_LEN+MAX_ACC_EXTRA+MAX_ACC_LEG];
-static int int_arr[ACC_CORE_LEN+MAX_ACC_EXTRA+MAX_ACC_LEG];
-static char type_arr[ACC_CORE_LEN+MAX_ACC_EXTRA+MAX_ACC_LEG];
+static str val_arr[ACC_CORE_LEN+MAX_ACC_EXTRA+MAX_ACC_LEG+2];
+static int int_arr[ACC_CORE_LEN+MAX_ACC_EXTRA+MAX_ACC_LEG+2];
+static char type_arr[ACC_CORE_LEN+MAX_ACC_EXTRA+MAX_ACC_LEG+2];
 
 /********************************************
  *        acc CORE function
@@ -173,7 +172,9 @@ int core2strar(struct sip_msg *req, str *c_vals, int *i_vals, char *t_vals)
 	c_vals[5] = acc_env.reason;
 	t_vals[5] = TYPE_STR;
 
-	acc_env.ts = time(NULL);
+	gettimeofday(&acc_env.tv, NULL);
+	acc_env.ts = acc_env.tv.tv_sec;
+
 	return ACC_CORE_LEN;
 }
 
@@ -275,8 +276,23 @@ int acc_log_request( struct sip_msg *rq)
 	*(p++) = '\n';
 	*(p++) = 0;
 
-	LM_GEN2(log_facility, log_level, "%.*stimestamp=%lu%s",
-		acc_env.text.len, acc_env.text.s,(unsigned long) acc_env.ts, log_msg);
+	if(acc_time_mode==1) {
+		LM_GEN2(log_facility, log_level, "%.*stimestamp=%lu;%s=%u%s",
+			acc_env.text.len, acc_env.text.s,(unsigned long) acc_env.ts,
+			acc_time_attr.s, (unsigned int)acc_env.tv.tv_usec,
+			log_msg);
+	} else if(acc_time_mode==2) {
+		LM_GEN2(log_facility, log_level, "%.*stimestamp=%lu;%s=%.3f%s",
+			acc_env.text.len, acc_env.text.s,(unsigned long) acc_env.ts,
+			acc_time_attr.s,
+			(((double)(acc_env.tv.tv_sec * 1000)
+							+ (acc_env.tv.tv_usec / 1000)) / 1000),
+			log_msg);
+	} else {
+		LM_GEN2(log_facility, log_level, "%.*stimestamp=%lu%s",
+			acc_env.text.len, acc_env.text.s,(unsigned long) acc_env.ts,
+			log_msg);
+	}
 
 	return 1;
 }
@@ -289,9 +305,17 @@ int acc_log_request( struct sip_msg *rq)
 #ifdef SQL_ACC
 
 /* caution: keys need to be aligned to core format */
-static db_key_t db_keys[ACC_CORE_LEN+1+MAX_ACC_EXTRA+MAX_ACC_LEG];
-static db_val_t db_vals[ACC_CORE_LEN+1+MAX_ACC_EXTRA+MAX_ACC_LEG];
+static db_key_t db_keys[ACC_CORE_LEN+2+MAX_ACC_EXTRA+MAX_ACC_LEG];
+static db_val_t db_vals[ACC_CORE_LEN+2+MAX_ACC_EXTRA+MAX_ACC_LEG];
 
+
+int acc_get_db_handlers(void **vf, void **vh) {
+	if(db_handle==0)
+		return -1;
+	*vf = (void*)&acc_dbf;
+	*vh = (void*)db_handle;
+	return 0;
+}
 
 static void acc_db_init_keys(void)
 {
@@ -311,6 +335,9 @@ static void acc_db_init_keys(void)
 	db_keys[n++] = &acc_sipreason_col;
 	db_keys[n++] = &acc_time_col;
 	time_idx = n-1;
+	if(acc_time_mode==1 || acc_time_mode==2) {
+		db_keys[n++] = &acc_time_attr;;
+	}
 
 	/* init the extra db keys */
 	for(extra=db_extra; extra ; extra=extra->next)
@@ -326,6 +353,11 @@ static void acc_db_init_keys(void)
 		VAL_NULL(db_vals+i)=0;
 	}
 	VAL_TYPE(db_vals+time_idx)=DB1_DATETIME;
+	if(acc_time_mode==1) {
+		VAL_TYPE(db_vals+time_idx+1)=DB1_INT;
+	} else if(acc_time_mode==2) {
+		VAL_TYPE(db_vals+time_idx+1)=DB1_DOUBLE;
+	}
 }
 
 
@@ -384,6 +416,15 @@ int acc_db_request( struct sip_msg *rq)
 		VAL_STR(db_vals+i) = val_arr[i];
 	/* time value */
 	VAL_TIME(db_vals+(m++)) = acc_env.ts;
+	/* extra time value */
+	if(acc_time_mode==1) {
+		VAL_INT(db_vals+(m++)) = (int)acc_env.tv.tv_usec;
+		i++;
+	} else if(acc_time_mode==2) {
+		VAL_DOUBLE(db_vals+(m++)) = ((double)(acc_env.tv.tv_sec * 1000)
+							+ (acc_env.tv.tv_usec / 1000)) / 1000;
+		i++;
+	}
 
 	/* extra columns */
 	m += extra2strar( db_extra, rq, val_arr+m, int_arr+m, type_arr+m);
