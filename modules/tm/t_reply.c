@@ -1039,6 +1039,7 @@ error00:
 	if (faked_req->dst_uri.s) {
 		pkg_free(faked_req->dst_uri.s);
 		faked_req->dst_uri.s = 0;
+		faked_req->dst_uri.len = 0;
 	}
 error01:
 	return 0;
@@ -1048,15 +1049,8 @@ void free_faked_req(struct sip_msg *faked_req, struct cell *t)
 {
 	struct hdr_field *hdr;
 
-	if (faked_req->new_uri.s) {
-		pkg_free(faked_req->new_uri.s);
-		faked_req->new_uri.s = 0;
-	}
-
-	if (faked_req->dst_uri.s) {
-		pkg_free(faked_req->dst_uri.s);
-		faked_req->dst_uri.s = 0;
-	}
+	reset_new_uri(faked_req);
+	reset_dst_uri(faked_req);
 
 	/* free all types of lump that were added in failure handlers */
 	del_nonshm_lump( &(faked_req->add_rm) );
@@ -1082,6 +1076,13 @@ void free_faked_req(struct sip_msg *faked_req, struct cell *t)
 			faked_req->body->free(&faked_req->body);
 		faked_req->body = 0;
 	}
+
+	/* free sip_msg_t fileds that can be set in pkg */
+	reset_path_vector(faked_req);
+	reset_instance(faked_req);
+	reset_ruid(faked_req);
+	reset_ua(faked_req);
+	msg_ldata_reset(faked_req);
 }
 
 
