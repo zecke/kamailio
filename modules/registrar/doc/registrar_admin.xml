@@ -364,7 +364,8 @@ modparam("registrar", "received_avp", "$avp(s:rcv)")
 		<title><varname>received_param</varname> (string)</title>
 		<para>
 		The name of the parameter that will be appended to Contacts of 
-		200 OK when the received URI was set by nathelper module.
+		200 OK when the received URI was set by nathelper module. If the
+		value is empty string, then the parameter is not appended anymore.
 		</para>
 		<para>
 		<emphasis>
@@ -911,7 +912,7 @@ modparam("registrar", "flow_timer", 25)
 		</listitem>
 		</itemizedlist>
 		<para>
-		This function can be used from REQUEST_ROUTE and REPLY_ROUTE.
+		This function can be used from REQUEST_ROUTE, FAILURE_ROUTE and REPLY_ROUTE.
 		</para>
 		<example>
 		<title><function>save</function> usage</title>
