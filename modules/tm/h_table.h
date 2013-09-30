@@ -265,21 +265,19 @@ typedef struct ua_client
 	unsigned short on_unused;
 }ua_client_type;
 
-/* structure for storing trnasaction state prior to suspending for async transactions */
-typedef struct async_state
-{        
-        unsigned int backup_route;
-        unsigned int backup_branch;
-        unsigned int blind_uac;
-        unsigned int ruri_new;
-}async_state_type;
-
 struct totag_elem {
 	struct totag_elem *next;
 	str tag;
 	volatile int acked;
 };
 
+/* structure for storing transaction state prior to suspending of async transactions */
+typedef struct async_state {
+	unsigned int backup_route;
+	unsigned int backup_branch;
+	unsigned int blind_uac;
+	unsigned int ruri_new;
+} async_state_type;
 
 
 /* transaction's flags */
@@ -318,9 +316,9 @@ struct totag_elem {
 #	define T_PASS_PROVISIONAL_FLAG (1<<11)
 #	define pass_provisional(_t_)	((_t_)->flags&T_PASS_PROVISIONAL_FLAG)
 #endif
-#define T_ASYNC_CONTINUE (1<<9) /* Is this transaction in a continuation after being suspended */
+#define T_ASYNC_CONTINUE (1<<12) /* Is this transaction in a continuation after being suspended */
 
-#define T_DISABLE_INTERNAL_REPLY (1<<12) /* don't send internal negative reply */
+#define T_DISABLE_INTERNAL_REPLY (1<<13) /* don't send internal negative reply */
 
 /* unsigned short should be enough for a retr. timer: max. 65535 ms =>
  * max retr. = 65 s which should be enough and saves us 2*2 bytes */
@@ -416,9 +414,6 @@ typedef struct cell
 	   original message; needed for reply matching */
 	str method;
         
-        /* store transaction state to be used with async transactions */
-        struct async_state async_backup;
-
 	/* head of callback list */
 	struct tmcb_head_list tmcb_hl;
 
@@ -429,6 +424,9 @@ typedef struct cell
 	struct ua_server  uas;
 	/* UA Clients */
 	struct ua_client  uac[ MAX_BRANCHES ];
+	
+	/* store transaction state to be used for async transactions */
+	struct async_state async_backup;
 	
 	/* to-tags of 200/INVITEs which were received from downstream and 
 	 * forwarded or passed to UAC; note that there can be arbitrarily 
@@ -448,10 +446,9 @@ typedef struct cell
 
 	/* protection against concurrent reply processing */
 	ser_lock_t   reply_mutex;
-        
-        /* protect against concurrent async continues */
-        ser_lock_t   async_mutex;
-	
+	/* protect against concurrent async continues */
+	ser_lock_t   async_mutex;
+		
 	ticks_t fr_timeout;     /* final response interval for retr_bufs */
 	ticks_t fr_inv_timeout; /* final inv. response interval for retr_bufs */
 #ifdef TM_DIFF_RT_TIMEOUT

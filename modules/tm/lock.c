@@ -159,7 +159,6 @@ again:
 			i--;
 			goto again;
 	}
-	
 	i++;
 	if (((async_semaphore=lock_set_alloc(i))==0)||
 		(lock_set_init(async_semaphore)==0)){
@@ -173,6 +172,7 @@ again:
 			i--;
 			goto again;
 	}
+	
 
 	/* return success */
 	LOG(L_INFO, "INFO: semaphore arrays of size %d allocated\n", sem_nr );
@@ -224,17 +224,6 @@ void lock_cleanup()
 
 
 
-int init_async_lock( struct cell *cell )
-{
-#ifdef GEN_LOCK_T_PREFERED
-	lock_init(&cell->async_mutex);
-#else
-	cell->async_mutex.semaphore_set=async_semaphore;
-	cell->async_mutex.semaphore_index = cell->hash_index % sem_nr;
-#endif /* GEN_LOCK_T_PREFERED */
-	return 0;
-}
-
 int init_cell_lock( struct cell *cell )
 {
 #ifdef GEN_LOCK_T_PREFERED
@@ -262,7 +251,16 @@ int init_entry_lock( struct s_table* ht, struct entry *entry )
 	return 0;
 }
 
-
+int init_async_lock( struct cell *cell )
+{
+#ifdef GEN_LOCK_T_PREFERED
+	lock_init(&cell->async_mutex);
+#else
+	cell->async_mutex.semaphore_set=async_semaphore;
+	cell->async_mutex.semaphore_index = cell->hash_index % sem_nr;
+#endif /* GEN_LOCK_T_PREFERED */
+	return 0;
+}
 
 int release_cell_lock( struct cell *cell )
 {

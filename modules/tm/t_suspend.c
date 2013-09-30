@@ -130,14 +130,16 @@ int t_suspend(struct sip_msg *msg,
             t->uac[branch].reply->flags = msg->flags;
         }
         
-        t->async_backup.backup_route = get_route_type();
-        t->async_backup.backup_branch = get_t_branch();
-        t->async_backup.ruri_new = ruri_get_forking_state();
-        
-	*hash_index = t->hash_index;
+        *hash_index = t->hash_index;
 	*label = t->label;
 
 	
+
+	/* backup some extra info that can be used in continuation logic */
+	t->async_backup.backup_route = get_route_type();
+	t->async_backup.backup_branch = get_t_branch();
+	t->async_backup.ruri_new = ruri_get_forking_state();
+
 
 	return 0;
 }
@@ -178,9 +180,11 @@ int t_continue(unsigned int hash_index, unsigned int label,
 	 * form calling t_continue() multiple times simultaneously */
 	LOCK_ASYNC_CONTINUE(t);
 
-        t->flags |= T_ASYNC_CONTINUE;   //we can now know anywhere in kamailio that we are executing post a suspend.
-        
-        int cb_type = REQUEST_CB_TYPE;
+	t->flags |= T_ASYNC_CONTINUE;   /* we can now know anywhere in kamailio 
+					 * that we are executing post a suspend */
+	
+	/* which route block type were we in when we were suspended */
+	int cb_type = REQUEST_CB_TYPE;
         switch (t->async_backup.backup_route) {
             case REQUEST_ROUTE:
                 cb_type = REQUEST_CB_TYPE;
@@ -197,27 +201,24 @@ int t_continue(unsigned int hash_index, unsigned int label,
         }
         
         if(t->async_backup.backup_route != TM_ONREPLY_ROUTE){
-            branch = t->async_backup.blind_uac;
+            branch = t->async_backup.blind_uac;	/* get the branch of the blind UAC setup 
+						 * during suspend */
             if (branch >= 0) {
                     stop_rb_timers(&t->uac[branch].request);
+
                     if (t->uac[branch].last_received != 0) {
                             /* Either t_continue() has already been
                              * called or the branch has already timed out.
                              * Needless to continue. */
-                            UNLOCK_REPLIES(t);
+                            UNLOCK_ASYNC_CONTINUE(t);
                             UNREF(t); /* t_unref would kill the transaction */
                             return 1;
                     }
 
-                    /* Set last_received to something >= 200,
-                     * the actual value does not matter, the branch
-                     * will never be picked up for response forwarding.
-                     * If last_received is lower than 200,
-                     * then the branch may tried to be cancelled later,
-                     * for example when t_reply() is called from
-                     * a failure route => deadlock, because both
-                     * of them need the reply lock to be held. */
-                    //t->uac[branch].last_received=500; we dont need this anymore, we are not locking replies
+                    /*we really don't need this next line anymore otherwise we will 
+                      never be able to forward replies after a (t_relay) on this branch.
+                      We want to try and treat this branch as 'normal' (as if it were a normal req, not async)' */
+                    //t->uac[branch].last_received=500;
                     uac = &t->uac[branch];
             }
             /* else
@@ -232,14 +233,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
                     ret = -1;
                     goto kill_trans;
             }
-            faked_env_async( t, &faked_req);
+            faked_env( t, &faked_req, 1);
 
-            /* The sip msg is a faked msg just like in failure route
-             * therefore execute the pre- and post-script callbacks
-             * of failure route (Miklos)
-             */
-
-
+            /* execute the pre/post -script callbacks based on original route block */
             if (exec_pre_script_cb(&faked_req, cb_type)>0) {
                     if (run_top_route(route, &faked_req, 0)<0)
                             LOG(L_ERR, "ERROR: t_continue: Error in run_top_route\n");
@@ -249,7 +245,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
             /* TODO: save_msg_lumps should clone the lumps to shm mem */
 
             /* restore original environment and free the fake msg */
-            faked_env_async( t, 0);
+            faked_env( t, 0, 1);
             free_faked_req(&faked_req, t);
 
             /* update the flags */
@@ -266,7 +262,15 @@ int t_continue(unsigned int hash_index, unsigned int label,
                             if (t->uac[branch].last_received < 200)
                                     break;
                     }
+
+                    if (branch == t->nr_of_outgoings) {
+                            /* There is not any open branch so there is
+                             * no chance that a final response will be received. */
+                            ret = 0;
+                            goto kill_trans;
+                    }
             }
+
         }else{
             branch = t->async_backup.backup_branch;
         
@@ -286,7 +290,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
                     goto kill_trans;
             }
 
-            faked_env_async( t, &faked_resp);
+            faked_env( t, &faked_resp, 1);
 
             LOG(L_DBG,"DEBUG: Running pre script\n");
             if (exec_pre_script_cb(&faked_resp, cb_type)>0) {
@@ -298,7 +302,7 @@ int t_continue(unsigned int hash_index, unsigned int label,
             }
 
             LOG(L_DBG,"DEBUG: t_continue_reply: Restoring previous environment");
-            faked_env_async( t, 0);
+            faked_env( t, 0, 1);
             free_faked_resp(&faked_resp, t, branch);
 
             int reply_status;
