@@ -170,6 +170,11 @@ void set_ruri_q(qvalue_t q);
 
 
 /*! \brief
+ * Get src ip, port and proto as SIP uri or proxy address
+ */
+int msg_get_src_addr(sip_msg_t *msg, str *uri, int mode);
+
+/*! \brief
  * Get the q value of the Request-URI
  */
 qvalue_t get_ruri_q(void);
@@ -249,5 +254,8 @@ int getbflagsval(unsigned int branch, flag_t* res);
  * @return 1 on success, -1 on failure
  */
 int setbflagsval(unsigned int branch, flag_t val);
+
+int uri_add_rcv_alias(sip_msg_t *msg, str *uri, str *nuri);
+int uri_restore_rcv_alias(str *uri, str *nuri, str *suri);
 
 #endif /* _DSET_H */

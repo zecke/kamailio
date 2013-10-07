@@ -134,37 +134,50 @@ static inline int star(sip_msg_t *_m, udomain_t* _d, str* _a, str *_h)
 
 /*! \brief
  */
-static struct socket_info *get_sock_hdr(struct sip_msg *msg)
+static struct socket_info *get_sock_val(struct sip_msg *msg)
 {
 	struct socket_info *sock;
 	struct hdr_field *hf;
+	str xsockname = str_init("socket");
+	sr_xavp_t *vavp = NULL;
 	str socks;
 	str hosts;
 	int port;
 	int proto;
-	char c;
+	char c = 0;
 
-	if (parse_headers( msg, HDR_EOH_F, 0) == -1) {
-		LM_ERR("failed to parse message\n");
-		return 0;
+	if(sock_hdr_name.len>0) {
+		if (parse_headers( msg, HDR_EOH_F, 0) == -1) {
+			LM_ERR("failed to parse message\n");
+			return 0;
+		}
+
+		for (hf=msg->headers; hf; hf=hf->next) {
+			if (cmp_hdrname_str(&hf->name, &sock_hdr_name)==0)
+				break;
+		}
+
+		/* hdr found? */
+		if (hf==0)
+			return 0;
+
+		trim_len( socks.len, socks.s, hf->body );
+		if (socks.len==0)
+			return 0;
+
+		/*FIXME: This is a hack */
+		c = socks.s[socks.len];
+		socks.s[socks.len] = '\0';
+	} else {
+		/* xavp */
+		if(reg_xavp_cfg.s!=NULL)
+		{
+			vavp = xavp_get_child_with_sval(&reg_xavp_cfg, &xsockname);
+			if(vavp==NULL || vavp->val.v.s.len<=0)
+				return 0;
+		}
+		socks = vavp->val.v.s;
 	}
-
-	for (hf=msg->headers; hf; hf=hf->next) {
-		if (cmp_hdrname_str(&hf->name, &sock_hdr_name)==0)
-			break;
-	}
-
-	/* hdr found? */
-	if (hf==0)
-		return 0;
-
-	trim_len( socks.len, socks.s, hf->body );
-	if (socks.len==0)
-		return 0;
-
-	/*FIXME: This is a hack */
-	c = socks.s[socks.len];
-	socks.s[socks.len] = '\0';
 	if (parse_phostport( socks.s, &hosts.s, &hosts.len,
 	&port, &proto)!=0) {
 		socks.s[socks.len] = c;
@@ -172,7 +185,9 @@ static struct socket_info *get_sock_hdr(struct sip_msg *msg)
 			socks.len, socks.s);
 		return 0;
 	}
-	socks.s[socks.len] = c;
+	if(sock_hdr_name.len>0 && c!=0) {
+		socks.s[socks.len] = c;
+	}
 	sock = grep_sock_info(&hosts,(unsigned short)port,(unsigned short)proto);
 	if (sock==0) {
 		LM_ERR("non-local socket <%.*s>\n",	socks.len, socks.s);
@@ -256,7 +271,7 @@ static inline ucontact_info_t* pack_ci( struct sip_msg* _m, contact_t* _c, unsig
 
 		/* set received socket */
 		if (_m->flags&sock_flag) {
-			ci.sock = get_sock_hdr(_m);
+			ci.sock = get_sock_val(_m);
 			if (ci.sock==0)
 				ci.sock = _m->rcv.bind_address;
 		} else {
@@ -402,7 +417,6 @@ error:
 int reg_get_crt_max_contacts(void)
 {
 	int n;
-	sr_xavp_t *ravp=NULL;
 	sr_xavp_t *vavp=NULL;
 	str vname = {"max_contacts", 12};
 
@@ -410,23 +424,15 @@ int reg_get_crt_max_contacts(void)
 
 	if(reg_xavp_cfg.s!=NULL)
 	{
-		ravp = xavp_get(&reg_xavp_cfg, NULL);
-		if(ravp!=NULL && ravp->val.type==SR_XTYPE_XAVP)
+		vavp = xavp_get_child_with_ival(&reg_xavp_cfg, &vname);
+		if(vavp!=NULL)
 		{
-			vavp = xavp_get(&vname, ravp->val.v.xavp);
-			if(vavp!=NULL && vavp->val.type==SR_XTYPE_INT)
-			{
-				n = vavp->val.v.i;
-				LM_ERR("using max contacts value from xavp: %d\n", n);
-			} else {
-				ravp = NULL;
-			}
-		} else {
-			ravp = NULL;
+			n = vavp->val.v.i;
+			LM_DBG("using max contacts value from xavp: %d\n", n);
 		}
 	}
 
-	if(ravp==NULL)
+	if(vavp==NULL)
 	{
 		n = cfg_get(registrar, registrar_cfg, max_contacts);
 	}

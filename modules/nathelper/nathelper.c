@@ -288,6 +288,7 @@ static int nat_uac_test_f(struct sip_msg* msg, char* str1, char* str2);
 static int fix_nated_contact_f(struct sip_msg *, char *, char *);
 static int add_contact_alias_0_f(struct sip_msg *, char *, char *);
 static int add_contact_alias_3_f(struct sip_msg *, char *, char *, char *);
+static int set_contact_alias_f(struct sip_msg* msg, char* str1, char* str2);
 static int handle_ruri_alias_f(struct sip_msg *, char *, char *);
 static int pv_get_rr_count_f(struct sip_msg *, pv_param_t *, pv_value_t *);
 static int pv_get_rr_top_count_f(struct sip_msg *, pv_param_t *, pv_value_t *);
@@ -349,6 +350,7 @@ static unsigned short rcv_avp_type = 0;
 static int_str rcv_avp_name;
 
 static char *natping_socket = 0;
+static int udpping_from_path = 0;
 static int raw_sock = -1;
 static unsigned int raw_ip = 0;
 static unsigned short raw_port = 0;
@@ -368,6 +370,9 @@ static cmd_export_t cmds[] = {
 		REQUEST_ROUTE|ONREPLY_ROUTE|BRANCH_ROUTE|LOCAL_ROUTE},
 	{"add_contact_alias",  (cmd_function)add_contact_alias_3_f,  3,
 		fixup_add_contact_alias, 0,
+		REQUEST_ROUTE|ONREPLY_ROUTE|BRANCH_ROUTE|FAILURE_ROUTE},
+	{"set_contact_alias",  (cmd_function)set_contact_alias_f,  0,
+		0, 0,
 		REQUEST_ROUTE|ONREPLY_ROUTE|BRANCH_ROUTE|LOCAL_ROUTE},
 	{"handle_ruri_alias",  (cmd_function)handle_ruri_alias_f,    0,
 		0, 0,
@@ -417,6 +422,7 @@ static param_export_t params[] = {
 	{"natping_processes",     INT_PARAM, &natping_processes     },
 	{"natping_socket",        STR_PARAM, &natping_socket        },
 	{"keepalive_timeout",     INT_PARAM, &nh_keepalive_timeout  },
+	{"udpping_from_path",     INT_PARAM, &udpping_from_path     },
 
 	{0, 0, 0}
 };
@@ -629,8 +635,8 @@ mod_init(void)
 	}
 
 	/* create raw socket? */
-	if (natping_socket && natping_socket[0]) {
-		if (get_natping_socket( natping_socket, &raw_ip, &raw_port)!=0)
+	if ((natping_socket && natping_socket[0]) ||  udpping_from_path) {
+		if ((!udpping_from_path) && get_natping_socket( natping_socket, &raw_ip, &raw_port)!=0)
 			return -1;
 		if (init_raw_socket() < 0)
 			return -1;
@@ -836,6 +842,72 @@ fix_nated_contact_f(struct sip_msg* msg, char* str1, char* str2)
 		len = len1;
 	hostport.s[0] = temp[0];
 	c->uri.s[c->uri.len] = temp[1];
+	if (insert_new_lump_after(anchor, buf, len, HDR_CONTACT_T) == 0) {
+		pkg_free(buf);
+		return -1;
+	}
+	c->uri.s = buf;
+	c->uri.len = len;
+
+	return 1;
+}
+
+/*
+ * Replaces ip:port pair in the Contact: field with the source address
+ * of the packet.
+ */
+static int
+set_contact_alias_f(struct sip_msg* msg, char* str1, char* str2)
+{
+	char nbuf[MAX_URI_SIZE];
+	str nuri;
+	int br;
+
+	int offset, len;
+	char *buf;
+	contact_t *c;
+	struct lump *anchor;
+	struct sip_uri uri;
+
+	nuri.s = nbuf;
+	nuri.len = MAX_URI_SIZE;
+	if (get_contact_uri(msg, &uri, &c) == -1)
+		return -1;
+	if ((c->uri.s < msg->buf) || (c->uri.s > (msg->buf + msg->len))) {
+		LM_ERR("you can't update contact twice, check your config!\n");
+		return -1;
+	}
+
+	if(uri_add_rcv_alias(msg, &c->uri, &nuri)<0) {
+		LM_DBG("cannot add the alias parameter\n");
+		return -1;
+	}
+
+	br = 1;
+	if(c->uri.s[-1]=='<')
+		br = 0;
+
+
+	len = nuri.len + 2*br;
+	buf = pkg_malloc(len + 1);
+	if (buf == NULL) {
+		LM_ERR("out of pkg memory\n");
+		return -1;
+	}
+	if(br==1) {
+		buf[0] = '<';
+		strncpy(buf+1, nuri.s, nuri.len);
+		buf[len-1] = '>';
+	} else {
+		strncpy(buf, nuri.s, nuri.len);
+	}
+	buf[len] = '\0';
+
+	offset = c->uri.s - msg->buf;
+	anchor = del_lump(msg, offset, c->uri.len, HDR_CONTACT_T);
+	if (anchor == 0)
+		return -1;
+
 	if (insert_new_lump_after(anchor, buf, len, HDR_CONTACT_T) == 0) {
 		pkg_free(buf);
 		return -1;
@@ -1916,6 +1988,53 @@ static int send_raw(const char *buf, int buf_len, union sockaddr_union *to,
 	return sendto(raw_sock, packet, len, 0, (struct sockaddr *) to, sizeof(struct sockaddr_in));
 }
 
+/**
+ * quick function to extract ip:port from path
+ */
+static char *extract_last_path_ip(str path)
+{
+	/* used for raw UDP ping which works only on IPv4 */
+	static char ip[24];
+	char *start = NULL, *end = NULL, *p;
+	int i;
+	int path_depth = 0;
+	int max_path_depth;
+
+	max_path_depth = udpping_from_path - 1;
+
+	if (!path.len || !path.s) return NULL;
+
+	p = path.s;
+	for (i = 0; i < path.len; i++) {
+		if (!strncmp("<sip:", p, 5) && i < path.len - 4) {
+			start = p + 5;
+
+			end = NULL;
+		}
+		if ((*p == ';' || *p == '>') && !end) {
+			end = p;
+			if (max_path_depth) {
+				path_depth++;
+				if (path_depth >= max_path_depth) {
+					break;
+				}
+			}
+		}
+		p++;
+	}
+	if (start && end) {
+		int len = end - start;
+		if (len > sizeof(ip) -1) {
+			return NULL;
+		}
+		memcpy(ip, start, len);
+		ip[len] = '\0';
+		return (char *) ip;
+	} else {
+		return NULL;
+	}
+}
+
 
 static void
 nh_timer(unsigned int ticks, void *timer_idx)
@@ -1934,6 +2053,9 @@ nh_timer(unsigned int ticks, void *timer_idx)
 	unsigned int flags;
 	char proto;
 	struct dest_info dst;
+	char *path_ip_str = NULL;
+	unsigned int path_ip = 0;
+	unsigned short path_port = 0;
 
 	if((*natping_state) == 0)
 		goto done;
@@ -2009,6 +2131,20 @@ nh_timer(unsigned int ticks, void *timer_idx)
 				LM_ERR("can't parse contact dst_uri\n");
 				continue;
 			}
+		} else if (path.len && udpping_from_path) {
+			path_ip_str = extract_last_path_ip(path);
+			if (path_ip_str == NULL) {
+				LM_ERR( "ERROR:nathelper:nh_timer: unable to parse path from location\n");
+				continue;
+			}
+			if (get_natping_socket(path_ip_str, &path_ip, &path_port)) {
+				LM_ERR("could not parse path host for udpping_from_path\n");
+				continue;
+			}
+			if (parse_uri(c.s, c.len, &curi) < 0) {
+				LM_ERR("can't parse contact uri\n");
+				continue;
+			}
 		} else {
 			/* send to the contact/received */
 			if (parse_uri(c.s, c.len, &curi) < 0) {
@@ -2051,6 +2187,11 @@ nh_timer(unsigned int ticks, void *timer_idx)
 			if (send_raw((char*)sbuf, sizeof(sbuf), &dst.to, raw_ip, 
 						 raw_port)<0) {
 				LM_ERR("send_raw failed\n");
+			}
+		} else if (udpping_from_path) {
+			if (send_raw((char*)sbuf, sizeof(sbuf), &dst.to, path_ip, 
+						 path_port)<0) {
+				LM_ERR("send_raw from path failed\n");
 			}
 		} else {
 			if (udp_send(&dst, (char *)sbuf, sizeof(sbuf))<0 ) {
