@@ -210,7 +210,6 @@ void cdp_cb_event_process() {
 
                 if (p_session_data->subscribed_to_signaling_path_status) {
                     LM_DBG("This is a subscription to signalling bearer session");
-                    ;
                     //nothing to do here - just wait for AUTH_EV_SERVICE_TERMINATED event
                 } else {
                     LM_DBG("This is a media bearer session session");
