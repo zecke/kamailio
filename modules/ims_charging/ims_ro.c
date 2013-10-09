@@ -53,6 +53,7 @@ static int create_cca_return_code(int result);
 static void resume_on_initial_ccr(int is_timeout, void *param, AAAMessage *cca, long elapsed_msecs);
 static void resume_on_interim_ccr(int is_timeout, void *param, AAAMessage *cca, long elapsed_msecs);
 static void resume_on_termination_ccr(int is_timeout, void *param, AAAMessage *cca, long elapsed_msecs);
+static int get_mac_avp_value(struct sip_msg *msg, str *value);
 
 void credit_control_session_callback(int event, void* session) {
 	switch (event) {
@@ -602,11 +603,8 @@ void send_ccr_interim(struct ro_session* ro_session, unsigned int used, unsigned
     if (!Ro_add_event_timestamp(ccr, time(NULL))) {
         LM_ERR("Problem adding Event-Timestamp data\n");
     }
-    str mac;
-    mac.s = "00:00:00:00:00:00";
-    mac.len = strlen(mac.s); //TODO - this is terrible
 
-    if (!Ro_add_user_equipment_info(ccr, AVP_EPC_User_Equipment_Info_Type_MAC, mac)) {
+    if (!Ro_add_user_equipment_info(ccr, AVP_EPC_User_Equipment_Info_Type_MAC, ro_session->avp_value.mac)) {
         LM_ERR("Problem adding User-Equipment data\n");
     }
 
@@ -651,6 +649,12 @@ static void resume_on_interim_ccr(int is_timeout, void *param, AAAMessage *cca, 
 	struct interim_ccr *i_req	= (struct interim_ccr *) param;
 	Ro_CCA_t * ro_cca_data = NULL;
 
+    if (is_timeout) {
+        update_stat(ccr_timeouts, 1);
+        LM_ERR("Transaction timeout - did not get CCA\n");
+        goto error;
+    }
+
     update_stat(ccr_responses_time, elapsed_msecs);
 
 	if (!i_req) {
@@ -694,8 +698,8 @@ error:
 	if (ro_cca_data)
 		Ro_free_CCA(ro_cca_data);
 
-	if (ro_cca_data)
-		cdpb.AAAFreeMessage(&cca);
+//	if (ro_cca_data)
+	cdpb.AAAFreeMessage(&cca);
 
 	if (i_req) {
 		i_req->credit_valid_for = 0;
@@ -787,12 +791,8 @@ void send_ccr_stop(struct ro_session *ro_session) {
     if (!Ro_add_event_timestamp(ccr, time(NULL))) {
         LM_ERR("Problem adding Event-Timestamp data\n");
     }
-   
-    str mac;
-    mac.s = "00:00:00:00:00:00"; /*TODO: this is just a hack becuase we dont use this avp right now - if yuo like you can get the mac or some other info */
-    mac.len = strlen(mac.s);
 
-    if (!Ro_add_user_equipment_info(ccr, AVP_EPC_User_Equipment_Info_Type_MAC, mac)) {
+    if (!Ro_add_user_equipment_info(ccr, AVP_EPC_User_Equipment_Info_Type_MAC, ro_session->avp_value.mac)) {
         LM_ERR("Problem adding User-Equipment data\n");
     }
     
@@ -833,6 +833,12 @@ error0:
 static void resume_on_termination_ccr(int is_timeout, void *param, AAAMessage *cca, long elapsed_msecs) {
     Ro_CCA_t *ro_cca_data = NULL;
 
+    if (is_timeout) {
+        update_stat(ccr_timeouts, 1);
+        LM_ERR("Transaction timeout - did not get CCA\n");
+        goto error;
+    }
+
     update_stat(ccr_responses_time, elapsed_msecs);
 
     if (!cca) {
@@ -855,15 +861,14 @@ static void resume_on_termination_ccr(int is_timeout, void *param, AAAMessage *c
     	LM_DBG("Valid CCA response for STOP record\n");
     }
 
-    Ro_free_CCA(ro_cca_data);
-    cdpb.AAAFreeMessage(&cca);
+//   Ro_free_CCA(ro_cca_data);
+//   cdpb.AAAFreeMessage(&cca);
 
     update_stat(successful_final_ccrs, 1);
 
-    return;
-
 error:
 	Ro_free_CCA(ro_cca_data);
+    cdpb.AAAFreeMessage(&cca);
 }
 
 
@@ -910,9 +915,13 @@ int Ro_Send_CCR(struct sip_msg *msg, str* direction, str* charge_type, str* unit
 
 	dir = get_direction_as_int(direction);
 
+    str mac	= {0,0};
+    if (get_mac_avp_value(msg, &mac) != 0)
+    	LM_DBG(RO_MAC_AVP_NAME" was not set. Using default.");
+
 	//create a session object without auth and diameter session id - we will add this later.
 	new_session = build_new_ro_session(dir, 0, 0, &session_id, &dlg->callid,
-			&asserted_id_uri, &msg->first_line.u.request.uri, dlg->h_entry, dlg->h_id,
+			&asserted_id_uri, &msg->first_line.u.request.uri, &mac, dlg->h_entry, dlg->h_id,
 			reservation_units, 0);
 
 	if (!new_session) {
@@ -951,10 +960,6 @@ int Ro_Send_CCR(struct sip_msg *msg, str* direction, str* charge_type, str* unit
         LM_ERR("Problem adding Event-Timestamp data\n");
         goto error;
     }
-
-    str mac; //TODO - this is terrible
-    mac.s = "00:00:00:00:00:00";
-    mac.len = strlen(mac.s);
 
     if (!Ro_add_user_equipment_info(ccr, AVP_EPC_User_Equipment_Info_Type_MAC, mac)) {
         LM_ERR("Problem adding User-Equipment data\n");
@@ -1021,6 +1026,13 @@ static void resume_on_initial_ccr(int is_timeout, void *param, AAAMessage *cca, 
     struct session_setup_data *ssd = (struct session_setup_data *) param;
     int error_code	= RO_RETURN_ERROR;
 
+    if (is_timeout) {
+        update_stat(ccr_timeouts, 1);
+        LM_ERR("Transaction timeout - did not get CCA\n");
+	error_code =  RO_RETURN_ERROR;
+        goto error0;
+    }
+
     update_stat(ccr_responses_time, elapsed_msecs);
 
     if (!cca) {
@@ -1039,7 +1051,7 @@ static void resume_on_initial_ccr(int is_timeout, void *param, AAAMessage *cca, 
 	if (tmb.t_lookup_ident(&t, ssd->tindex, ssd->tlabel) < 0) {
 		LM_ERR("t_continue: transaction not found\n");
 		error_code	= RO_RETURN_ERROR;
-		goto error1;
+		goto error0;
 	}
 
 	// we bring the list of AVPs of the transaction to the current context
@@ -1099,6 +1111,8 @@ error0:
     LM_DBG("Trying to reserve credit on initial INVITE failed on cdp callback\n");
     create_cca_return_code(error_code);
 
+    cdpb.AAAFreeMessage(&cca);
+
     if (t)
     	tmb.unref_cell(t);
 
@@ -1137,7 +1151,7 @@ static int create_cca_return_code(int result) {
 
     avp_val.n = result;
 
-    /*switch(result) {
+    switch(result) {
     case RO_RETURN_FALSE:
     	avp_val.s.s = RO_RETURN_FALSE_STR;
     	break;
@@ -1148,12 +1162,14 @@ static int create_cca_return_code(int result) {
     	if (result >= 0)
     		break;
 
+    	LM_ERR("Unknown result code: %d", result);
     	avp_val.s.s = "??";
     }
 
-    avp_val.s.len = 2; */
+    if (result < 0)	
+        avp_val.s.len = 2;
 
-    rc = add_avp(AVP_NAME_STR/*|AVP_VAL_STR*/, avp_name, avp_val);
+    rc = add_avp(AVP_NAME_STR|AVP_VAL_STR, avp_name, avp_val);
 
     if (rc < 0)
         LM_ERR("Couldn't create ["RO_AVP_CCA_RETURN_CODE"] AVP\n");
@@ -1161,4 +1177,21 @@ static int create_cca_return_code(int result) {
     	LM_DBG("Created AVP ["RO_AVP_CCA_RETURN_CODE"] successfully: value=[%d]\n", result);
 
     return 1;
+}
+
+static int get_mac_avp_value(struct sip_msg *msg, str *value) {
+	str mac_avp_name_str = str_init(RO_MAC_AVP_NAME);
+	pv_spec_t avp_spec;
+	pv_value_t val;
+
+	pv_parse_spec2(&mac_avp_name_str, &avp_spec, 1);
+	if (pv_get_spec_value(msg, &avp_spec, &val) != 0 || val.rs.len == 0) {
+
+		value->s	= "00:00:00:00:00:00";
+		value->len	= sizeof("00:00:00:00:00:00") - 1;
+		return -1;
+	}
+
+	*value = val.rs;
+	return 0;
 }
