@@ -206,7 +206,7 @@ inline int Ro_add_user_equipment_info(AAAMessage *msg, unsigned int type, str va
     return Ro_add_avp(msg, group.s, group.len, AVP_User_Equipment_Info, AAA_AVP_FLAG_MANDATORY, 0, AVP_FREE_DATA, __FUNCTION__);
 }
 
-inline int Ro_add_termination_casue(AAAMessage *msg, unsigned int term_code) {
+inline int Ro_add_termination_cause(AAAMessage *msg, unsigned int term_code) {
     char x[4];
     str s = {x, 4};
     uint32_t code = htonl(term_code);
@@ -804,7 +804,7 @@ void send_ccr_stop(struct ro_session *ro_session) {
         LM_ERR("Problem adding Multiple Service Credit Control data\n");
     }
     
-    if (!Ro_add_termination_casue(ccr, 4)) {
+    if (!Ro_add_termination_cause(ccr, TERM_CAUSE_LOGOUT)) {
         LM_ERR("problem add Termination cause AVP to STOP record.\n");
     }
 
@@ -991,12 +991,12 @@ int Ro_Send_CCR(struct sip_msg *msg, str* direction, str* charge_type, str* unit
     Ro_free_CCR(ro_ccr_data);
 
     //TODO: if the following fail, we should clean up the Ro session.......
-    if (dlgb.register_dlgcb(dlg, DLGCB_RESPONSE_FWDED, dlg_reply, (void*)new_session ,NULL ) != 0) {
+    if (dlgb.register_dlgcb(dlg, /* DLGCB_RESPONSE_FWDED */ DLGCB_CONFIRMED, dlg_reply, (void*)new_session ,NULL ) != 0) {
     	LM_CRIT("cannot register callback for dialog confirmation\n");
     	goto error;
     }
 
-    if (dlgb.register_dlgcb(dlg, DLGCB_TERMINATED | DLGCB_FAILED | DLGCB_EXPIRED | DLGCB_DESTROY
+    if (dlgb.register_dlgcb(dlg, DLGCB_TERMINATED | DLGCB_FAILED | DLGCB_EXPIRED /*| DLGCB_DESTROY */
     		, dlg_terminated, (void*)new_session, NULL ) != 0) {
     	LM_CRIT("cannot register callback for dialog termination\n");
     	goto error;
@@ -1150,6 +1150,8 @@ static int create_cca_return_code(int result) {
     avp_name.s.len = RO_AVP_CCA_RETURN_CODE_LENGTH;
 
     avp_val.n = result;
+    avp_val.s.s = RO_RETURN_TRUE_STR;	//assume true
+    avp_val.s.len = 1;
 
     switch(result) {
     case RO_RETURN_FALSE:
