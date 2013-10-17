@@ -809,31 +809,31 @@ static int _reply( struct cell *trans, struct sip_msg* p_msg,
 int fake_resp(struct sip_msg *faked_resp,
 		struct sip_msg *shmem_msg, int extra_flags, struct ua_client *uac)
 {
-        /* on_failure_reply faked msg now copied from shmem msg (as opposed
-	 * to zero-ing) -- more "read-only" actions (exec in particular) will
-	 * work from reply_route as they will see msg->from, etc.; caution,
-	 * rw actions may append some pkg stuff to msg, which will possibly be
-	 * never released (shmem is released in a single block) */
+	/* on_failure_reply faked msg now copied from shmem msg (as opposed
+	* to zero-ing) -- more "read-only" actions (exec in particular) will
+	* work from reply_route as they will see msg->from, etc.; caution,
+	* rw actions may append some pkg stuff to msg, which will possibly be
+	* never released (shmem is released in a single block) */
 	memcpy( faked_resp, shmem_msg, sizeof(struct sip_msg));
-        
+
 	/* if we set msg_id to something different from current's message
-	 * id, the first t_fork will properly clean new branch URIs */
+	* id, the first t_fork will properly clean new branch URIs */
 	faked_resp->id=shmem_msg->id-1;
 	/* msg->parsed_uri_ok must be reset since msg_parsed_uri is
-	 * not cloned (and cannot be cloned) */
+	* not cloned (and cannot be cloned) */
 	faked_resp->parsed_uri_ok = 0;
-	
+
 	faked_resp->msg_flags|=extra_flags; /* set the extra tm flags */
-        
+
 	if(uac) setbflagsval(0, uac->branch_flags);
 	else setbflagsval(0, 0);
-        
+
 	return 1;
 }
 
 void free_faked_resp(struct sip_msg *faked_resp, struct cell *t, int branch)
 {
-        struct hdr_field *hdr;
+	struct hdr_field *hdr;
 
 	/* free all types of lump that were added */
 	del_nonshm_lump( &(faked_resp->add_rm) );
@@ -843,11 +843,11 @@ void free_faked_resp(struct sip_msg *faked_resp, struct cell *t, int branch)
 	/* free header's parsed structures that were added */
 	for( hdr=faked_resp->headers ; hdr ; hdr=hdr->next ) {
 		if ( hdr->parsed && hdr_allocs_parse(hdr) &&
-		(hdr->parsed<(void*)t->uac[branch].reply)) {
+			(hdr->parsed<(void*)t->uac[branch].reply)) {
 			DBG("DBG:free_faked_resp: removing hdr->parsed %d\n",
-					hdr->type);
-			
-                        clean_hdr_field(hdr);
+				hdr->type);
+ 
+			clean_hdr_field(hdr);
 			hdr->parsed = 0;
 		}
 	}
@@ -855,7 +855,7 @@ void free_faked_resp(struct sip_msg *faked_resp, struct cell *t, int branch)
 	if (faked_resp->body) {
 		if(faked_resp->body->free)
 			faked_resp->body->free(&faked_resp->body);
-		faked_resp->body = 0;
+			faked_resp->body = 0;
 	}
 }
 
@@ -2520,9 +2520,9 @@ int reply_received( struct sip_msg  *p_msg )
 		}
 #endif
         
-        if (unlikely(p_msg->flags&FL_RPL_SUSPENDED)) {
-				goto skip_send_reply;
-				/* suspend the reply (async), no error */
+	if (unlikely(p_msg->flags&FL_RPL_SUSPENDED)) {
+		goto skip_send_reply;
+		/* suspend the reply (async), no error */
 	}
 	if (unlikely(!replies_locked)){
 		LOCK_REPLIES( t );
@@ -2582,8 +2582,8 @@ int reply_received( struct sip_msg  *p_msg )
 	} /* provisional replies */
         
 skip_send_reply:
-        
-        if (likely(replies_locked)){
+
+	if (likely(replies_locked)){
 		UNLOCK_REPLIES(t); /* unlock replies  - this would be unlocked by send function*/
 		replies_locked=0;
 	}
