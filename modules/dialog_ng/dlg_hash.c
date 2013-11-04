@@ -16,10 +16,12 @@
 #include "dlg_hash.h"
 #include "dlg_profile.h"
 #include "dlg_handlers.h"
+#include "dlg_db_handler.h"
 
 #define MAX_LDG_LOCKS  2048
 #define MIN_LDG_LOCKS  2
 
+extern int dlg_db_mode;
 
 /*! global dialog table */
 struct dlg_table *d_table = 0;
@@ -188,6 +190,9 @@ inline void destroy_dlg(struct dlg_cell *dlg) {
                 dlg->from_tag.len, dlg->from_tag.s);
 
     }
+
+    if (dlg_db_mode)
+    	remove_dialog_in_from_db(dlg);
 
     LM_DBG("About to run dlg callback for destroy\n");
     run_dlg_callbacks(DLGCB_DESTROY, dlg, NULL, NULL, DLG_DIR_NONE, 0);

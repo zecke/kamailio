@@ -29,6 +29,7 @@
 #include "dlg_req_within.h"
 #include "dlg_profile.h"
 #include "dlg_var.h"
+#include "dlg_db_handler.h"
 
 static str rr_param; /*!< record-route parameter for matching */
 static int dlg_flag; /*!< flag for dialog tracking */
@@ -181,8 +182,6 @@ int populate_leg_info(struct dlg_cell *dlg, struct sip_msg *msg,
         dlg->caller_bind_addr = msg->rcv.bind_address;
     else
         callee_bind_address = msg->rcv.bind_address;
-
-
 
     /* extract the cseq number as string from the request or response*/
     //TO DO - can pair the cseqs here to make sure that the response and request are in sync
@@ -451,6 +450,11 @@ static void dlg_onreply(struct cell* t, int type, struct tmcb_params *param) {
             LM_DBG("No dlg_out entry found - creating a new dialog_out entry on dialog [%p]\n", dlg);
             dlg_out = build_new_dlg_out(dlg, &to_uri, &to_tag);
 
+            if (!dlg_out) {
+				LM_ERR("failed to create new dialog out structure\n");
+				//TODO do something on this error!
+			}
+
             link_dlg_out(dlg, dlg_out, 0);
 
             /* save callee's cseq, caller cseq, callee contact and callee record route*/
@@ -458,11 +462,7 @@ static void dlg_onreply(struct cell* t, int type, struct tmcb_params *param) {
                 LM_ERR("could not add further info to the dlg out\n");
             }
 
-            if (!dlg_out) {
-                LM_ERR("failed to create new dialog out structure\n");
-                //TODO do something on this error!
 
-            }
         } else {
             //This dlg_out already exists, update cseq and contact if present
 
@@ -495,6 +495,11 @@ static void dlg_onreply(struct cell* t, int type, struct tmcb_params *param) {
     }
 
     if (new_state == DLG_STATE_EARLY) {
+    	dlg->dflags |= DLG_FLAG_NEW;
+
+    	if ( dlg_db_mode==DB_MODE_REALTIME )
+    		update_dialog_dbinfo(dlg);
+
         run_dlg_callbacks(DLGCB_EARLY, dlg, req, rpl, DLG_DIR_UPSTREAM, 0);
         return;
     }
@@ -527,9 +532,9 @@ static void dlg_onreply(struct cell* t, int type, struct tmcb_params *param) {
 
         /* save the settings to the database,
          * if realtime saving mode configured- save dialog now
-         * else: the next time the timer will fire the update*/
+         * else: the next time the timer will fire the update
         dlg->dflags |= DLG_FLAG_NEW;
-
+         */
         if (0 != insert_dlg_timer(&dlg->tl, dlg->lifetime)) {
             LM_CRIT("Unable to insert dlg %p [%u:%u] on event %d [%d->%d] "
                     "with clid '%.*s' and tags '%.*s' \n",
@@ -579,6 +584,9 @@ static void dlg_onreply(struct cell* t, int type, struct tmcb_params *param) {
         link_dlg_out(new_dlg, dlg_out, 0);
 
     }
+
+	if ( dlg_db_mode==DB_MODE_REALTIME )
+		update_dialog_dbinfo(dlg);
 
     if (old_state != DLG_STATE_DELETED && new_state == DLG_STATE_DELETED) {
         LM_DBG("dialog %p failed (negative reply)\n", dlg);
@@ -1205,6 +1213,10 @@ void dlg_onroute(struct sip_msg* req, str *route_params, void *param) {
             dlg->dflags |= DLG_FLAG_CHANGED;
         }
 
+		if(dlg_db_mode==DB_MODE_REALTIME && (dlg->dflags&DLG_FLAG_CHANGED)) {
+			update_dialog_dbinfo(dlg);
+		}
+
         if (old_state != DLG_STATE_CONFIRMED) {
             LM_DBG("confirming ACK successfully processed\n");
 
@@ -1234,7 +1246,11 @@ void dlg_onroute(struct sip_msg* req, str *route_params, void *param) {
 
     if (new_state == DLG_STATE_CONFIRMED && old_state != DLG_STATE_CONFIRMED) {
         dlg->dflags |= DLG_FLAG_CHANGED;
+
+        if(dlg_db_mode == DB_MODE_REALTIME)
+        	update_dialog_dbinfo(dlg);
     }
+
     return;
 }
 

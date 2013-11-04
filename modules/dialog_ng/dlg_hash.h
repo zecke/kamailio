@@ -54,6 +54,7 @@
 /* states of a dialog */
 #define DLG_STATE_UNCONFIRMED  1 /*!< unconfirmed dialog */
 #define DLG_STATE_EARLY        2 /*!< early dialog */
+#define DLG_STATE_CONFIRMED_NA 3 /*!< confirmed dialog without a ACK yet */
 #define DLG_STATE_CONFIRMED    4 /*!< confirmed dialog */
 #define DLG_STATE_DELETED      5 /*!< deleted dialog */
 #define DLG_STATE_CONCURRENTLY_CONFIRMED      6 /*!< confirmed concurrent dailogs */
@@ -472,16 +473,24 @@ static inline int match_dialog(struct dlg_cell *dlg, str *callid,
                 }
             }
         } else {
+
             if (dlg->callid.len != callid->len) {
+            	LM_ALERT("no match cid: %d %d", dlg->callid.len, callid->len);
                 return 0;
             }
 
+            LM_ALERT("p: %p ft[%.*s] tt [%.*s]", d_entry_out->first,
+            			dlg->from_tag.len, dlg->from_tag.s,
+            			ttag->len, ttag->s);
             if (dlg->from_tag.len == ttag->len &&
                     strncmp(dlg->from_tag.s, ttag->s, ttag->len) == 0 &&
                     strncmp(dlg->callid.s, callid->s, callid->len) == 0) {
                 //now need to scroll thought d_out_entries to see if to_tag matches!
+
                 dlg_out = d_entry_out->first;
                 while (dlg_out) {
+                	LM_ALERT("dout: tt[%.*s]",
+                			dlg_out->to_tag.len, dlg_out->to_tag.s);
                     if (dlg_out->to_tag.len == ftag->len &&
                             memcmp(dlg_out->to_tag.s, ftag->s, dlg_out->to_tag.len) == 0) {
                         *dir = DLG_DIR_UPSTREAM;
@@ -489,12 +498,17 @@ static inline int match_dialog(struct dlg_cell *dlg, str *callid,
                     }
                     dlg_out = dlg_out->next;
                 }
+
+
             } else if (dlg->from_tag.len == ftag->len &&
                     strncmp(dlg->from_tag.s, ftag->s, ftag->len) == 0 &&
                     strncmp(dlg->callid.s, callid->s, callid->len) == 0) {
                 //now need to scroll thought d_out_entries to see if to_tag matches!
+
                 dlg_out = d_entry_out->first;
                 while (dlg_out) {
+                	LM_ALERT("dout: tt[%.*s]",
+                	                			dlg_out->to_tag.len, dlg_out->to_tag.s);
                     if (dlg_out->to_tag.len == ttag->len &&
                             memcmp(dlg_out->to_tag.s, ttag->s, dlg_out->to_tag.len) == 0) {
                         *dir = DLG_DIR_DOWNSTREAM;
@@ -503,6 +517,8 @@ static inline int match_dialog(struct dlg_cell *dlg, str *callid,
                     dlg_out = dlg_out->next;
                 }
             }
+            else
+            	LM_ALERT("no match tags: ");
         }
     }
     return 0;
