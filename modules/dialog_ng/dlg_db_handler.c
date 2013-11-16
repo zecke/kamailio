@@ -126,7 +126,6 @@ extern int dlg_enable_stats;
 extern int active_dlgs_cnt;
 extern int early_dlgs_cnt;
 
-
 #define GET_FIELD_IDX(_val, _idx)\
 		(_val + _idx)
 
@@ -642,8 +641,6 @@ error:
 	return -1;
 
 }
-
-
 
 static int select_entire_dialog_vars_table(db1_res_t ** res, int fetch_num_rows)
 {
