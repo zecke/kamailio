@@ -175,7 +175,7 @@ void destroy_dlg_table(void) {
 }
 
 struct ro_session* build_new_ro_session(int direction, int auth_appid, int auth_session_type, str *session_id, str *callid, str *from_uri, str* to_uri, str* mac, unsigned int dlg_h_entry, unsigned int dlg_h_id, unsigned int requested_secs, unsigned int validity_timeout){
-    LM_DBG("Building Ro Session **********");
+    LM_DBG("Building Ro Session");
     char *p;
     unsigned int len = session_id->len + callid->len + from_uri->len + to_uri->len + mac->len + sizeof (struct ro_session);
     struct ro_session *new_ro_session = (struct ro_session*) shm_malloc(len);

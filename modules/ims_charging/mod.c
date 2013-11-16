@@ -18,6 +18,7 @@
 #include "ims_ro.h"
 #include "config.h"
 #include "dialog.h"
+#include "charging_db.h"
 
 MODULE_VERSION
 
@@ -62,6 +63,11 @@ stat_var *billed_secs;
 stat_var *killed_calls;
 stat_var *ccr_timeouts;
 
+// database related variables
+str db_url;
+int db_mode			= DB_MODE_NONE;
+int db_fetch_rows	= 500;
+
 /** module functions */
 static int mod_init(void);
 static int mod_child_init(int);
@@ -97,6 +103,11 @@ static param_export_t params[] = {
 		{ "service_context_id_mnc", STR_PARAM,			&ro_service_context_id_mnc_s 	},
 		{ "service_context_id_mcc", STR_PARAM,			&ro_service_context_id_mcc_s 	},
 		{ "service_context_id_release",	STR_PARAM, 		&ro_service_context_id_release_s},
+
+	    { "db_url",					STR_PARAM, 			&db_url.s 						},
+	    { "db_mode",				INT_PARAM, 			&db_mode						},
+	    { "db_fetch_rows",			INT_PARAM, 			&db_fetch_rows					},
+
 		{ 0, 0, 0 }
 };
 
@@ -170,6 +181,9 @@ int fix_parameters() {
 		return 0;
 	}
 
+	if (db_mode)
+		db_url.len = strlen(db_url.s);
+
 	return 1;
 }
 
@@ -241,47 +255,61 @@ static int mod_init(void) {
 		return -1;
 	}
 
-	/* init timer lists*/
-	if (init_ro_timer(ro_session_ontimeout) != 0) {
-		LM_ERR("cannot init timer list\n");
-		return -1;
-	}
-
-
-	/* bind to dialog module */
-	if (!(load_dlg = (load_dlg_f) find_export("load_dlg", 0, 0))) {
-		LM_ERR("mod_init: can not import load_dlg. This module requires Kamailio dialog moduile.\n");
-	}
-
-	if (load_dlg(&dlgb) == -1) {
-		goto error;
-	}
-
 	 /* register statistics */
 	if (register_module_stats(exports.name, charging_stats) != 0) {
 		LM_ERR("failed to register core statistics\n");
 		return -1;
 	}
 
-	/*if (register_stat(MOD_NAME, "ccr_responses_time", &ccr_responses_time, 0)) {
-		LM_ERR("failed to register core statistics\n");
-		return -1;
-	}*/
+	 /* if a database should be used to store the dialogs' information */
+
+	if (db_mode == DB_MODE_NONE) {
+		db_url.s = NULL; db_url.len = 0;
+	}
+	else {
+		if (db_mode != DB_MODE_REALTIME) {
+			LM_ERR("Unsupported db_mode %d\n", db_mode);
+			return -1;
+		}
+
+		if ( !db_url.s || db_url.len==0 ) {
+			LM_ERR("db_url not configured for db_mode %d\n", db_mode);
+			return -1;
+		}
+
+		if (charging_init_db(&db_url, db_fetch_rows) != 0) {
+			LM_ERR("Error initializing DB");
+			return -1;
+		}
+	}
 
 	return 0;
 
 error:
-	LM_ERR("Failed to initialise ims_qos module\n");
+	LM_ERR("Failed to initialize ims_charging module\n");
 	return RO_RETURN_FALSE;
-
 }
 
 static int mod_child_init(int rank) {
+
+	if (db_mode == DB_MODE_NONE)
+		return 0;
+
+	if (db_mode && rank != PROC_MAIN && rank != PROC_TIMER) {
+
+		if (charging_connect_db(&db_url) != 0) {
+			LM_ERR("Error connecting worker proc to DB");
+			return -1;
+		}
+	}
+
 	return 0;
 }
 
 static void mod_destroy(void) {
 
+	if (db_mode)
+		charging_destroy_db();
 }
 
 static int w_ro_ccr(struct sip_msg *msg, str* route_name, str* direction, str* charge_type, str* unit_type, int reservation_units) {

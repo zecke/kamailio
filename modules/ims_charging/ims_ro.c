@@ -24,7 +24,7 @@
 #include "ims_ro.h"
 #include "Ro_data.h"
 #include "dialog.h"
-
+#include "charging_db.h"
 #include "ccr.h"
 #include "config.h"
 #include "ro_session_hash.h"
@@ -46,6 +46,7 @@ struct session_setup_data {
 
 struct dlg_binds* dlgb_p;
 extern struct tm_binds tmb;
+extern int db_mode;
 
 int interim_request_credits;
 
@@ -574,20 +575,23 @@ void send_ccr_interim(struct ro_session* ro_session, unsigned int used, unsigned
 
     auth = cdpb.AAAGetCCAccSession(ro_session->ro_session_id);
     if (!auth) {
-        LM_DBG("Diameter Auth Session has timed out.... creating a new one.\n");
+        LM_ALERT("Diameter Auth Session has timed out.... creating a new one.\n");
         /* lets try and recreate this session */
         //TODO: make a CC App session auth = cdpb.AAASession(ro_session->auth_appid, ro_session->auth_session_type, ro_session->ro_session_id); //TODO: would like this session to last longer (see session timeout in cdp
         //BUG("Oh shit, session timed out and I don't know how to create a new one.");
 
         auth = cdpb.AAAMakeSession(ro_session->auth_appid, ro_session->auth_session_type, ro_session->ro_session_id); //TODO: would like this session to last longer (see session timeout in cdp
+        //auth->u.cc_acc.state = ACC_CC_ST_OPEN;
+
         if (!auth)
             goto error;
     }
 
     //don't send INTERIM record if session is not in OPEN state (it could already be waiting for a previous response, etc)
     if (auth->u.cc_acc.state != ACC_CC_ST_OPEN) {
-	    LM_WARN("ignoring interim update on CC session not in correct state, currently in state [%d]\n", auth->u.cc_acc.state);
-	    goto error;
+	    //LM_WARN("ignoring interim update on CC session not in correct state, currently in state [%d]\n", auth->u.cc_acc.state);
+	    //goto error;
+    	LM_WARN("This session should be opened but it is in state [%d]. Maybe this is a restored session from db\n", auth->u.cc_acc.state);
     }
 
     if (!(ccr = Ro_new_ccr(auth, ro_ccr_data)))
@@ -628,6 +632,7 @@ void send_ccr_interim(struct ro_session* ro_session, unsigned int used, unsigned
     Ro_free_CCR(ro_ccr_data);
 
     update_stat(interim_ccrs, 1);
+
     return;
 error:
 	LM_ERR("error trying to reserve interim credit\n");
@@ -642,6 +647,16 @@ error:
     	cdpb.AAASessionsUnlock(auth->hash);
     	cdpb.AAADropCCAccSession(auth);
     }
+
+    shm_free(i_req);
+    //
+    // since callback function will be never called because of the error, we need to release the lock on the session
+    // to it can be reused later.
+    //
+    struct ro_session_entry *ro_session_entry = &(ro_session_table->entries[ro_session->h_entry]);
+    unref_ro_session_unsafe(ro_session, 1, ro_session_entry);//unref from the initial timer that fired this event.
+    ro_session_unlock(ro_session_table, ro_session_entry);
+
     return;
 }
 
@@ -708,6 +723,10 @@ error:
 
 success:
 	resume_ro_session_ontimeout(i_req);
+
+    if (db_mode == DB_MODE_REALTIME && charging_modify_db_session(i_req->ro_session, CHARGING_ACTION_UPDATE) != 0) {
+    	LM_ERR("Error modifying session for update");
+    }
 }
 
 void send_ccr_stop(struct ro_session *ro_session) {
@@ -720,7 +739,7 @@ void send_ccr_stop(struct ro_session *ro_session) {
     time_stamps_t *time_stamps;
     unsigned int used = 0;
 
-    if (ro_session->event_type != pending) {
+    if (ro_session->event_type != CHARGING_EVENT_PENDING) {
         used = time(0) - ro_session->last_event_timestamp;
     }
 
@@ -814,6 +833,11 @@ void send_ccr_stop(struct ro_session *ro_session) {
     Ro_free_CCR(ro_ccr_data);
 
     update_stat(final_ccrs, 1);
+
+    if (db_mode == DB_MODE_REALTIME && charging_delete_session(ro_session) != 0) {
+		LM_ERR("Error deleting session");
+	}
+
     return;
 
 error1:
@@ -991,18 +1015,28 @@ int Ro_Send_CCR(struct sip_msg *msg, str* direction, str* charge_type, str* unit
     Ro_free_CCR(ro_ccr_data);
 
     //TODO: if the following fail, we should clean up the Ro session.......
-    if (dlgb.register_dlgcb(dlg, /* DLGCB_RESPONSE_FWDED */ DLGCB_CONFIRMED, dlg_reply, (void*)new_session ,NULL ) != 0) {
+  /*  if (dlgb.register_dlgcb(dlg, DLGCB_CONFIRMED, dlg_reply, (void*)new_session ,NULL ) != 0) {
     	LM_CRIT("cannot register callback for dialog confirmation\n");
     	goto error;
     }
 
-    if (dlgb.register_dlgcb(dlg, DLGCB_TERMINATED | DLGCB_FAILED | DLGCB_EXPIRED /*| DLGCB_DESTROY */
+    if (dlgb.register_dlgcb(dlg, DLGCB_TERMINATED | DLGCB_FAILED | DLGCB_EXPIRED
     		, dlg_terminated, (void*)new_session, NULL ) != 0) {
     	LM_CRIT("cannot register callback for dialog termination\n");
     	goto error;
     }
+*/
+    if (setup_dialog_handlers(dlg, new_session) != 0) {
+		LM_ERR("Couldn't setup dialog handler");
+		goto error;
+	}
 
     update_stat(initial_ccrs, 1);
+
+    if (db_mode && charging_modify_db_session(new_session, CHARGING_ACTION_INSERT) != 0) {
+    	LM_ERR("Error inserting session to DB");
+    	goto error;
+    }
 
     return RO_RETURN_TRUE;
 
@@ -1029,7 +1063,7 @@ static void resume_on_initial_ccr(int is_timeout, void *param, AAAMessage *cca, 
     if (is_timeout) {
         update_stat(ccr_timeouts, 1);
         LM_ERR("Transaction timeout - did not get CCA\n");
-	error_code =  RO_RETURN_ERROR;
+        error_code =  RO_RETURN_ERROR;
         goto error0;
     }
 
@@ -1081,7 +1115,7 @@ static void resume_on_initial_ccr(int is_timeout, void *param, AAAMessage *cca, 
     			ro_cca_data->mscc->validity_time);
 
     ssd->ro_session->last_event_timestamp = time(0);
-    ssd->ro_session->event_type = pending;
+    ssd->ro_session->event_type = CHARGING_EVENT_PENDING;
     ssd->ro_session->reserved_secs = ro_cca_data->mscc->granted_service_unit->cc_time;
     ssd->ro_session->valid_for = ro_cca_data->mscc->validity_time;
 
@@ -1102,6 +1136,12 @@ static void resume_on_initial_ccr(int is_timeout, void *param, AAAMessage *cca, 
     shm_free(ssd);
 
     update_stat(successful_initial_ccrs, 1);
+
+    if (db_mode == DB_MODE_REALTIME && charging_modify_db_session(ssd->ro_session, CHARGING_ACTION_UPDATE) != 0) {
+    	LM_ERR("Error updating ro session");
+    	goto error1;
+    }
+
     return;
 
 error1:
@@ -1115,6 +1155,10 @@ error0:
 
     if (t)
     	tmb.unref_cell(t);
+
+    if (db_mode == DB_MODE_REALTIME && charging_delete_session(ssd->ro_session) != 0) {
+		LM_ERR("Error deleting ro session");
+	}
 
     tmb.t_continue(ssd->tindex, ssd->tlabel, ssd->action);
     shm_free(ssd);

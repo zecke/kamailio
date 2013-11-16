@@ -2,6 +2,7 @@
 #include "ro_session_hash.h"
 
 struct cdp_binds cdpb;
+extern struct dlg_binds dlgb;
 
 void dlg_reply(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params) {
 	struct sip_msg *reply = _params->rpl;
@@ -39,7 +40,9 @@ void dlg_reply(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params) {
 			LM_ERR("Ro Session object is NULL...... aborting\n");
 			return;
 		}
+
 		ro_session_entry = &(ro_session_table->entries[session->h_entry]);
+
 		ro_session_lock(ro_session_table, ro_session_entry);
 
 		if (session->active) {
@@ -50,7 +53,7 @@ void dlg_reply(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params) {
 	
 		time_since_last_event = now - session->last_event_timestamp;
 		session->start_time = session->last_event_timestamp = now;
-		session->event_type = answered;
+		session->event_type = CHARGING_EVENT_ANSWERED;
 		session->active = 1;
 		
 
@@ -127,11 +130,10 @@ void dlg_terminated(struct dlg_cell *dlg, int type, struct dlg_cb_params *_param
 				//If however, the call was never answered, then we can continue as normal
 				if (!ro_session->active && (ro_session->start_time != 0)) {
 					unref_ro_session(ro_session,1);
-					LM_ERR("Ro Session is not active, but may have been answered [%d]\n", (int)ro_session->start_time);
+					LM_WARN("Ro Session is not active, but may have been answered [%d]\n", (int)ro_session->start_time);
 					continue;
 				}
-			
-	
+
 				ro_session_lock(ro_session_table, ro_session_entry);
 
 				if (ro_session->active) { // if the call was never activated, there's no timer to remove
@@ -156,4 +158,24 @@ void dlg_terminated(struct dlg_cell *dlg, int type, struct dlg_cb_params *_param
 			}
 		}
 	}
+}
+
+int setup_dialog_handlers(struct dlg_cell* dlg, struct ro_session *ro_session) {
+	if (!dlg) {
+		LM_DBG("Unable to find dialog and cannot do Ro charging without it\n");
+		return -1;
+	}
+    //TODO: if the following fail, we should clean up the Ro session.......
+    if (dlgb.register_dlgcb(dlg, /* DLGCB_RESPONSE_FWDED */ DLGCB_CONFIRMED, dlg_reply, (void*) ro_session ,NULL ) != 0) {
+    	LM_CRIT("cannot register callback for dialog confirmation\n");
+    	return -1;
+    }
+
+    if (dlgb.register_dlgcb(dlg, DLGCB_TERMINATED | DLGCB_FAILED | DLGCB_EXPIRED /*| DLGCB_DESTROY */
+    		, dlg_terminated, (void*) ro_session, NULL ) != 0) {
+    	LM_CRIT("cannot register callback for dialog termination\n");
+    	return -1;
+    }
+
+    return 0;
 }

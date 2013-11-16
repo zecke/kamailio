@@ -13,10 +13,10 @@
 #include <stdlib.h>
 
 enum ro_session_event_type {
-    pending,
-    answered,
-    no_more_credit,
-    unknown_error
+    CHARGING_EVENT_PENDING = 0,
+    CHARGING_EVENT_ANSWERED,
+    CHARGING_EVENT_NO_CREDIT,
+    CHARGING_EVENT_UNKNOWN_ERROR
 };
 
 struct diameter_avp_value {
@@ -49,6 +49,9 @@ struct ro_session {
     int active;
 
     struct diameter_avp_value avp_value;
+
+    // flag to indicate the intention of terminating the call no mather what.
+    int force_termination;
 };
 
 /*! entries in the main ro_session table */
@@ -78,7 +81,7 @@ extern struct ro_session_table *ro_session_table;
  * \param _entry locked entry
  */
 #define ro_session_lock(_table, _entry) \
-		lock_set_get( (_table)->locks, (_entry)->lock_idx);
+		{ LM_DBG("LOCKING %d", (_entry)->lock_idx); lock_set_get( (_table)->locks, (_entry)->lock_idx); LM_DBG("LOCKED %d", (_entry)->lock_idx);}
 
 
 /*!
@@ -87,7 +90,7 @@ extern struct ro_session_table *ro_session_table;
  * \param _entry locked entry
  */
 #define ro_session_unlock(_table, _entry) \
-		lock_set_release( (_table)->locks, (_entry)->lock_idx);
+		{ LM_DBG("UNLOCKING %d", (_entry)->lock_idx); lock_set_release( (_table)->locks, (_entry)->lock_idx); LM_DBG("UNLOCKED %d", (_entry)->lock_idx); }
 
 /*!
  * \brief Reference an ro_session without locking

@@ -10,5 +10,6 @@ extern int ro_timer_buffer;
 
 void dlg_terminated(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params);
 void dlg_reply(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params);
+int setup_dialog_handlers(struct dlg_cell* dlg, struct ro_session *ro_session);
 
 #endif
