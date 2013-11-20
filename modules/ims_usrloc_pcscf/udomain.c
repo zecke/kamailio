@@ -56,8 +56,11 @@
 #include "usrloc.h"
 #include "utime.h"
 #include "usrloc.h"
+#include "usrloc_db.h"
 
 #include "../../lib/ims/useful_defs.h"
+
+extern int db_mode;
 
 #ifdef STATISTICS
 static char *build_stat_name( str* domain, char *var_name)
@@ -303,6 +306,7 @@ void unlock_ulslot(udomain_t* _d, int i)
 #endif
 }
 
+//TODO: this should be removed...
 int update_rx_regsession(struct udomain* _d, str* session_id, struct pcontact* _c) {
 	if (session_id->len > 0 && session_id->s) {
 		if (_c->rx_session_id.len > 0 && _c->rx_session_id.s) {
@@ -385,7 +389,28 @@ int update_pcontact(struct udomain* _d, struct pcontact_info* _ci, struct pconta
 	if (_ci->received_port > 0) _c->received_port = _ci->received_port;
 	if (_ci->received_proto > 0) _c->received_proto = _ci->received_proto;
 
+	//update Rx reg session information
+	if (_ci->rx_regsession_id && _ci->rx_regsession_id->len>0 && _ci->rx_regsession_id->s) {
+		if (_c->rx_session_id.len > 0 && _c->rx_session_id.s) {
+			_c->rx_session_id.len = 0;
+			shm_free(_c->rx_session_id.s);
+		}
+		_c->rx_session_id.s = shm_malloc(_ci->rx_regsession_id->len);
+		if (!_c->rx_session_id.s) {
+			LM_ERR("no more shm_mem\n");
+			return -1;
+		}
+		memcpy(_c->rx_session_id.s, _ci->rx_regsession_id->s, _ci->rx_regsession_id->len);
+		_c->rx_session_id.len = _ci->rx_regsession_id->len;
+	}
+
 	//TODO: update path, etc
+
+	if (db_mode == WRITE_THROUGH && db_update_pcontact(_c) != 0) {
+		LM_ERR("Error updating record in DB");
+		return -1;
+	}
+
 	run_ul_callbacks(PCSCF_CONTACT_UPDATE, _c);
 	return 0;
 
@@ -402,6 +427,12 @@ int insert_pcontact(struct udomain* _d, str* _contact, struct pcontact_info* _ci
     if (exists_ulcb_type(PCSCF_CONTACT_INSERT)) {
 		run_ul_create_callbacks(*_c);
 	}
+
+	if (db_mode == WRITE_THROUGH && db_insert_pcontact(*_c) != 0) {
+		LM_ERR("error inserting contact into db");
+		goto error;
+	}
+
     return 0;
 
 error:
@@ -516,10 +547,16 @@ int delete_pcontact(udomain_t* _d, str* _aor, struct pcontact* _c)
 			return 0;
 		}
 	}
+
 	if (exists_ulcb_type(PCSCF_CONTACT_DELETE)) {
 		run_ul_callbacks(PCSCF_CONTACT_DELETE, _c);
 	}
 	mem_delete_pcontact(_d, _c);
+
+	if (db_mode == WRITE_THROUGH && db_delete_pcontact(_c) != 0) {
+		LM_ERR("Error deleting contact from DB");
+		return -1;
+	}
 
 	return 0;
 }
