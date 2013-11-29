@@ -9,12 +9,10 @@
 #include "usrloc.h"
 #include "usrloc_db.h"
 
-db1_con_t* lp_db_handle    = 0; /* database connection handle */
-db_func_t lp_dbf;
-
 str id_col	        	= str_init(ID_COL);
 str domain_col			= str_init(DOMAIN_COL);
 str aor_col		    	= str_init(AOR_COL);
+str contact_col		    = str_init(CONTACT_COL);
 str received_col    	= str_init(RECEIVED_COL);
 str received_port_col	= str_init(RECEIVED_PORT_COL);
 str received_proto_col	= str_init(RECEIVED_PROTO_COL);
@@ -26,25 +24,28 @@ str service_routes_col	= str_init(SERVICE_ROUTES_COL);
 str socket_col			= str_init(SOCKET_COL);
 str public_ids_col		= str_init(PUBLIC_IDS_COL);
 
-str location_pcscf_table_name	= str_init(LOCATION_PCSCF_TABLE_NAME);
+t_reusable_buffer service_route_buffer = {0,0,0};
+t_reusable_buffer impu_buffer = {0,0,0};
+//char buf[2048];
 
 int connect_db(const str *db_url)
 {
-	if (lp_db_handle) {	/* we've obv already connected... */
+	if (ul_dbh) {	/* we've obv already connected... */
 		LM_WARN("DB connection already open... continuing\n");
 		return 0;
 	}
 
-	if ((lp_db_handle = lp_dbf.init(db_url)) == 0)
+	if ((ul_dbh = ul_dbf.init(db_url)) == 0)
 		return -1;
-	LM_DBG("Successfully connected to DB and returned DB handle ptr %p\n", lp_db_handle);
+
+	LM_DBG("Successfully connected to DB and returned DB handle ptr %p\n", ul_dbh);
 	return 0;
 }
 
 int init_db(const str *db_url, int db_update_period, int fetch_num_rows)
 {
 	/* Find a database module */
-	if (db_bind_mod(db_url, &lp_dbf) < 0){
+	if (db_bind_mod(db_url, &ul_dbf) < 0){
 		LM_ERR("Unable to bind to a database driver\n");
 		return -1;
 	}
@@ -54,7 +55,7 @@ int init_db(const str *db_url, int db_update_period, int fetch_num_rows)
 		return -1;
 	}
 
-	if (!DB_CAPABILITY(lp_dbf, DB_CAP_ALL)) {
+	if (!DB_CAPABILITY(ul_dbf, DB_CAP_ALL)) {
 		LM_ERR("database module does not implement all functions needed by the module\n");
 		return -1;
 	}
@@ -66,8 +67,8 @@ int init_db(const str *db_url, int db_update_period, int fetch_num_rows)
                 return -1;
         }
 	*/
-	lp_dbf.close(lp_db_handle);
-	lp_db_handle = 0;
+	ul_dbf.close(ul_dbh);
+	ul_dbh = 0;
 
 	return 0;
 }
@@ -75,20 +76,20 @@ int init_db(const str *db_url, int db_update_period, int fetch_num_rows)
 void destroy_db()
 {
 	/* close the DB connection */
-	if (lp_db_handle) {
-		lp_dbf.close(lp_db_handle);
-		lp_db_handle = 0;
+	if (ul_dbh) {
+		ul_dbf.close(ul_dbh);
+		ul_dbh = 0;
 	}
 }
 
-int use_location_pcscf_table()
+int use_location_pcscf_table(str* domain)
 {
-	if(!lp_db_handle){
+	if(!ul_dbh){
 		LM_ERR("invalid database handle\n");
 		return -1;
 	}
 
-	if (lp_dbf.use_table(lp_db_handle, &location_pcscf_table_name) < 0) {
+	if (ul_dbf.use_table(ul_dbh, domain) < 0) {
 		LM_ERR("Error in use_table\n");
 		return -1;
 	}
@@ -98,8 +99,9 @@ int use_location_pcscf_table()
 
 int db_update_pcontact(pcontact_t* _c)
 {
-	char buf[2048];
-	str impus;
+//	char buf[2048];	//TODO: use re-usable pkg mem...
+//	char buf2[2048]; //TODO: use re-usable pkg mem...
+	str impus, service_routes;
 
 	db_val_t match_values[1];
 	db_key_t match_keys[1] = { &aor_col };
@@ -116,8 +118,8 @@ int db_update_pcontact(pcontact_t* _c)
 	VAL_NULL(match_values) = 0;
 	VAL_STR(match_values) = _c->aor;
 
-	if (use_location_pcscf_table() < 0) {
-		LM_ERR("Error trying to use table ["LOCATION_PCSCF_TABLE_NAME"]");
+	if (use_location_pcscf_table(_c->domain) < 0) {
+		LM_ERR("Error trying to use table %.*s\n", _c->domain->len, _c->domain->s);
 		return -1;
 	}
 
@@ -130,7 +132,11 @@ int db_update_pcontact(pcontact_t* _c)
 	VAL_INT(values + 1)	= _c->reg_state;
 
 	str empty_str = str_init("");
-	SET_STR_VALUE(values + 2, (_c->service_routes)?*_c->service_routes:empty_str);
+	if (_c->service_routes) {
+		service_routes.len = service_routes_as_string(_c, &service_route_buffer);
+		service_routes.s = service_route_buffer.buf;
+	}
+	SET_STR_VALUE(values + 2, (_c->service_routes)?service_routes:empty_str);
 	VAL_TYPE(values + 2) = DB1_STR;
 	VAL_NULL(values + 2) = 0;
 
@@ -152,31 +158,18 @@ int db_update_pcontact(pcontact_t* _c)
 	SET_STR_VALUE(values + 6, _c->rx_session_id);
 
 	/* add the public identities */
-//	impu = _c->head;
-//	memset(buf, 0, 2048);
-//	p = buf;
-//	while (impu) {
-//		*p++ = '<';
-//		memcpy(p, impu->public_identity.s, impu->public_identity.len);
-//		p += impu->public_identity.len;
-//		*p++ = '>';
-////		sprintf(buf + len, "<%s>", impu->public_identity.s);
-////		len += impu->public_identity.len + 2 /* <> */;
-//		impu = impu->next;
-//	}
-//	p = buf;
-	impus.len = impus_as_string(_c, buf);//p - buf;
-	impus.s = buf;//buf;
+	impus.len = impus_as_string(_c, &impu_buffer);
+	impus.s = impu_buffer.buf;
 	VAL_TYPE(values + 7) = DB1_STR;
 	SET_PROPER_NULL_FLAG(impus, values, 7);
 	SET_STR_VALUE(values + 7, impus);
 
-	if((lp_dbf.update(lp_db_handle, match_keys, NULL, match_values, update_keys,values, 1, 8)) !=0){
+	if((ul_dbf.update(ul_dbh, match_keys, NULL, match_values, update_keys,values, 1, 8)) !=0){
 		LM_ERR("could not update database info\n");
 	    return -1;
 	}
 
-	if (lp_dbf.affected_rows && lp_dbf.affected_rows(lp_db_handle) == 0) {
+	if (ul_dbf.affected_rows && ul_dbf.affected_rows(ul_dbh) == 0) {
 		LM_DBG("no existing rows for an update... doing insert\n");
 		if (db_insert_pcontact(_c) != 0) {
 			LM_ERR("Failed to insert a pcontact on update\n");
@@ -196,12 +189,12 @@ int db_delete_pcontact(pcontact_t* _c)
 	VAL_NULL(values) = 0;
 	SET_STR_VALUE(values, _c->aor);
 
-	if (use_location_pcscf_table() < 0) {
-		LM_ERR("Error trying to use table ["LOCATION_PCSCF_TABLE_NAME"]");
+	if (use_location_pcscf_table(_c->domain) < 0) {
+		LM_ERR("Error trying to use table %.*s\n", _c->domain->len, _c->domain->s);
 		return -1;
 	}
 
-    if(lp_dbf.delete(lp_db_handle, match_keys, 0, values, 1) < 0) {
+    if(ul_dbf.delete(ul_dbh, match_keys, 0, values, 1) < 0) {
     	LM_ERR("Failed to delete database information: aor[%.*s], rx_session_id=[%.*s]\n",
     													_c->aor.len, _c->aor.s,
     													_c->rx_session_id.len, _c->rx_session_id.s);
@@ -214,23 +207,26 @@ int db_delete_pcontact(pcontact_t* _c)
 int db_insert_pcontact(struct pcontact* _c)
 {
 	str empty_str = str_init("");
-	char buf[2048];
-	str impus;
+	char buf[2048];		//TODO: use re-usable pkg mem...
+	char buf2[2048];	//TODO: use re-usable pkg mem...
+	str impus, service_routes;
 
-	db_key_t keys[LOCATION_PCSCF_COL_NO] = {
+	db_key_t keys[13] = {
 							&domain_col,
-				&aor_col, 			&received_col,
+				&aor_col, 			&contact_col,
+				&received_col,
 				&received_port_col,	&received_proto_col,
 				&path_col,			&rx_session_id_col,
 				&reg_state_col,
 				&expires_col,		&service_routes_col,
 				&socket_col,		&public_ids_col
 	};
-	db_val_t values[LOCATION_PCSCF_COL_NO];
+	db_val_t values[13];
 
 //	VAL_TYPE(GET_FIELD_IDX(values, LP_ID_IDX)) = DB1_INT;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_DOMAIN_IDX)) = DB1_STR;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_AOR_IDX)) = DB1_STR;
+	VAL_TYPE(GET_FIELD_IDX(values, LP_CONTACT_IDX)) = DB1_STR;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_RECEIVED_IDX)) = DB1_STR;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_RECEIVED_PORT_IDX)) = DB1_INT;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_RECEIVED_PROTO_IDX)) = DB1_INT;
@@ -243,7 +239,8 @@ int db_insert_pcontact(struct pcontact* _c)
 	VAL_TYPE(GET_FIELD_IDX(values, LP_PUBLIC_IPS_IDX)) = DB1_STR;
 
 	SET_STR_VALUE(GET_FIELD_IDX(values, LP_DOMAIN_IDX), (*_c->domain));
-	SET_STR_VALUE(GET_FIELD_IDX(values, LP_AOR_IDX), _c->aor);
+	SET_STR_VALUE(GET_FIELD_IDX(values, LP_AOR_IDX), _c->aor);	//TODO: need to clean AOR
+	SET_STR_VALUE(GET_FIELD_IDX(values, LP_CONTACT_IDX), _c->aor);
 	SET_STR_VALUE(GET_FIELD_IDX(values, LP_RECEIVED_IDX), _c->received_host);
 
 	SET_PROPER_NULL_FLAG((*_c->domain), values, LP_DOMAIN_IDX);
@@ -281,26 +278,23 @@ int db_insert_pcontact(struct pcontact* _c)
 	}
 
 	/* add the public identities */
-//	impu = _c->head;
-//	memset(buf, 0, 2048);
-//	p = buf;
-//	while (impu) {
-//		*p++ = '<';
-//		memcpy(p, impu->public_identity.s, impu->public_identity.len);
-//		p += impu->public_identity.len;
-//		*p++ = '>';
-//	}
-	impus.len = impus_as_string(_c, buf);//p - buf;
+	impus.len = impus_as_string(_c, &impu_buffer);
 	impus.s = buf;
 	SET_PROPER_NULL_FLAG(impus, values, LP_PUBLIC_IPS_IDX);
 	SET_STR_VALUE(GET_FIELD_IDX(values, LP_PUBLIC_IPS_IDX), impus);
 
-	if (use_location_pcscf_table() < 0) {
-		LM_ERR("Error trying to use table ["LOCATION_PCSCF_TABLE_NAME"]");
+	/* add service routes */
+	service_routes.len = service_routes_as_string(_c, &service_route_buffer);
+	service_routes.s = buf2;
+	SET_PROPER_NULL_FLAG(service_routes, values, LP_PUBLIC_IPS_IDX);
+	SET_STR_VALUE(GET_FIELD_IDX(values, LP_PUBLIC_IPS_IDX), service_routes);
+
+	if (use_location_pcscf_table(_c->domain) < 0) {
+		LM_ERR("Error trying to use table %.*s\n", _c->domain->len, _c->domain->s);
 		return -1;
 	}
 
-	if (lp_dbf.insert(lp_db_handle, keys, values, LOCATION_PCSCF_COL_NO) < 0) {
+	if (ul_dbf.insert(ul_dbh, keys, values, 13) < 0) {
 		LM_ERR("inserting contact in db failed\n");
 		return -1;
 	}
@@ -314,11 +308,31 @@ int db_insert_pcontact(struct pcontact* _c)
  * returns the length of the string (list)
  * the string list itself will be available in p
  */
-int impus_as_string(struct pcontact* _c, char *p) {
+int impus_as_string(struct pcontact* _c, t_reusable_buffer* buffer) {
 	ppublic_t* impu;
-	char *start = p;
+	int len = 0;
+	char *p;
 
 	impu = _c->head;
+	while (impu) {
+		len += 2 + impu->public_identity.len;
+		impu = impu->next;
+	}
+
+	if (!buffer->buf || buffer->buf_len == 0 || len > buffer->buf_len) {
+		if (buffer->buf) {
+			pkg_free(buffer->buf);
+		}
+		buffer->buf = (char*) pkg_malloc(len);
+		if (!buffer->buf) {
+			LM_CRIT("unable to allocate pkg memory\n");
+			return 0;
+		}
+		buffer->buf_len = len;
+	}
+
+	impu = _c->head;
+	p = buffer->buf;
 	while (impu) {
 		*p++ = '<';
 		memcpy(p, impu->public_identity.s, impu->public_identity.len);
@@ -327,7 +341,47 @@ int impus_as_string(struct pcontact* _c, char *p) {
 		impu = impu->next;
 	}
 
-	return (p - start);
+	return len;
+}
+
+/* take a contact structure and a pointer to some memory and returns a list of public identities in the format
+ * <impu1><impu2>....<impu(n)>
+ * make sure p already has memory allocated
+ * returns the length of the string (list)
+ * the string list itself will be available in p
+ */
+int service_routes_as_string(struct pcontact* _c, t_reusable_buffer *buffer) {
+	int i;
+	int len = 0;
+	char *p;
+	for (i=0; i<_c->num_service_routes; i++) {
+		len += 2 + _c->service_routes[i].len;
+	}
+
+	if (!buffer->buf || buffer->buf_len==0 || len > buffer->buf_len) {
+		if (buffer->buf) {
+			pkg_free(buffer->buf);
+		}
+		buffer->buf = (char*)pkg_malloc(len);
+		if (!buffer->buf) {
+			LM_CRIT("unable to allocate pkg memory\n");
+			return 0;
+		}
+		buffer->buf_len = len;
+	}
+
+	p = buffer->buf;
+	for (i=0; i<_c->num_service_routes; i++) {
+		*p = '<';
+		p++;
+		memcpy(p, _c->service_routes[i].s, _c->service_routes[i].len);
+		p+=_c->service_routes[i].len;
+		*p = '>';
+		p++;
+//		len += _c->service_routes[i].len + 2;
+	}
+
+	return len;
 }
 
 

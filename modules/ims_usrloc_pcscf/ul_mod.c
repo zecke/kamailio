@@ -84,8 +84,8 @@ int timer_interval  = 60;						/*!< Timer interval in seconds */
 int db_mode         = 0;						/*!< Database sync scheme: 0-no db, 1-write through, 2-write back, 3-only db */
 int ul_fetch_rows = 2000;
 
-/*db1_con_t* ul_dbh = 0;
-db_func_t ul_dbf; */
+db1_con_t* ul_dbh = 0;
+db_func_t ul_dbf; 
 
 /*! \brief
  * Exported functions
@@ -201,7 +201,7 @@ static int mod_init(void) {
 			LM_ERR("Error initializing db connection\n");
 			return -1;
 		}
-		LM_DBG("Running in DB mode %s\n", db_mode);
+		LM_DBG("Running in DB mode %i\n", db_mode);
 	}
 
 	init_flag = 1;
@@ -211,7 +211,7 @@ static int mod_init(void) {
 
 static int child_init(int _rank)
 {
-//	dlist_t* ptr;
+	dlist_t* ptr;
 
 	/* connecting to DB ? */
 	switch (db_mode) {
@@ -236,18 +236,19 @@ static int child_init(int _rank)
 		return -1;
 	}
 	/* _rank==PROC_SIPINIT is used even when fork is disabled */
-/*	if (_rank==PROC_SIPINIT && db_mode!=DB_ONLY) {
+	if (_rank==PROC_SIPINIT && db_mode!=DB_ONLY) {
 		// if cache is used, populate domains from DB
 		for( ptr=root ; ptr ; ptr=ptr->next) {
+			LM_DBG("Preloading domain %.*s\n", ptr->name.len, ptr->name.s);
 			if (preload_udomain(ul_dbh, ptr->d) < 0) {
 				LM_ERR("child(%d): failed to preload domain '%.*s'\n",
 						_rank, ptr->name.len, ZSW(ptr->name.s));
 				return -1;
 			}
-			uldb_preload_attrs(ptr->d);
+//			uldb_preload_attrs(ptr->d);
 		}
 	}
-*/
+
 	return 0;
 }
 

@@ -12,6 +12,7 @@ typedef enum location_pcscf_fields_idx {
 //	LP_ID_IDX = 0,
 	LP_DOMAIN_IDX = 0,
 	LP_AOR_IDX,
+	LP_CONTACT_IDX,
 	LP_RECEIVED_IDX,
 	LP_RECEIVED_PORT_IDX,
 	LP_RECEIVED_PROTO_IDX,
@@ -24,9 +25,6 @@ typedef enum location_pcscf_fields_idx {
 	LP_PUBLIC_IPS_IDX,
 
 } location_pcscf_fields_idx_t;
-
-#define LOCATION_PCSCF_COL_NO		12
-#define LOCATION_PCSCF_TABLE_NAME	"location_pcscf"
 
 #define GET_FIELD_IDX(_val, _idx)\
 						(_val + _idx)
@@ -55,6 +53,7 @@ typedef enum location_pcscf_fields_idx {
 #define ID_COL				"id"
 #define DOMAIN_COL			"domain"
 #define AOR_COL				"aor"
+#define CONTACT_COL			"contact"
 #define RECEIVED_COL		"received"
 #define RECEIVED_PORT_COL	"received_port"
 #define RECEIVED_PROTO_COL	"received_proto"
@@ -66,12 +65,37 @@ typedef enum location_pcscf_fields_idx {
 #define SOCKET_COL			"socket"
 #define PUBLIC_IDS_COL		"public_ids"
 
+extern db1_con_t* ul_dbh;
+extern db_func_t ul_dbf;
+
+extern str id_col;
+extern str domain_col;
+extern str aor_col;
+extern str contact_col;
+extern str received_col;
+extern str received_port_col;
+extern str received_proto_col;
+extern str path_col;
+extern str rx_session_id_col;
+extern str reg_state_col;
+extern str expires_col;
+extern str service_routes_col;
+extern str socket_col;
+extern str public_ids_col;
+
+typedef struct reusable_buffer{
+	char* buf;
+	int buf_len;
+	int data_len;
+} t_reusable_buffer;
+
 int use_location_pcscf_table();
 void destroy_db();
 int init_db(const str *db_url, int db_update_period, int fetch_num_rows);
 int connect_db(const str *db_url);
 
-int impus_as_string(struct pcontact* _c, char *p);
+int impus_as_string(struct pcontact* _c, t_reusable_buffer* buffer);
+int service_routes_as_string(struct pcontact* _c, t_reusable_buffer *buffer);
 int db_insert_pcontact(pcontact_t* _c);
 int db_delete_pcontact(pcontact_t* _c);
 int db_update_pcontact(pcontact_t* _c);
