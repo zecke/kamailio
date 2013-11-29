@@ -26,7 +26,6 @@ str public_ids_col		= str_init(PUBLIC_IDS_COL);
 
 t_reusable_buffer service_route_buffer = {0,0,0};
 t_reusable_buffer impu_buffer = {0,0,0};
-//char buf[2048];
 
 int connect_db(const str *db_url)
 {
@@ -378,4 +377,22 @@ int service_routes_as_string(struct pcontact* _c, t_reusable_buffer *buffer) {
 	return len;
 }
 
+void free_service_route_buf(void)
+{
+	if (service_route_buffer.buf) {
+		pkg_free(service_route_buffer.buf);
+		service_route_buffer.data_len = 0;
+		service_route_buffer.buf_len = 0;
+		service_route_buffer.buf = 0;
+	}
+}
+
+void free_impu_buf(void) {
+	if (impu_buffer.buf) {
+		pkg_free(impu_buffer.buf);
+		impu_buffer.data_len = 0;
+		impu_buffer.buf_len = 0;
+		impu_buffer.buf = 0;
+	}
+}
 

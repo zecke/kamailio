@@ -263,6 +263,9 @@ static void destroy(void)
 	/* free callbacks list */
 	destroy_ulcb_list();
 
+	free_service_route_buf();
+	free_impu_buf();
+
 	if (db_mode)
 		destroy_db();
 }

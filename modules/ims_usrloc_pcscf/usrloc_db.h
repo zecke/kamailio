@@ -96,6 +96,9 @@ int connect_db(const str *db_url);
 
 int impus_as_string(struct pcontact* _c, t_reusable_buffer* buffer);
 int service_routes_as_string(struct pcontact* _c, t_reusable_buffer *buffer);
+void free_service_route_buf(void);
+void free_impu_buf(void);
+
 int db_insert_pcontact(pcontact_t* _c);
 int db_delete_pcontact(pcontact_t* _c);
 int db_update_pcontact(pcontact_t* _c);
