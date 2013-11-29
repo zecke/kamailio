@@ -99,8 +99,6 @@ int use_location_pcscf_table(str* domain)
 
 int db_update_pcontact(pcontact_t* _c)
 {
-//	char buf[2048];	//TODO: use re-usable pkg mem...
-//	char buf2[2048]; //TODO: use re-usable pkg mem...
 	str impus, service_routes;
 
 	db_val_t match_values[1];
@@ -207,8 +205,6 @@ int db_delete_pcontact(pcontact_t* _c)
 int db_insert_pcontact(struct pcontact* _c)
 {
 	str empty_str = str_init("");
-	char buf[2048];		//TODO: use re-usable pkg mem...
-	char buf2[2048];	//TODO: use re-usable pkg mem...
 	str impus, service_routes;
 
 	db_key_t keys[13] = {
@@ -223,7 +219,6 @@ int db_insert_pcontact(struct pcontact* _c)
 	};
 	db_val_t values[13];
 
-//	VAL_TYPE(GET_FIELD_IDX(values, LP_ID_IDX)) = DB1_INT;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_DOMAIN_IDX)) = DB1_STR;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_AOR_IDX)) = DB1_STR;
 	VAL_TYPE(GET_FIELD_IDX(values, LP_CONTACT_IDX)) = DB1_STR;
@@ -279,13 +274,13 @@ int db_insert_pcontact(struct pcontact* _c)
 
 	/* add the public identities */
 	impus.len = impus_as_string(_c, &impu_buffer);
-	impus.s = buf;
+	impus.s = impu_buffer.buf;
 	SET_PROPER_NULL_FLAG(impus, values, LP_PUBLIC_IPS_IDX);
 	SET_STR_VALUE(GET_FIELD_IDX(values, LP_PUBLIC_IPS_IDX), impus);
 
 	/* add service routes */
 	service_routes.len = service_routes_as_string(_c, &service_route_buffer);
-	service_routes.s = buf2;
+	service_routes.s = service_route_buffer.buf;
 	SET_PROPER_NULL_FLAG(service_routes, values, LP_PUBLIC_IPS_IDX);
 	SET_STR_VALUE(GET_FIELD_IDX(values, LP_PUBLIC_IPS_IDX), service_routes);
 
@@ -378,7 +373,6 @@ int service_routes_as_string(struct pcontact* _c, t_reusable_buffer *buffer) {
 		p+=_c->service_routes[i].len;
 		*p = '>';
 		p++;
-//		len += _c->service_routes[i].len + 2;
 	}
 
 	return len;
