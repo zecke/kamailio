@@ -47,4 +47,10 @@
 
 #define RO_MAC_AVP_NAME	"$avp(ro_mac_value)"
 
+#define DB_DEFAULT_UPDATE_PERIOD	60
+
+#define DB_MODE_NONE				0
+#define DB_MODE_REALTIME			1
+#define DB_MODE_SHUTDOWN			2
+
 #endif /* MOD_H_ */

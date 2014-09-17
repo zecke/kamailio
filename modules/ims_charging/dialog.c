@@ -1,11 +1,14 @@
+#include "mod.h"
 #include "dialog.h"
 #include "ro_session_hash.h"
 #include "../ims_usrloc_scscf/usrloc.h"
 #include "../ims_usrloc_scscf/udomain.h"
+#include "ro_db_handler.h"
 
 struct cdp_binds cdpb;
 
 extern usrloc_api_t ul;
+extern int ro_db_mode;
 
 void dlg_reply(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params) {
 	struct sip_msg *reply;
@@ -91,6 +94,13 @@ void dlg_reply(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params) {
 		} else {
 			ref_ro_session_unsafe(session, 1); // lock already acquired
 		}
+
+		if (ro_db_mode == DB_MODE_REALTIME) {
+		    session->flags |= RO_SESSION_FLAG_CHANGED;
+		    if (update_ro_dbinfo_unsafe(session) != 0) {
+			LM_ERR("Failed to update ro_session in database... continuing\n");
+		    };
+		}
 				
 		ro_session_unlock(ro_session_table, ro_session_entry);
 
@@ -173,6 +183,14 @@ void dlg_terminated(struct dlg_cell *dlg, int type, struct dlg_cb_params *_param
 				LM_DBG("Sending CCR STOP on Ro_Session [%p]\n", ro_session);
 				send_ccr_stop(ro_session);
 				ro_session->active = 0;
+				
+				if (ro_db_mode == DB_MODE_REALTIME) {
+				    ro_session->flags |= RO_SESSION_FLAG_DELETED;
+				    if (update_ro_dbinfo_unsafe(ro_session) != 0) {
+					LM_ERR("Unable to update Ro session in DB...continuing\n");
+				    }
+				}
+				
 				//ro_session->start_time;
 				unref_ro_session_unsafe(ro_session, 1+unref, ro_session_entry); //lock already acquired
 				//unref_ro_session_unsafe(ro_session, 2+unref, ro_session_entry); //lock already acquired

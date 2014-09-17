@@ -13,6 +13,13 @@
 #include "../ims_usrloc_scscf/usrloc.h"
 #include <stdlib.h>
 
+
+/* ro session flags */
+#define RO_SESSION_FLAG_NEW          (1<<0) /*!< new ro session */
+#define RO_SESSION_FLAG_INSERTED     (1<<1) /*!< session has been written to DB */
+#define RO_SESSION_FLAG_CHANGED      (1<<2) /*!< ro session has been updated */
+#define RO_SESSION_FLAG_DELETED      (1<<3) /*!< ro session has been deleted */
+
 enum ro_session_event_type {
     pending,
     answered,
@@ -56,7 +63,7 @@ struct ro_session {
     int auth_appid;
     int auth_session_type;
     int active;
-
+    unsigned int flags;
     struct diameter_avp_value avp_value;
 };
 

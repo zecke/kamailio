@@ -20,6 +20,7 @@
 #include "dialog.h"
 #include "../ims_usrloc_scscf/usrloc.h"
 #include "../../lib/ims/ims_getters.h"
+#include "ro_db_handler.h"
 
 MODULE_VERSION
 
@@ -42,6 +43,13 @@ int video_rating_group = 200;
 
 int active_service_identifier = 1000; //current SID to be used - will  be changed depending on SDP info
 int active_rating_group = 200; //current RG to be used - will  be changed depending on SDP info
+
+/* DB params */
+static str db_url = str_init(DEFAULT_DB_URL);
+static unsigned int db_update_period = DB_DEFAULT_UPDATE_PERIOD;
+int ro_db_mode_param = DB_MODE_NONE;
+static int db_fetch_rows = 200;
+int ro_db_mode = DB_MODE_NONE;
 
 client_ro_cfg cfg = { str_init("scscf.ims.smilecoms.com"),
     str_init("ims.smilecoms.com"),
@@ -115,11 +123,14 @@ static param_export_t params[] = {
 		{ "service_context_id_ext", PARAM_STRING,			&ro_service_context_id_ext_s 	},
 		{ "service_context_id_mnc", PARAM_STRING,			&ro_service_context_id_mnc_s 	},
 		{ "service_context_id_mcc", PARAM_STRING,			&ro_service_context_id_mcc_s 	},
-		{ "service_context_id_release",	PARAM_STRING, 		&ro_service_context_id_release_s},
+		{ "service_context_id_release",	PARAM_STRING,			&ro_service_context_id_release_s},
 		{ "voice_service_identifier", 	INT_PARAM, 			&voice_service_identifier },/*service id for voice*/
 		{ "voice_rating_group", 	INT_PARAM, 			&voice_rating_group },/*rating group for voice*/
 		{ "video_service_identifier", 	INT_PARAM, 			&video_service_identifier },/*service id for voice*/
 		{ "video_rating_group", 	INT_PARAM, 			&video_rating_group },/*rating group for voice*/
+		{ "db_mode",			INT_PARAM,			&ro_db_mode_param		},
+		{ "db_url",			PARAM_STRING,			&db_url 			},
+		{ "db_update_period",		INT_PARAM,			&db_update_period		},
 		{ 0, 0, 0 }
 };
 
@@ -280,6 +291,27 @@ static int mod_init(void) {
 		LM_ERR("failed to register core statistics\n");
 		return -1;
 	}*/
+	
+	/* if a database should be used to store the dialogs' information */
+	ro_db_mode = ro_db_mode_param;
+	if (ro_db_mode == DB_MODE_NONE) {
+	    db_url.s = 0;
+	    db_url.len = 0;
+	} else {
+	    if (ro_db_mode != DB_MODE_REALTIME && ro_db_mode != DB_MODE_SHUTDOWN) {
+		LM_ERR("unsupported db_mode %d\n", ro_db_mode);
+		return -1;
+	    }
+	    if (!db_url.s || db_url.len == 0) {
+		LM_ERR("db_url not configured for db_mode %d\n", ro_db_mode);
+		return -1;
+	    }
+	    if (init_ro_db(&db_url, ro_session_hash_size, db_update_period, db_fetch_rows) != 0) {
+		LM_ERR("failed to initialize the DB support\n");
+		return -1;
+	    }
+//	    run_load_callbacks();
+	}
 
 	return 0;
 
@@ -290,7 +322,25 @@ error:
 }
 
 static int mod_child_init(int rank) {
-	return 0;
+    ro_db_mode = ro_db_mode_param;
+
+    if (((ro_db_mode == DB_MODE_REALTIME) && (rank > 0 || rank == PROC_TIMER)) ||
+	    (ro_db_mode == DB_MODE_SHUTDOWN && (rank == PROC_MAIN))) {
+	if (ro_connect_db(&db_url)) {
+	    LM_ERR("failed to connect to database (rank=%d)\n", rank);
+	    return -1;
+	}
+    }
+
+    /* in DB_MODE_SHUTDOWN only PROC_MAIN will do a DB dump at the end, so
+     * for the rest of the processes will be the same as DB_MODE_NONE */
+    if (ro_db_mode == DB_MODE_SHUTDOWN && rank != PROC_MAIN)
+	ro_db_mode = DB_MODE_NONE;
+    /* in DB_MODE_REALTIME and DB_MODE_DELAYED the PROC_MAIN have no DB handle */
+    if ((ro_db_mode == DB_MODE_REALTIME) && rank == PROC_MAIN)
+	ro_db_mode = DB_MODE_NONE;
+    
+    return 0;
 }
 
 static void mod_destroy(void) {

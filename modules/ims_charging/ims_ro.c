@@ -31,6 +31,7 @@
 #include "ro_session_hash.h"
 #include "stats.h"
 #include "ro_avp.h"
+#include "ro_db_handler.h"
 
 extern struct tm_binds tmb;
 extern struct cdp_binds cdpb;
@@ -38,6 +39,7 @@ extern client_ro_cfg cfg;
 extern struct dlg_binds dlgb;
 extern cdp_avp_bind_t *cdp_avp;
 extern str ro_forced_peer;
+extern int ro_db_mode;
 
 struct session_setup_data {
 	struct ro_session *ro_session;
@@ -1212,9 +1214,17 @@ static void resume_on_initial_ccr(int is_timeout, void *param, AAAMessage *cca, 
     LM_DBG("Freeing CCA message\n");
     cdpb.AAAFreeMessage(&cca);
 
-    link_ro_session(ssd->ro_session, 1);            //create extra ref for the fact that dialog has a handle in the callbacks
-    unref_ro_session(ssd->ro_session, 1);
-
+    link_ro_session(ssd->ro_session, 1);            /* create extra ref for the fact that dialog has a handle in the callbacks */
+    
+    if (ro_db_mode == DB_MODE_REALTIME) {
+	ssd->ro_session->flags |= RO_SESSION_FLAG_NEW;
+	if (update_ro_dbinfo(ssd->ro_session) != 0) {
+	    LM_ERR("Failed to update ro_session in database... continuing\n");
+	};
+    }
+    
+    unref_ro_session(ssd->ro_session, 1);	    /* release our reference */
+    
     create_cca_return_code(RO_RETURN_TRUE);
 
     if (t)
