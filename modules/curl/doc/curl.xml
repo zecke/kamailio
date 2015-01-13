@@ -10,9 +10,17 @@
 
 <book xmlns:xi="http://www.w3.org/2001/XInclude">
 	<bookinfo>
-	<title>utils</title>
+	<title>curl</title>
 	<productname class="trade">&kamailioname;</productname>
 	<authorgroup>
+		<author>
+		<firstname>Olle E.</firstname>
+		<surname>Johansson</surname>
+		<affiliation><orgname>Edvina AB</orgname></affiliation>
+		<address>
+			<email>oej@edvina.net</email>
+		</address>
+		</author>
 		<author>
 		<firstname>Juha</firstname>
 		<surname>Heinanen</surname>
@@ -38,10 +46,14 @@
 		<year>2013</year>
 		<holder>Carsten Bock, ng-voice GmbH</holder>
 	</copyright>
+	<copyright>
+		<year>2015</year>
+		<holder>Olle E. Johansson, Edvina AB</holder>
+	</copyright>
 	</bookinfo>
 	<toc></toc>
 	
-	<xi:include href="utils_admin.xml"/>
+	<xi:include href="curl_admin.xml"/>
 	
 	
 </book>

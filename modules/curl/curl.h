@@ -34,7 +34,7 @@
 #include "../../str.h"
 #include "../../lib/srdb1/db.h"
 
-extern int http_query_timeout;
+extern int default_connection_timeout;
 
 /* Curl  stream object  */
 typedef struct {

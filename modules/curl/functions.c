@@ -92,10 +92,14 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 
     memset(&stream, 0, sizeof(http_res_stream_t));
 
+#ifdef SKREP
     if (fixup_get_svalue(_m, (gparam_p)_url, &value) != 0) {
 	LM_ERR("cannot get page value\n");
 	return -1;
     }
+#endif
+	value.s = _url;
+	value.len = strlen(_url);
 
     curl = curl_easy_init();
     if (curl == NULL) {
@@ -106,17 +110,20 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
     url = pkg_malloc(value.len + 1);
     if (url == NULL) {
 	curl_easy_cleanup(curl);
-	LM_ERR("cannot allocate pkg memory for url\n");
+	LM_ERR("cannot allocate pkg memory for url %d\n", (value.len + 1));
 	return -1;
     }
     memcpy(url, value.s, value.len);
     *(url + value.len) = (char)0;
+    LM_DBG("****** ##### CURL URL %s _url [%.*s]\n", url, value.len, value.s);
     res = curl_easy_setopt(curl, CURLOPT_URL, url);
 
     if (_post) {
         /* Now specify we want to POST data */ 
 	res |= curl_easy_setopt(curl, CURLOPT_POST, 1L);
+	/* Set the content-type of the DATA */
 
+#ifdef SKREP
     	if (fixup_get_svalue(_m, (gparam_p)_post, &post_value) != 0) {
 		LM_ERR("cannot get post value\n");
 		pkg_free(url);
@@ -131,7 +138,8 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 	}
 	memcpy(post, post_value.s, post_value.len);
 	*(post + post_value.len) = (char)0;
- 	res |= curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post);
+#endif
+ 	res |= curl_easy_setopt(curl, CURLOPT_POSTFIELDS, _post);
     }
 
     if (_username) {
@@ -145,7 +153,7 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
        
 
     res |= curl_easy_setopt(curl, CURLOPT_NOSIGNAL, (long)1);
-    res |= curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)http_query_timeout);
+    res |= curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)default_connection_timeout);
 
     res |= curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_function);
     res |= curl_easy_setopt(curl, CURLOPT_WRITEDATA, &stream);
@@ -156,9 +164,11 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
     		res = curl_easy_perform(curl);  
 	}
     pkg_free(url);
+#ifdef SKREP
     if (_post) {
 	pkg_free(post);
     }
+#endif
 
     if (res != CURLE_OK) {
 	/* http://curl.haxx.se/libcurl/c/libcurl-errors.html */
@@ -209,10 +219,13 @@ int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _
 	str connstr;
 	char usernamebuf[BUFSIZ/2];
 	char passwordbuf[BUFSIZ/2];
+	char connurlbuf[BUFSIZ/2];
 	char urlbuf[512];
+	unsigned int len = 0;
 
 	memset(usernamebuf,0,sizeof(usernamebuf));
 	memset(passwordbuf,0,sizeof(passwordbuf));
+	memset(connurlbuf,0,sizeof(connurlbuf));
 	memset(urlbuf,0,sizeof(urlbuf));
 
 	/* Find connection if it exists */
@@ -220,6 +233,7 @@ int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _
 		LM_ERR("No cURL connection specified\n");
 		return -1;
 	}
+	LM_DBG("******** CURL Connection %s\n", connection);
 	connstr.s = connection;
 	connstr.len = strlen(connection);
 	conn = curl_get_connection(&connstr);
@@ -229,12 +243,18 @@ int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _
 	}
 	strncpy(usernamebuf, conn->username.s, conn->username.len);
 	strncpy(passwordbuf, conn->password.s, conn->password.len);
-	strncpy(urlbuf,conn->url.s, conn->url.len);
-	snprintf(&urlbuf[conn->url.len],(sizeof(urlbuf) - conn->url.len), "/%s", _url);
+	strncpy(connurlbuf, conn->url.s, conn->url.len);
+
+	strncpy(urlbuf,conn->schema.s, conn->schema.len);
+	snprintf(&urlbuf[conn->schema.len],(sizeof(urlbuf) - conn->schema.len), "://%s%s%s", connurlbuf, 
+		(_url[0] && _url[0] == '/')?"":(_url[0] != '\0' ? "/": ""), _url);
 	LM_DBG("***** #### ***** CURL URL: %s \n", urlbuf);
+	if (_post && *_post) {
+		LM_DBG("***** #### ***** CURL POST data: %s \n", _post);
+	}
 
 	/* TODO: Concatenate URL in connection with URL given in function */
-	return curL_query_url(_m, _url, _result, usernamebuf, passwordbuf, (contenttype ? contenttype : "text/plain"), _post);
+	return curL_query_url(_m, urlbuf, _result, usernamebuf, passwordbuf, (contenttype ? contenttype : "text/plain"), _post);
 }
 
 

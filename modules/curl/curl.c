@@ -38,6 +38,9 @@
  *
  *  curl_connect(connection, url, $avp)
  *  curl_connect(connection, url, content-type, data, $avp)
+ *
+ * 	$var(res) = curl_connect("anders", "/postlåda", "application/json", "{ ok, {200, ok}}", "$avp(gurka)");
+ *
  */
 
 
@@ -58,7 +61,7 @@
 MODULE_VERSION
 
 /* Module parameter variables */
-int http_query_timeout = 4;
+int default_connection_timeout = 4;
 
 /* lock for configuration access */
 static gen_lock_t *conf_lock = NULL;
@@ -100,15 +103,15 @@ static cmd_export_t cmds[] = {
     {"curl_connect", (cmd_function)w_curl_connect, 3, fixup_curl_connect,
      fixup_free_curl_connect,
      REQUEST_ROUTE|ONREPLY_ROUTE|FAILURE_ROUTE|BRANCH_ROUTE},
-    {"curl_connect", (cmd_function)w_curl_connect_post, 5, fixup_curl_connect,
-     fixup_free_curl_connect,
+    {"curl_connect", (cmd_function)w_curl_connect_post, 5, fixup_curl_connect_post,
+     fixup_free_curl_connect_post,
      REQUEST_ROUTE|ONREPLY_ROUTE|FAILURE_ROUTE|BRANCH_ROUTE},
 };
 
 
 /* Exported parameters */
 static param_export_t params[] = {
-    	{"http_query_timeout", INT_PARAM, &http_query_timeout},
+    	{"default_connection_timeout", INT_PARAM, &default_connection_timeout},
 	{"curlcon",  PARAM_STRING|USE_FUNC_PARAM, (void*)curl_con_param},
     	{0, 0, 0}
 };
@@ -252,15 +255,44 @@ static int fixup_free_http_query_get(void** param, int param_no)
 
 
 /*
- * Fix curl_connect params: url (string that may contain pvars) and
+ * Fix curl_connect params: connection(string/pvar) url (string that may contain pvars) and
  * result (writable pvar).
  */
 static int fixup_curl_connect(void** param, int param_no)
 {
+
     if ((param_no == 1) || (param_no == 2)) {
-	return fixup_spve_null(param, 1);
+	/* We want char * strings */
+	return 0;
+	}
+    if (param_no == 3) {
+	if (fixup_pvar_null(param, 1) != 0) {
+	    LM_ERR("failed to fixup result pvar\n");
+	    return -1;
+	}
+	if (((pv_spec_t *)(*param))->setf == NULL) {
+	    LM_ERR("result pvar is not writeble\n");
+	    return -1;
+	}
+	return 0;
     }
 
+    LM_ERR("invalid parameter number <%d>\n", param_no);
+    return -1;
+}
+
+/*
+ * Fix curl_connect params when posting (5 parameters): 
+ *	connection, url, content-type, data, pvar
+ */
+static int fixup_curl_connect_post(void** param, int param_no)
+{
+
+    if (param_no == 1 || param_no == 2 || param_no == 3 || param_no == 4) {
+	/* We want char * strings */
+	/* At some point we need to allow pvars in the string. */
+	return 0;
+	}
     if (param_no == 5) {
 	if (fixup_pvar_null(param, 1) != 0) {
 	    LM_ERR("failed to fixup result pvar\n");
@@ -273,6 +305,25 @@ static int fixup_curl_connect(void** param, int param_no)
 	return 0;
     }
 
+    LM_ERR("invalid parameter number <%d>\n", param_no);
+    return -1;
+}
+
+
+/*
+ * Free curl_connect params.
+ */
+static int fixup_free_curl_connect_post(void** param, int param_no)
+{
+    if (param_no == 1 || param_no == 2 || param_no == 3 || param_no == 4) {
+	LM_WARN("free function has not been defined for spve\n");
+	return 0;
+    }
+
+    if (param_no == 5) {
+	return fixup_free_pvar_null(param, 5);
+    }
+    
     LM_ERR("invalid parameter number <%d>\n", param_no);
     return -1;
 }
@@ -300,6 +351,7 @@ static int fixup_free_curl_connect(void** param, int param_no)
  */
 static int w_curl_connect(struct sip_msg* _m, char* _con, char * _url, char* _result) {
 //	curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _result, const char *contenttype, char* _post)
+	LM_DBG("**** Curl Connection %s URL %s Result var %s\n", _con, _url, _result);
 
 	return curl_con_query_url(_m, _con, _url, _result, NULL, NULL);
 }
@@ -307,7 +359,7 @@ static int w_curl_connect(struct sip_msg* _m, char* _con, char * _url, char* _re
 /*
  * Wrapper for Curl_connect (POST)
  */
-static int w_curl_connect_post(struct sip_msg* _m, char* _con, char * _url, char* _result, char* _ctype, char* _data) {
+static int w_curl_connect_post(struct sip_msg* _m, char* _con, char * _url, char* _ctype, char* _data, char *_result) {
 	return curl_con_query_url(_m, _con, _url, _result, _ctype, _data);
 }
 

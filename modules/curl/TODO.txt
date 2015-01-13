@@ -1,0 +1,32 @@
+The curl module
+===============
+
+- connection parameters
+	timeout=x
+	read=line/all
+	tlsverify=on/off
+	failover=curlcon	Other curlcon that can be used for failover in case of 5xx response or timeout
+	
+- save fingerprint of cert for tofu procedure
+
+- status for curlcon-object
+	- if 5xx response or timeout set flag
+	- function in dialplan - curlcon_exist(object)
+	- pv $curlstatus(object) ??
+
+- pv for curl error codes (result < 100)
+	$curlerror(code)	Result string
+
+- rpc
+	curl.dumpcon	list all connection objects with properties
+	curl.modcon     modify connection object
+			url
+			username
+			password
+			scheme
+			timeout
+			read
+			tlsverify
+			failover
+	curl.addcon	add connection object
+	curl.rmcon	remove connection object

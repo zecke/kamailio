@@ -139,8 +139,6 @@ int curl_parse_param(char *val)
 	}
 	schema.len = p - schema.s;
 	p++;	/* Skip the colon */
-	url.s = p;
-	url.len = in.len + (int)(in.s - p);
 	/* Skip two slashes */
 	if(*p != '/') {
 		goto error;
@@ -150,6 +148,9 @@ int curl_parse_param(char *val)
 		goto error;
 	}
 	p++;
+	/* We are now at the first character after :// */
+	url.s = p;
+	url.len = in.len + (int)(in.s - p);
 	u = p;
 
 	/* Now check if there is a @ character. If so, we need to parse the username
