@@ -308,7 +308,7 @@ static int w_curl_connect(struct sip_msg* _m, char* _con, char * _url, char* _re
  * Wrapper for Curl_connect (POST)
  */
 static int w_curl_connect_post(struct sip_msg* _m, char* _con, char * _url, char* _result, char* _ctype, char* _data) {
-	return curl_connect(_m, _con, _url, _result, _ctype, _data);
+	return curl_con_query_url(_m, _con, _url, _result, _ctype, _data);
 }
 
 

@@ -44,7 +44,7 @@
 #include "curlcon.h"
 
 /* Forward declaration */
-int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *username, const char *secret, char * _result, const char *contenttype, char* _post);
+static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *username, const char *secret, const char *contenttype, char* _post);
 
 /* 
  * curl write function that saves received data as zero terminated
@@ -75,28 +75,10 @@ size_t write_function( void *ptr, size_t size, size_t nmemb, void *stream_ptr)
     return size * nmemb;
  }
 
-int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _result, const char *contenttype, char* _post)
-{
-	curl_con_t *conn = NULL;
-
-	/* Find connection if it exists */
-	if (!connection) {
-		LM_ERR("No cURL connection specified\n");
-		return -1;
-	}
-	conn = curl_get_connection(connection);
-	if (conn == NULL) {
-		LM_ERR("No cURL connection found: %s\n", connection);
-		return -1;
-	}
-	/* TODO: Concatenate URL in connection with URL given in function */
-	return curl_query_url(_m, _url, _result, conn->username, conn->secret, contenttype ? contenttype : "text/plain", _post);
-}
-
 
 /*! Send query to server, optionally post data.
  */
-int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *username, const char *secret, char * _result, const char *contenttype, char* _post)
+static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *_username, const char *_secret, const char *contenttype, char* _post)
 {
     CURL *curl;
     CURLcode res;  
@@ -154,7 +136,7 @@ int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *usern
 
     if (_username) {
  	res |= curl_easy_setopt(curl, CURLOPT_USERNAME, _username);
-	res |= curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (CURLAUTH_DIGEST | CURLAUTH_BASIC));
+	res |= curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (CURLAUTH_DIGEST|CURLAUTH_BASIC));
     }
     if (_secret) {
  	res |= curl_easy_setopt(curl, CURLOPT_PASSWORD, _secret);
@@ -220,14 +202,52 @@ int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *usern
 }
 
 
+/*! Run a query based on a connection definition */
+int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _result, const char *contenttype, char* _post)
+{
+	curl_con_t *conn = NULL;
+	str connstr;
+	char usernamebuf[BUFSIZ/2];
+	char passwordbuf[BUFSIZ/2];
+	char urlbuf[512];
 
-/* 
+	memset(usernamebuf,0,sizeof(usernamebuf));
+	memset(passwordbuf,0,sizeof(passwordbuf));
+	memset(urlbuf,0,sizeof(urlbuf));
+
+	/* Find connection if it exists */
+	if (!connection) {
+		LM_ERR("No cURL connection specified\n");
+		return -1;
+	}
+	connstr.s = connection;
+	connstr.len = strlen(connection);
+	conn = curl_get_connection(&connstr);
+	if (conn == NULL) {
+		LM_ERR("No cURL connection found: %s\n", connection);
+		return -1;
+	}
+	strncpy(usernamebuf, conn->username.s, conn->username.len);
+	strncpy(passwordbuf, conn->password.s, conn->password.len);
+	strncpy(urlbuf,conn->url.s, conn->url.len);
+	snprintf(&urlbuf[conn->url.len],(sizeof(urlbuf) - conn->url.len), "/%s", _url);
+	LM_DBG("***** #### ***** CURL URL: %s \n", urlbuf);
+
+	/* TODO: Concatenate URL in connection with URL given in function */
+	return curL_query_url(_m, _url, _result, usernamebuf, passwordbuf, (contenttype ? contenttype : "text/plain"), _post);
+}
+
+
+/*!
  * Performs http_query and saves possible result (first body line of reply)
  * to pvar.
  * This is the same http_query as used to be in the utils module.
  */
 int http_query(struct sip_msg* _m, char* _url, char* _dst, char* _post)
 {
-	return curl_query_url(_m, _url, _dst, NULL, NULL, "text/plain", _post);
-}
+	int res;
 
+	res =  curL_query_url(_m, _url, _dst, NULL, NULL, "text/plain", _post);
+
+	return res;
+}
