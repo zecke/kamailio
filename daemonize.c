@@ -452,9 +452,11 @@ int do_suid()
 	struct passwd *pw;
 	
 	if (gid){
-		if(setgid(gid)<0){
-			LM_CRIT("cannot change gid to %d: %s\n", gid, strerror(errno));
-			goto error;
+		if(gid!=getgid()) {
+			if(setgid(gid)<0){
+				LM_CRIT("cannot change gid to %d: %s\n", gid, strerror(errno));
+				goto error;
+			}
 		}
 	}
 	
@@ -463,14 +465,16 @@ int do_suid()
 			LM_CRIT("user lookup failed: %s\n", strerror(errno));
 			goto error;
 		}
-		if(initgroups(pw->pw_name, pw->pw_gid)<0){
-			LM_CRIT("cannot set supplementary groups: %s\n", 
+		if(uid!=getuid()) {
+			if(initgroups(pw->pw_name, pw->pw_gid)<0){
+				LM_CRIT("cannot set supplementary groups: %s\n", 
 							strerror(errno));
-			goto error;
-		}
-		if(setuid(uid)<0){
-			LM_CRIT("cannot change uid to %d: %s\n", uid, strerror(errno));
-			goto error;
+				goto error;
+			}
+			if(setuid(uid)<0){
+				LM_CRIT("cannot change uid to %d: %s\n", uid, strerror(errno));
+				goto error;
+			}
 		}
 	}
 

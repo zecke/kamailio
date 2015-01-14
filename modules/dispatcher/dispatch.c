@@ -394,7 +394,10 @@ err:
 }
 
 /**
- *
+ * Initialize the weight distribution for a destination set
+ * - fill the array of 0..99 elements where to keep the index of the
+ *   destination address to be used. The Nth call will use
+ *   the address with the index at possition N%100
  */
 int dp_init_weights(ds_set_t *dset)
 {
@@ -409,6 +412,11 @@ int dp_init_weights(ds_set_t *dset)
 	if(dset->dlist[0].attrs.weight==0)
 		return 0;
 
+	/* first fill the array based on the weight of each destination
+	 * - the weight is the percentage (e.g., if weight=20, the afferent
+	 *   address gets its index 20 times in the array)
+	 * - if the sum of weights is more than 100, the addresses over the
+	 *   limit are ignored */
 	t = 0;
 	for(j=0; j<dset->nr; j++)
 	{
@@ -420,10 +428,15 @@ int dp_init_weights(ds_set_t *dset)
 			t++;
 		}
 	}
-	j = (t-1>=0)?t-1:0;
+	/* if the array was not completely filled (i.e., the sum of weights is
+	 * less than 100), then use last address to fill the rest */
 	for(; t<100; t++)
-		dset->wlist[t] = (unsigned int)j;
+		dset->wlist[t] = (unsigned int)(dset->nr-1);
 randomize:
+	/* shuffle the content of the array in order to mix the selection
+	 * of the addresses (e.g., if first address has weight=20, avoid
+	 * sending first 20 calls to it, but ensure that within a 100 calls,
+	 * 20 go to first address */
 	srand(time(0));
 	for (j=0; j<100; j++)
 	{
@@ -1263,11 +1276,12 @@ int ds_get_leastloaded(ds_set_t *dset)
 	int k;
 	int t;
 
-	k = 0;
-	t = dset->dlist[k].dload;
-	for(j=1; j<dset->nr; j++)
+	k = -1;
+	t = 0x7fffffff; /* high load */
+	for(j=0; j<dset->nr; j++)
 	{
-		if(!ds_skip_dst(dset->dlist[j].flags & DS_PROBING_DST))
+		if(!ds_skip_dst(dset->dlist[j].flags)
+				&& dset->dlist[j].dload<dset->dlist[j].attrs.maxload)
 		{
 			if(dset->dlist[j].dload<t)
 			{
@@ -1598,7 +1612,14 @@ int ds_select_dst(struct sip_msg *msg, int set, int alg, int mode)
 	return ds_select_dst_limit(msg, set, alg, 0, mode);
 }
 
-int ds_select_dst_limit(struct sip_msg *msg, int set, int alg, unsigned int limit, int mode)
+/**
+ * Set destination address from group 'set' selected with alogorithm 'alg'
+ * - the rest of addresses in group are added as next destination in avps,
+ *   up to the 'limit'
+ * - mode specify to set address in R-URI or outboud proxy
+ *
+ */
+int ds_select_dst_limit(sip_msg_t *msg, int set, int alg, unsigned int limit, int mode)
 {
 	int i, cnt;
 	unsigned int hash;
@@ -1728,7 +1749,13 @@ int ds_select_dst_limit(struct sip_msg *msg, int set, int alg, unsigned int limi
 				hash = 0;
 				alg = 0;
 			} else {
-				hash = ds_get_leastloaded(idx);
+				i = ds_get_leastloaded(idx);
+				if(i<0)
+				{
+					/* no address selected */
+					return -1;
+				}
+				hash = i;
 				if(ds_load_add(msg, idx, set, hash)<0)
 				{
 					LM_ERR("unable to update destination load"
@@ -1750,6 +1777,8 @@ int ds_select_dst_limit(struct sip_msg *msg, int set, int alg, unsigned int limi
 	else
 		hash = hash%idx->nr;
 	i=hash;
+
+	/* if selected address is inactive, find next active */
 	while (ds_skip_dst(idx->dlist[i].flags))
 	{
 		if(ds_use_default!=0 && idx->nr!=1)
@@ -1828,6 +1857,10 @@ int ds_select_dst_limit(struct sip_msg *msg, int set, int alg, unsigned int limi
 			if(ds_skip_dst(idx->dlist[i].flags)
 					|| (ds_use_default!=0 && i==(idx->nr-1)))
 				continue;
+			/* max load exceeded per destination */
+			if(alg==DS_ALG_LOAD
+					&& idx->dlist[i].dload>=idx->dlist[i].attrs.maxload)
+				continue;
 			LM_DBG("using entry [%d/%d]\n", set, i);
 			avp_val.s = idx->dlist[i].uri;
 			if(add_avp(AVP_VAL_STR|dst_avp_type, dst_avp_name, avp_val)!=0)
@@ -1862,6 +1895,9 @@ int ds_select_dst_limit(struct sip_msg *msg, int set, int alg, unsigned int limi
 			if(ds_skip_dst(idx->dlist[i].flags)
 					|| (ds_use_default!=0 && i==(idx->nr-1)))
 				continue;
+			/* max load exceeded per destination */
+			if(alg==DS_ALG_LOAD
+					&& idx->dlist[i].dload>=idx->dlist[i].attrs.maxload)
 			LM_DBG("using entry [%d/%d]\n", set, i);
 			avp_val.s = idx->dlist[i].uri;
 			if(add_avp(AVP_VAL_STR|dst_avp_type, dst_avp_name, avp_val)!=0)

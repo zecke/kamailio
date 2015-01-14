@@ -197,6 +197,7 @@ static int check_via_address(struct ip_addr* ip, str *name,
 	int i;
 	char* s;
 	int len;
+	char lproto;
 
 	/* maybe we are lucky and name it's an ip */
 	s=ip_addr2a(ip);
@@ -229,7 +230,8 @@ static int check_via_address(struct ip_addr* ip, str *name,
 	if (resolver&DO_DNS){
 		DBG("check_via_address: doing dns lookup\n");
 		/* try all names ips */
-		he=sip_resolvehost(name, &port, 0); /* don't use naptr */
+		lproto = PROTO_NONE;
+		he=sip_resolvehost(name, &port, &lproto); /* don't use naptr */
 		if (he && ip->af==he->h_addrtype){
 			for(i=0;he && he->h_addr_list[i];i++){
 				if ( memcmp(&he->h_addr_list[i], ip->u.addr, ip->len)==0)
@@ -2326,6 +2328,8 @@ char * build_res_buf_from_sip_req( unsigned int code, str *text ,str *new_tag,
 	char *after_body;
 	str  to_tag;
 	char *totags;
+	int httpreq;
+	char *pvia;
 
 	body = 0;
 	buf=0;
@@ -2346,6 +2350,8 @@ char * build_res_buf_from_sip_req( unsigned int code, str *text ,str *new_tag,
 
 	/*computes the length of the new response buffer*/
 	len = 0;
+
+	httpreq = IS_HTTP(msg);
 
 	/* check if received needs to be added */
 	if (received_test(msg)) {
@@ -2455,6 +2461,8 @@ char * build_res_buf_from_sip_req( unsigned int code, str *text ,str *new_tag,
 		switch (hdr->type)
 		{
 			case HDR_VIA_T:
+				/* if is HTTP, backup start of Via header in response */
+				if(unlikely(httpreq)) pvia = p;
 				if (hdr==msg->h_via1){
 					if (rport_buf){
 						if (msg->via1->rport){ /* delete the old one */
@@ -2488,6 +2496,10 @@ char * build_res_buf_from_sip_req( unsigned int code, str *text ,str *new_tag,
 							(hdr->body.s+hdr->body.len)-hdr->name.s, msg);
 				}
 				append_str( p, CRLF,CRLF_LEN);
+				/* if is HTTP, replace Via with Sia
+				 * - HTTP Via format is different than SIP Via
+				 */
+				if(unlikely(httpreq)) *pvia = 'S';
 				break;
 			case HDR_RECORDROUTE_T:
 				/* RR only for 1xx and 2xx replies */
