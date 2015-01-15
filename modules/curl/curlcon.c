@@ -20,15 +20,36 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
-#include "curl.h"
-#include "curlcon.h"
+
+/*! \file
+ * \brief  Kamailio curl :: Connectoin handling
+ * \ingroup curl
+ */
+
 #include "../../hashes.h"
 #include "../../dprint.h"
+#include "curl.h"
+#include "curlcon.h"
 
 curl_con_t *_curl_con_root = NULL;
 
 /* Forward declaration */
 int curl_init_con(str *name, str *schema, str *username, str *password, str *url);
+
+/*! Count the number of connections 
+ */
+unsigned int curl_connection_count()
+{
+	unsigned int i = 0;
+	curl_con_t *cc;
+	cc = _curl_con_root;
+	while(cc)
+	{
+		i++;
+		cc = cc->next;
+	}
+	return i;
+}
 
 
 /*! Find CURL connection by name

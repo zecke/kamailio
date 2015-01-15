@@ -54,9 +54,12 @@
 #include "../../script_cb.h"
 #include "../../mem/shm_mem.h"
 #include "../../lib/srdb1/db.h"
+#include "../../rpc.h"
+#include "../../rpc_lookup.h"
 
 #include "functions.h"
 #include "curlcon.h"
+#include "curlrpc.h"
 
 MODULE_VERSION
 
@@ -138,6 +141,11 @@ struct module_exports exports = {
     child_init /* per-child init function */
 };
 
+counter_handle_t connections;	/* Number of connection definitions */
+counter_handle_t connok;	/* Successful Connection attempts */
+counter_handle_t connfail;	/* Failed Connection attempts */
+
+
 
 static int init_shmlock(void)
 {
@@ -148,6 +156,14 @@ static int init_shmlock(void)
 static void destroy_shmlock(void)
 {
 	;
+}
+
+/* Init counters */
+static void curl_counter_init()
+{
+        counter_register(&connections, "curl", "connections", 0, 0, 0, "Counter of connection definitions (curlcon)", 0);
+        counter_register(&connok, "curl", "connok", 0, 0, 0, "Counter of successful connections (200 OK)", 0);
+        counter_register(&connfail, "curl", "connfail", 0, 0, 0, "Counter of failed connections (not 200 OK)", 0);
 }
 
 
@@ -162,10 +178,19 @@ static int mod_init(void)
 		return -1;
 	}
 
+	if(curl_init_rpc() < 0)
+        {
+                LM_ERR("failed to register RPC commands\n");
+                return -1;
+        }
+
 	if (init_shmlock() != 0) {
 		LM_CRIT("cannot initialize shmlock.\n");
 		return -1;
 	}
+
+	curl_counter_init();
+	counter_add(connections, curl_connection_count());
 
 	LM_DBG("init curl module done\n");
 	return 0;
@@ -181,6 +206,7 @@ static int child_init(int rank)
 
     	return 0;
 }
+
 
 static void destroy(void)
 {

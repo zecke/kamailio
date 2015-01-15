@@ -33,6 +33,13 @@
 #ifndef CURLCON_H
 #define CURLCON_H
 
+extern curl_con_t *_curl_con_root;
+
+/*! Count the number of connections 
+ */
+unsigned int curl_connection_count();
+
+
 int curl_parse_param(char *val);
 
 curl_con_t* curl_get_connection(str *name);

@@ -184,6 +184,7 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 	if(stream.buf) {
 		pkg_free(stream.buf);
 	}
+	counter_inc(connfail);
 	return -1;
     }
 
@@ -205,6 +206,11 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 	dst = (pv_spec_t *)_dst;
 	dst->setf(_m, &dst->pvp, (int)EQ_T, &val);
     }
+    	if (stat == 200) {
+		counter_inc(connok);
+	} else {
+		counter_inc(connfail);
+	}
 	
     curl_easy_cleanup(curl);
     pkg_free(stream.buf);

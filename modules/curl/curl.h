@@ -32,9 +32,13 @@
 #define CURL_H
 
 #include "../../str.h"
+#include "../../counters.h"
 #include "../../lib/srdb1/db.h"
 
 extern int default_connection_timeout;
+extern counter_handle_t connections;	/* Number of connection definitions */
+extern counter_handle_t connok;	/* Successful Connection attempts */
+extern counter_handle_t connfail;	/* Failed Connection attempts */
 
 /* Curl  stream object  */
 typedef struct {
