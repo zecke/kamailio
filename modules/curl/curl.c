@@ -94,6 +94,8 @@ static int w_curl_connect_post(struct sip_msg* _m, char* _con, char * _url, char
 
 /* forward function */
 static int curl_con_param(modparam_t type, void* val);
+static int pv_parse_curlerror(pv_spec_p sp, str *in);
+static int pv_get_curlerror(struct sip_msg *msg, pv_param_t *param, pv_value_t *res);
 
 /* Exported functions */
 static cmd_export_t cmds[] = {
@@ -119,10 +121,14 @@ static param_export_t params[] = {
     	{0, 0, 0}
 };
 
-static mi_export_t mi_cmds[] = {
-/*	{ "forward_list",   forward_fifo_list,   MI_NO_INPUT_FLAG, 0,  0 }, 
-	{ "forward_switch", forward_fifo_switch, 0, 0,  0 }, */
-	{ 0, 0, 0, 0, 0}
+/*!
+ * \brief Exported Pseudo variables
+ */
+static pv_export_t mod_pvs[] = {
+    {{"curlerror", (sizeof("curlerror")-1)}, /* Curl error codes */
+     PVT_OTHER, pv_get_curlerror, 0,
+	pv_parse_curlerror, 0, 0, 0},
+    {{0, 0}, 0, 0, 0, 0, 0, 0, 0}
 };
 
 /* Module interface */
@@ -132,8 +138,8 @@ struct module_exports exports = {
     cmds,      /* Exported functions */
     params,    /* Exported parameters */
     0,         /* exported statistics */
-    mi_cmds,   /* exported MI functions */
-    0,         /* exported pseudo-variables */
+    0,   	/* exported MI functions */
+    mod_pvs,         /* exported pseudo-variables */
     0,         /* extra processes */
     mod_init,  /* module initialization function */
     0,         /* response function*/
@@ -447,4 +453,53 @@ static int w_http_query(struct sip_msg* _m, char* _url, char* _result) {
  */
 static int w_http_query_post(struct sip_msg* _m, char* _url, char* _post, char* _result) {
 	return http_query(_m, _url, _result, _post);
+}
+
+/*!
+ * Parse arguments to PV
+ */
+static int pv_parse_curlerror(pv_spec_p sp, str *in)
+{
+	int cerr  = 0;
+	if(sp==NULL || in==NULL || in->len<=0)
+		return -1;
+
+	
+	cerr = atoi(in->s);
+	LM_DBG(" =====> CURL ERROR %d \n", cerr);
+	sp->pvp.pvn.u.isname.name.n = cerr;
+
+	sp->pvp.pvn.type = PV_NAME_INTSTR;
+	sp->pvp.pvn.u.isname.type = 0;
+
+	return 0;
+}
+
+/*
+ * PV - return error explanation as string
+ */
+static int pv_get_curlerror(struct sip_msg *msg, pv_param_t *param, pv_value_t *res)
+{
+	str curlerr;
+	char *err = NULL;
+	CURLcode codeerr;
+
+	if(param==NULL) {
+		return -1;
+	}
+
+	/* cURL error codes does not collide with HTTP codes */
+	if (param->pvn.u.isname.name.n < 0 || param->pvn.u.isname.name.n > 999 ) {
+		err = "Bad CURL error code";
+	}
+	if (param->pvn.u.isname.name.n > 99) {
+		err = "HTTP result code";
+	}
+	if (err == NULL) {
+		err = (char *) curl_easy_strerror(param->pvn.u.isname.name.n);
+	}
+	curlerr.s = err;
+	curlerr.len = strlen(err);
+
+	return pv_get_strval(msg, param, res, &curlerr);
 }
