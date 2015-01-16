@@ -18,7 +18,8 @@ The curl module
 	$curlerror(code)	Result string
 
 - rpc
-	curl.dumpcon	list all connection objects with properties
+	curl.listcon	list all connection objects with properties
+			-- Done, but not documented
 	curl.modcon     modify connection object
 			url
 			username
@@ -30,3 +31,8 @@ The curl module
 			failover
 	curl.addcon	add connection object
 	curl.rmcon	remove connection object
+
+- Counters
+	curl connections
+	curl connok
+	curl connfail
