@@ -170,5 +170,19 @@ switch ($retcode) {
 			</example>
 		</section>
 	</section>
+	<section>
+	<title>Pseudovariables</title>
+		<section >
+			<title>
+				<function moreinfo="none">$curlerror(error)</function>
+			</title>
+			<para>
+			cURL returns error codes from the protocol used. If an error
+			happens, a cURL specific error code below 100 is returned.
+			The $curlerror pv returns a text string representing the error.
+			For more information on cURL error codes, please visit
+			http://curl.haxx.se/libcurl/c/libcurl-errors.html
+			</para>
+	</section>
 	
 </chapter>

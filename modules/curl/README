@@ -1,4 +1,4 @@
-utils
+curl
 
 Olle E. Johansson
 
@@ -38,6 +38,10 @@ Carsten Bock
 
               4.1. http_query(url, [post-data], result)
 
+        5. Pseudovariables
+
+              5.1. $curlerror(error)
+
    List of Examples
 
    1.1. Set default_connection_timeout parameter
@@ -62,6 +66,10 @@ Chapter 1. Admin Guide
    4. Functions
 
         4.1. http_query(url, [post-data], result)
+
+   5. Pseudovariables
+
+        5.1. $curlerror(error)
 
 1. Overview
 
@@ -170,3 +178,15 @@ switch ($retcode) {
        ...
 }
 ...
+
+5. Pseudovariables
+
+   5.1. $curlerror(error)
+
+5.1. $curlerror(error)
+
+   cURL returns error codes from the protocol used. If an error happens, a
+   cURL specific error code below 100 is returned. The $curlerror pv
+   returns a text string representing the error. For more information on
+   cURL error codes, please visit
+   http://curl.haxx.se/libcurl/c/libcurl-errors.html
