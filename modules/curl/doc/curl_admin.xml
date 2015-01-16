@@ -183,6 +183,7 @@ switch ($retcode) {
 			For more information on cURL error codes, please visit
 			http://curl.haxx.se/libcurl/c/libcurl-errors.html
 			</para>
+		</section>
 	</section>
 	
 </chapter>
