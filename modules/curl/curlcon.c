@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2015 Olle E. Johansson, Edvina AB
  *
- * Based on code from sqlops:
+ * Based on code from sqlops and htable by Elena-Ramona:
  * Copyright (C) 2008 Elena-Ramona Modroiu (asipto.com)
  *
  * This file is part of kamailio, a free SIP server.
@@ -28,13 +28,32 @@
 
 #include "../../hashes.h"
 #include "../../dprint.h"
+#include "../../parser/parse_param.h"
+#include "../../usr_avp.h"
 #include "curl.h"
 #include "curlcon.h"
+
+/*! Key Value pairs */
+typedef struct _keyvalue {
+	str key;
+	str value;
+	int type;
+	union {
+		param_t *params;
+	} u;
+} keyvalue_t;
+
+
+#define KEYVALUE_TYPE_NONE	0
+#define KEYVALUE_TYPE_PARAMS	1
+
 
 curl_con_t *_curl_con_root = NULL;
 
 /* Forward declaration */
-int curl_init_con(str *name, str *schema, str *username, str *password, str *url);
+int curl_init_con(str *name, str *schema, str *username, str *password, str *url, unsigned int timeout, str *failover);
+int keyvalue_parse_str(str *data, int type, keyvalue_t *res);
+void keyvalue_destroy(keyvalue_t *res);
 
 /*! Count the number of connections 
  */
@@ -78,22 +97,26 @@ curl_con_t* curl_get_connection(str *name)
  *	Syntax:
  *		name => proto://user:password@server/url/url
  *		name => proto://server/url/url
+ *		name => proto://server/url/url;param=value;param=value
  *
  *		the url is very much like CURLs syntax
  *		the url is a base url where you can add local address
- *
- *
  */
 int curl_parse_param(char *val)
 {
-	str name;
-	str schema;
-	str url;
-	str username;
-	str secret;
+	keyvalue_t kval;	/* For name=value;name2=value lists */
+	str name	= STR_NULL;;
+	str schema	= STR_NULL;
+	str url		= STR_NULL;
+	str username	= STR_NULL;
+	str secret	= STR_NULL;
+	str params	= STR_NULL;
+	str failover	= STR_NULL;
+	unsigned int timeout	= 0;
 	str in;
 	char *p;
 	char *u;
+	param_t *conparams = NULL;
 
 	username.len = 0;
 	secret.len = 0;
@@ -176,7 +199,7 @@ int curl_parse_param(char *val)
 
 	/* Now check if there is a @ character. If so, we need to parse the username
 	   and password */
-	/* Skip to colon '@' */
+	/* Skip to at-sign '@' */
 	while(p < in.s + in.len)
 	{
 		if(*p == '@') {
@@ -205,24 +228,87 @@ int curl_parse_param(char *val)
 			}
 			secret.len = u - secret.s;
 		}
-		p++;	/* Skip the colon */
+		p++;	/* Skip the at sign */
 		url.s = p;
 		url.len = in.len + (int)(in.s - p);
 	}
+	/* Reset P to beginning of URL and look for parameters - starting with ; */
+	p = url.s;
+	/* Skip to ';' or end of string */
+	while(p < url.s + url.len)
+	{
+		if(*p == ';') {
+			/* Cut off URL at the ; */
+			url.len = (int)(p - url.s);
+			break;
+		}
+		p++;
+	}
+	if (*p == ';') {
+		/* We have parameters */
+		str tok;
+		int_str ival;
+		int itype;
+		param_t *pit = NULL;
 
-	LM_DBG("cname: [%.*s] url: [%.*s] username [%.*s] secret [%.*s]\n", name.len, name.s, url.len, url.s, username.len, username.s, secret.len, secret.s);
+		/* Adjust the URL length */
 
-	return curl_init_con(&name, &schema, &username, &secret, &url);
-	return 0;
+		p++;		/* Skip the ; */
+		params.s = p;
+		params.len = in.len + (int) (in.s - p);
+		param_hooks_t phooks;
+
+		if (parse_params(&params, CLASS_ANY, &phooks, &conparams) < 0)
+                {
+                        LM_ERR("CURL failed parsing curlcon parameters value\n");
+                        goto error;
+                }
+
+		/* Have parameters */
+		for (pit = conparams; pit; pit=pit->next)
+		{
+			tok = pit->body;
+			if(pit->name.len==7 && strncmp(pit->name.s, "timeout", 7)==0) {
+				if(str2int(&tok, &timeout)!=0) {
+					/* Bad timeout */
+					timeout = 0;
+				}
+				LM_DBG("curl [%.*s] - timeout [%d]\n", pit->name.len, pit->name.s, timeout);
+			} else if(pit->name.len==8 && strncmp(pit->name.s, "failover", 8)==0) {
+				failover = tok;
+				LM_DBG("curl [%.*s] - failover [%.*s]\n", pit->name.len, pit->name.s,
+						failover.len, failover.s);
+			} else {
+				LM_ERR("curl Unknown parameter [%.*s] \n", pit->name.len, pit->name.s);
+			}
+		}
+	}
+
+	/* The URL ends either with nothing or parameters. Parameters start with ; */
+	
+
+	LM_DBG("cname: [%.*s] url: [%.*s] username [%.*s] secret [%.*s] failover [%.*s] timeout [%d]\n", 
+			name.len, name.s, url.len, url.s, username.len, username.s,
+			secret.len, secret.s, failover.len, failover.s, timeout);
+
+	if(conparams != NULL) {
+		free_params(conparams);
+	}
+
+	return curl_init_con(&name, &schema, &username, &secret, &url, timeout, &failover);
+
 error:
-	LM_ERR("invalid curl parameter [%.*s] at [%d]\n", in.len, in.s,
-			(int)(p-in.s));
+	LM_ERR("invalid curl parameter [%.*s] at [%d]\n", in.len, in.s, (int)(p-in.s));
+
+	if(conparams != NULL) {
+		free_params(conparams);
+	}
 	return -1;
 }
 
 /*! Init connection structure 
  */
-int curl_init_con(str *name, str *schema, str *username, str *password, str *url)
+int curl_init_con(str *name, str *schema, str *username, str *password, str *url, unsigned int timeout, str *failover)
 {
 	curl_con_t *cc;
 	unsigned int conid;
@@ -253,11 +339,12 @@ int curl_init_con(str *name, str *schema, str *username, str *password, str *url
 	cc->username = *username;
 	cc->password = *password;
 	cc->schema = *schema;
+	cc->failover = *failover;
 	cc->url = *url;
+	cc->timeout = timeout;
 	cc->next = _curl_con_root;
 	_curl_con_root = cc;
 
-	LM_ERR("CURL: Added connection [%.*s]\n", name->len, name->s);
+	LM_INFO("CURL: Added connection [%.*s] timeout [%d]\n", name->len, name->s, cc->timeout);
 	return 0;
 }
-

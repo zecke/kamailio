@@ -69,18 +69,21 @@ static void curl_rpc_listcon(rpc_t* rpc, void* ctx)
 
         while(cc)
         {
+		int timeout = (int) cc->timeout;
 		if (rpc->struct_add(th, "{", "CONNECTION", &rh) < 0)
 		{
 			rpc->fault(ctx, 500, "Internal error set structure");
 			return;
 		}
 
-		if(rpc->struct_add(rh, "SSSSS", 
+		if(rpc->struct_add(rh, "SSSSSSd", 
 				"NAME", &cc->name,
 				"SCHEMA", &cc->schema,
 				"URI", &cc->url,
 				"USERNAME", &cc->username,
-				"PASSWORD", &cc->password
+				"PASSWORD", &cc->password,
+				"FAILOVER", &cc->failover,
+				"TIMEOUT", timeout
 				) < 0) {
 			rpc->fault(ctx, 500, "Internal error set structure");
 			return;

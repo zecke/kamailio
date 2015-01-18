@@ -57,7 +57,9 @@ typedef struct _curl_con
 	str schema;			/*!< The URL schema */
 	str username;			/*!< The username to use for auth */
 	str password;			/*!< The password to use for auth */
+	str failover;			/*!< Another connection to use if this one fails */
 	unsigned int port;		/*!< The port to connect to */
+	int timeout;			/*!< Timeout for this connection */
 	http_res_stream_t *stream;	/*!< Curl stream */
 	struct _curl_con *next;		/*!< next connection */
 } curl_con_t;
