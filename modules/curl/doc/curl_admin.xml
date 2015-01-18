@@ -91,7 +91,7 @@ modparam("curl", "default_connection_timeout", 2)
 			</para>
 			<para>
 			<emphasis>Syntax:</emphasis>
-			&lt;connection-name&gt;=&gt;&lt;schema&gt;://[&lt;username&gt;:&lt;password&gt;@]&lt;hostname/address&gt;
+			&lt;connection-name&gt;=&gt;&lt;schema&gt;://[&lt;username&gt;:&lt;password&gt;@]&lt;hostname/address&gt;[;param=value]
 			</para>
 			<para>
 			The address in the URL is the base for the URL in the <function>curlcon_query()</function> call. The
@@ -102,6 +102,15 @@ modparam("curl", "default_connection_timeout", 2)
 				By default, no connections are defined.
 			</emphasis>
 			</para>
+			<para>
+			Parameters
+			<itemizedlist>
+				<listitem><para>
+				<emphasis>timeout</emphasis> Timeout used for this conenction. Overrides the 
+				default timeout for the module.
+				</para></listitem>
+			</itemizedlist>
+			</para>
 			<example>
 			<title>Set <varname>curlcon</varname> parameter</title>
 				<programlisting format="linespecific">
@@ -109,6 +118,7 @@ modparam("curl", "default_connection_timeout", 2)
 modparam("curl", "curlcon", "apione=>http://atlanta.example.com")
 modparam("curl", "curlcon", "apitwo=>http://atlanta.example.com/api/12")
 modparam("curl", "curlcon", "apithree=>http://annabella:mysecret@atlanta.example.com/api/12")
+modparam("curl", "curlcon", "apifour=>http://stockholm.example.com/api/getstuff;timeout=12")
 ...
 				</programlisting>
 			</example>

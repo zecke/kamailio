@@ -133,7 +133,7 @@ modparam("curl", "default_connection_timeout", 2)
 
    Syntax:
    <connection-name>=><schema>://[<username>:<password>@]<hostname/address
-   >
+   >[;param=value]
 
    The address in the URL is the base for the URL in the curlcon_query()
    call. The address given in the function call will be appended to the
@@ -141,12 +141,18 @@ modparam("curl", "default_connection_timeout", 2)
 
    By default, no connections are defined.
 
+   Parameters
+     * timeout Timeout used for this conenction. Overrides the default
+       timeout for the module.
+
    Example 1.2. Set curlcon parameter
 ...
 modparam("curl", "curlcon", "apione=>http://atlanta.example.com")
 modparam("curl", "curlcon", "apitwo=>http://atlanta.example.com/api/12")
 modparam("curl", "curlcon", "apithree=>http://annabella:mysecret@atlanta.example
 .com/api/12")
+modparam("curl", "curlcon", "apifour=>http://stockholm.example.com/api/getstuff;
+timeout=12")
 ...
 
 4. Functions
