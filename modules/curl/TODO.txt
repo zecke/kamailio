@@ -2,7 +2,7 @@ The curl module
 ===============
 
 - connection parameters
-	timeout=x
+	timeout=x		- DONE
 	read=line/all
 	tlsverify=on/off
 	failover=curlcon	Other curlcon that can be used for failover in case of 5xx response or timeout
