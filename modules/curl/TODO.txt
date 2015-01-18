@@ -15,7 +15,7 @@ The curl module
 	- pv $curlstatus(object) ??
 
 - pv for curl error codes (result < 100)
-	$curlerror(code)	Result string
+	$curlerror(code)	Result string - DONE
 
 - rpc
 	curl.listcon	list all connection objects with properties
