@@ -185,5 +185,32 @@ switch ($retcode) {
 			</para>
 		</section>
 	</section>
+	<section>
+	<title>Counters</title>
+		<section >
+			<title>
+				<function moreinfo="none">curl.connections</function>
+			</title>
+			<para>
+				The number of connection definitions that are in-memory.
+			</para>
+		</section>
+		<section >
+			<title>
+				<function moreinfo="none">curl.connok</function>
+			</title>
+			<para>
+				The number of successful connections since &kamailio; start
+			</para>
+		</section>
+		<section >
+			<title>
+				<function moreinfo="none">curl.connfail</function>
+			</title>
+			<para>
+				The number of failed connections since &kamailio; start
+			</para>
+		</section>
+	</section>
 	
 </chapter>
