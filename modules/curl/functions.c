@@ -1,8 +1,11 @@
 /*
  * script functions of curl module
  *
- * Copyright (C) 2008 Juha Heinanen
- * Copyright (C) 2013 Carsten Bock, ng-voice GmbH
+ * Based on functions from siputil
+ * 	Copyright (C) 2008 Juha Heinanen
+ * 	Copyright (C) 2013 Carsten Bock, ng-voice GmbH
+ * This module
+ * 	Copyright (C) 2015 Olle E. Johansson, Edvina AB
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -44,7 +47,8 @@
 #include "curlcon.h"
 
 /* Forward declaration */
-static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *username, const char *secret, const char *contenttype, char* _post, unsigned int timeout);
+static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *username, 
+		const char *secret, const char *contenttype, char* _post, const unsigned int timeout);
 
 /* 
  * curl write function that saves received data as zero terminated
@@ -89,6 +93,7 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
     pv_spec_t *dst;
     pv_value_t val;
     double download_size;
+    double total_time;
 
     memset(&stream, 0, sizeof(http_res_stream_t));
 
@@ -140,6 +145,7 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 	*(post + post_value.len) = (char)0;
 #endif
  	res |= curl_easy_setopt(curl, CURLOPT_POSTFIELDS, _post);
+	
     }
 
     if (_username) {
@@ -188,10 +194,14 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 	return -1;
     }
 
+	/* HTTP_CODE CHANGED TO CURLINFO_RESPONSE_CODE in curl > 7.10.7 */
     curl_easy_getinfo(curl, CURLINFO_HTTP_CODE, &stat);
+/* CURLINFO_CONTENT_TYPE, char *    */
+
     if ((stat >= 200) && (stat < 500)) {
 	curl_easy_getinfo(curl, CURLINFO_SIZE_DOWNLOAD, &download_size);
-	LM_DBG("http_query download size: %u\n", (unsigned int)download_size);
+    	curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &total_time);
+	LM_DBG("http_query download size: %u Time : %ld \n", (unsigned int)download_size, (long) total_time);
 
 	/* search for line feed */
 	at = memchr(stream.buf, (char)10, download_size);
@@ -212,6 +222,7 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 		counter_inc(connfail);
 	}
 	
+	/* CURLcode curl_easy_getinfo(CURL *curl, CURLINFO info, ... ); */
     curl_easy_cleanup(curl);
     pkg_free(stream.buf);
     return stat;
