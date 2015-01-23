@@ -46,6 +46,8 @@ extern int dbk_consume_messages_on_reconnect;
 const amqp_bytes_t kz_amqp_empty_bytes = { 0, NULL };
 const amqp_table_t kz_amqp_empty_table = { 0, NULL };
 
+char* last_payload_result = NULL;
+
 
 static char *kz_amqp_str_dup(str *src)
 {
@@ -331,6 +333,8 @@ void kz_amqp_destroy() {
 		shm_free(kz_pool);
 	}
 
+	if(last_payload_result != NULL)
+		free(last_payload_result);
 
 }
 
@@ -802,9 +806,6 @@ int kz_amqp_publish(struct sip_msg* msg, char* exchange, char* routing_key, char
 
 };
 
-
-char* last_payload_result = NULL;
-
 int kz_pv_get_last_query_result(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res)
 {
 	return last_payload_result == NULL ? pv_get_null(msg, param, res) : pv_get_strzval(msg, param, res, last_payload_result);
@@ -818,7 +819,7 @@ int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, cha
 	  str routing_key_s;
 
 	  if(last_payload_result)
-		pkg_free(last_payload_result);
+		free(last_payload_result);
 
 	  last_payload_result = NULL;
 
@@ -855,7 +856,7 @@ int kz_amqp_query_ex(struct sip_msg* msg, char* exchange, char* routing_key, cha
 
 		char* strjson = (char*)json_object_to_json_string(ret);
 		int len = strlen(strjson);
-		char* value = pkg_malloc(len+1);
+		char* value = malloc(len+1);
 		memcpy(value, strjson, len);
 		value[len] = '\0';
 		last_payload_result = value;

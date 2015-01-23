@@ -376,6 +376,7 @@ static int fire_init_event(int rank)
 static void mod_destroy(void) {
 	kz_amqp_destroy();
     shm_free(kz_pipe_fds);
+    kz_tr_clear_buffers();
 }
 
 
