@@ -77,6 +77,8 @@ reg_notification_list *notification_list = 0; //< List of pending notifications
 
 extern struct tm_binds tmb;
 
+extern int notification_list_size_threshold;
+
 extern int subscription_default_expires;
 extern int subscription_min_expires;
 extern int subscription_max_expires;
@@ -121,6 +123,7 @@ int notify_init() {
 	return 0;
     }
     notification_list->lock = lock_init(notification_list->lock);
+    notification_list->size = 0;
     sem_new(notification_list->empty, 0); //pre-locked - as we assume list is empty at start
     return 1;
 }
@@ -1520,6 +1523,8 @@ str generate_reginfo_full(udomain_t* _t, str* impu_list, int num_impus) {
     buf.len = 0;
     pad.s = padc;
     pad.len = 0;
+    
+    int expires;
 
     LM_DBG("Getting reginfo_full");
 
@@ -1558,14 +1563,24 @@ str generate_reginfo_full(udomain_t* _t, str* impu_list, int num_impus) {
 	    if (ptr->q != -1) {
 		LM_DBG("q value not equal to -1");
 		float q = (float) ptr->q / 1000;
+		expires = ptr->expires - act_time;
+		if(expires < 0) {
+		    LM_WARN("Contact expires is negative - setting to 0\n");
+		    expires = 0;
+		}
 		sprintf(pad.s, contact_s_q.s, ptr, r_active.len, r_active.s,
-			r_registered.len, r_registered.s, ptr->expires - act_time,
+			r_registered.len, r_registered.s, expires,
 			q);
 	    } else {
 		LM_DBG("q value equal to -1");
-	    sprintf(pad.s, contact_s.s, ptr, r_active.len, r_active.s,
+		expires = ptr->expires - act_time;
+		if(expires < 0) {
+		    LM_WARN("Contact expires is negative - setting to 0\n");
+		    expires = 0;
+		}
+		sprintf(pad.s, contact_s.s, ptr, r_active.len, r_active.s,
 			r_registered.len, r_registered.s,
-			ptr->expires - act_time);
+			expires);
 	    }
 	    pad.len = strlen(pad.s);
 	    STR_APPEND(buf, pad);
@@ -1654,6 +1669,11 @@ str get_reginfo_partial(impurecord_t *r, ucontact_t *c, int event_type) {
 
     if (r) {
         expires = c->expires - act_time;
+	if(expires < 0) {
+	    LM_WARN("Contact expires is negative - setting to 0\n");
+	    expires = 0;
+	}
+	
         if (//richard we only use expired and unregistered
                 (event_type == IMS_REGISTRAR_CONTACT_EXPIRED ||
                 event_type == IMS_REGISTRAR_CONTACT_UNREGISTERED)
@@ -1876,6 +1896,11 @@ reg_notification * new_notification(str subscription_state,
     str buf;
     char bufc[MAX_REGINFO_SIZE];
 
+    if (content.len > MAX_REGINFO_SIZE) {
+        LM_ERR("content size (%d) exceeds MAX_REGINFO_SIZE (%d)!\n", content.len, MAX_REGINFO_SIZE);
+        return 0;
+    }
+
     sprintf(bufc, content.s, r->version);
     buf.s = bufc;
     buf.len = strlen(bufc);
@@ -1995,6 +2020,11 @@ void add_notification(reg_notification * n) {
     if (notification_list->tail) notification_list->tail->next = n;
     notification_list->tail = n;
     if (!notification_list->head) notification_list->head = n;
+    notification_list->size++;
+    if(notification_list_size_threshold > 0 && notification_list->size > notification_list_size_threshold) {
+	    LM_WARN("notification_list is size [%d] and has exceed notification_list_size_threshold of [%d]", notification_list->size, notification_list_size_threshold);
+    }
+    
     sem_release(notification_list->empty);
     lock_release(notification_list->lock);
 }
@@ -2019,6 +2049,7 @@ reg_notification* get_notification() {
         notification_list->tail = 0;
     }
     n->next = 0; //make sure whoever gets this cant access our list
+    notification_list->size--;
     lock_release(notification_list->lock);
 
     return n;
