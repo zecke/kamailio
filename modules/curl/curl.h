@@ -58,6 +58,8 @@ typedef struct _curl_con
 	str username;			/*!< The username to use for auth */
 	str password;			/*!< The password to use for auth */
 	str failover;			/*!< Another connection to use if this one fails */
+	str cacert;			/*!< File name of CA cert to use */
+	str clientcert;			/*!< File name of CA client cert */
 	unsigned int port;		/*!< The port to connect to */
 	int timeout;			/*!< Timeout for this connection */
 	http_res_stream_t *stream;	/*!< Curl stream */

@@ -1,5 +1,6 @@
 /*
  * curl Module
+ * Copyright (C) 2015 Edvina AB, Olle E. Johansson
  *
  * Based on part of the utils module and part
  * of the json-rpc-c module
@@ -65,6 +66,14 @@ MODULE_VERSION
 
 /* Module parameter variables */
 int default_connection_timeout = 4;
+static char	*default_tls_cacert;			/*!< File name: Default CA cert to use for curl TLS connection */
+static char	*default_tls_clientcert;		/*!< File name: Default client certificate to use for curl TLS connection */
+static char	*default_tls_clientkey;			/*!< File name: Key in PEM format that belongs to client cert */
+int		default_tls_verifyserver = 1;		/*!< 0 = Do not verify TLS server cert. 1 = Verify TLS cert (default) */
+static char 	*default_http_proxy;			/*!< Default HTTP proxy to use */
+int		default_http_proxy_port;		/*!< Default HTTP proxy port to use */
+int		default_http_follow_redirect = 0;	/*!< Follow HTTP redirects CURLOPT_FOLLOWLOCATION */
+static char 	*default_useragent;			/*!< Default CURL useragent. Default "Kamailio Curl " */
 
 /* lock for configuration access */
 static gen_lock_t *conf_lock = NULL;
@@ -118,8 +127,22 @@ static cmd_export_t cmds[] = {
 static param_export_t params[] = {
     	{"default_connection_timeout", INT_PARAM, &default_connection_timeout},
 	{"curlcon",  PARAM_STRING|USE_FUNC_PARAM, (void*)curl_con_param},
+	{"tls_cacert", PARAM_STRING,  &default_tls_cacert },
+	{"tls_clientcert", PARAM_STRING, &default_tls_clientcert },
+	{"tls_clientkey", PARAM_STRING, &default_tls_clientkey },
+	{"tls_verifyserver", INT_PARAM, &default_tls_verifyserver },
+	{"httpproxyport", INT_PARAM, &default_http_proxy_port },
+	{"httpfollowredirect", INT_PARAM, &default_http_follow_redirect },
+	{"useragent", PARAM_STRING,  &default_useragent },
     	{0, 0, 0}
 };
+//		str	default_tls_clientcert;			/*!< File name: Default client certificate to use for curl TLS connection */
+//		str	default_tls_clientkey;			/*!< File name: Key in PEM format that belongs to client cert */
+//		int	default_tls_verifyserver = 1;		/*!< 0 = Do not verify TLS server cert. 1 = Verify TLS cert (default) */
+//		str	default_http_proxy;			/*!< Default HTTP proxy to use */
+//		int	default_http_proxy_port;		/*!< Default HTTP proxy port to use */
+//		int	default_http_follow_redirect = 0;	/*!< Follow HTTP redirects CURLOPT_FOLLOWLOCATION */
+//		str	default_useragent;			/*!< Default CURL useragent. Default "Kamailio Curl " */
 
 /*!
  * \brief Exported Pseudo variables
@@ -176,6 +199,8 @@ static void curl_counter_init()
 /* Module initialization function */
 static int mod_init(void)
 {
+	curl_version_info_data *cvi;
+	
 	LM_DBG("init curl module\n");
 
 	/* Initialize curl */
@@ -183,6 +208,7 @@ static int mod_init(void)
 		LM_ERR("curl_global_init failed\n");
 		return -1;
 	}
+	cvi = curl_version_info(CURLVERSION_NOW);
 
 	if(curl_init_rpc() < 0)
         {
@@ -198,7 +224,12 @@ static int mod_init(void)
 	curl_counter_init();
 	counter_add(connections, curl_connection_count());
 
-	LM_DBG("init curl module done\n");
+	LM_DBG("init curl module done. Curl version: %s SSL %s\n", cvi->version, cvi->ssl_version);
+	LM_DBG("Extra: Curl supports %s %s %s \n",
+			(cvi->features && CURL_VERSION_SSL ? "SSL" : ""),
+			(cvi->features && CURL_VERSION_IPV6 ? "IPv6" : ""),
+			(cvi->features && CURL_VERSION_IDN ? "IDN" : "")
+		 );
 	return 0;
 }
 
