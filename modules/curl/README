@@ -31,8 +31,10 @@ Carsten Bock
 
         3. Parameters
 
-              3.1. default_connection_timeout (int)
-              3.2. curlcon (string)
+              3.1. httpredirect (int)
+              3.2. useragent (int)
+              3.3. default_connection_timeout (int)
+              3.4. curlcon (string)
 
         4. Functions
 
@@ -50,9 +52,11 @@ Carsten Bock
 
    List of Examples
 
-   1.1. Set default_connection_timeout parameter
-   1.2. Set curlcon parameter
-   1.3. http_query() usage
+   1.1. Set httpredirect parameter
+   1.2. Set useragent parameter
+   1.3. Set default_connection_timeout parameter
+   1.4. Set curlcon parameter
+   1.5. http_query() usage
 
 Chapter 1. Admin Guide
 
@@ -66,8 +70,10 @@ Chapter 1. Admin Guide
 
    3. Parameters
 
-        3.1. default_connection_timeout (int)
-        3.2. curlcon (string)
+        3.1. httpredirect (int)
+        3.2. useragent (int)
+        3.3. default_connection_timeout (int)
+        3.4. curlcon (string)
 
    4. Functions
 
@@ -112,21 +118,47 @@ Chapter 1. Admin Guide
 
 3. Parameters
 
-   3.1. default_connection_timeout (int)
-   3.2. curlcon (string)
+   3.1. httpredirect (int)
+   3.2. useragent (int)
+   3.3. default_connection_timeout (int)
+   3.4. curlcon (string)
 
-3.1. default_connection_timeout (int)
+3.1. httpredirect (int)
+
+   If set to 1, enabled, CURL will follow HTTP 302 Redirects. If set to 0,
+   CURL will not follow redirects. Default is 1, enabled.
+
+   The latest redirect URL will be stored in the $curlredirect
+   pseudovariable.
+
+   Example 1.1. Set httpredirect parameter
+...
+modparam("curl", "httpredirect", 0)
+...
+
+3.2. useragent (int)
+
+   Useragent to use in the HTTP protocol for requests. Defaults to the
+   Kamailio SIP useragent string - including software version and
+   platform.
+
+   Example 1.2. Set useragent parameter
+...
+modparam("curl", "useragent", "Secret HTTP REST grabber 0.42")
+...
+
+3.3. default_connection_timeout (int)
 
    Defines in seconds how long Kamailio waits for response from servers.
 
    Default value is zero, i.e., the timeout function is disabled.
 
-   Example 1.1. Set default_connection_timeout parameter
+   Example 1.3. Set default_connection_timeout parameter
 ...
 modparam("curl", "default_connection_timeout", 2)
 ...
 
-3.2. curlcon (string)
+3.4. curlcon (string)
 
    Defines a connection and credentials for the connection for use in a
    connection-oriented function call in this module.
@@ -142,10 +174,14 @@ modparam("curl", "default_connection_timeout", 2)
    By default, no connections are defined.
 
    Parameters
-     * timeout Timeout used for this conenction. Overrides the default
+     * httpredirect Set to 1 for following HTTP 302 redirect. 0 to
+       disable. Default is the setting for the httpredirect modparam.
+     * timeout Timeout used for this connection. Overrides the default
        timeout for the module.
+     * useragent Useragent used for HTTP requests. Overrides useragent
+       modparam.
 
-   Example 1.2. Set curlcon parameter
+   Example 1.4. Set curlcon parameter
 ...
 modparam("curl", "curlcon", "apione=>http://atlanta.example.com")
 modparam("curl", "curlcon", "apitwo=>http://atlanta.example.com/api/12")
@@ -177,7 +213,7 @@ timeout=12")
    This function can be used from REQUEST_ROUTE, ONREPLY_ROUTE,
    FAILURE_ROUTE, and BRANCH_ROUTE.
 
-   Example 1.3. http_query() usage
+   Example 1.5. http_query() usage
 ...
 # GET-Request
 http_query("http://tutpro.com/index.php?r_uri=$(ru{s.escape.param})&f_uri=$(fu{s

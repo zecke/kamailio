@@ -62,6 +62,40 @@
 	
 	<section>
 		<title>Parameters</title>
+		<section id="utils.p.httpredirect">
+			<title><varname>httpredirect</varname> (int)</title>
+			<para>
+			If set to 1, enabled, CURL will follow HTTP 302 Redirects.
+			If set to 0, CURL will not follow redirects. Default is 1, enabled.
+			</para>
+			<para>
+			The latest redirect URL will be stored in the <emphasis>$curlredirect</emphasis>
+			pseudovariable.
+			</para>
+			<example>
+			<title>Set <varname>httpredirect</varname> parameter</title>
+				<programlisting format="linespecific">
+...
+modparam("curl", "httpredirect", 0)
+...
+				</programlisting>
+			</example>
+		</section>
+		<section id="utils.p.useragent">
+			<title><varname>useragent</varname> (int)</title>
+			<para>
+			Useragent to use in the HTTP protocol for requests. Defaults to
+			the &kamailio; SIP useragent string - including software version and platform.
+			</para>
+			<example>
+			<title>Set <varname>useragent</varname> parameter</title>
+				<programlisting format="linespecific">
+...
+modparam("curl", "useragent", "Secret HTTP REST grabber 0.42")
+...
+				</programlisting>
+			</example>
+		</section>
 		<section id="utils.p.default_connection_timeout">
 			<title><varname>default_connection_timeout</varname> (int)</title>
 			<para>
@@ -106,8 +140,16 @@ modparam("curl", "default_connection_timeout", 2)
 			Parameters
 			<itemizedlist>
 				<listitem><para>
-				<emphasis>timeout</emphasis> Timeout used for this conenction. Overrides the 
+				<emphasis>httpredirect</emphasis> Set to 1 for following HTTP 302
+				redirect. 0 to disable. Default is the setting for the httpredirect modparam.
+				</para></listitem>
+				<listitem><para>
+				<emphasis>timeout</emphasis> Timeout used for this connection. Overrides the 
 				default timeout for the module.
+				</para></listitem>
+				<listitem><para>
+				<emphasis>useragent</emphasis> Useragent used for HTTP requests. Overrides
+				useragent modparam.
 				</para></listitem>
 			</itemizedlist>
 			</para>
