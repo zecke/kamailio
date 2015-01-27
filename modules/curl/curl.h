@@ -76,6 +76,7 @@ typedef struct _curl_con
 	int timeout;			/*!< Timeout for this connection */
 	http_res_stream_t *stream;	/*!< Curl stream */
 	struct _curl_con *next;		/*!< next connection */
+	char redirecturl[512];		/*!< Last redirect URL - to use for $curlredirect(curlcon) pv */
 } curl_con_t;
 
 

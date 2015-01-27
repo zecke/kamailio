@@ -1,11 +1,11 @@
 /*
  * script functions of curl module
  *
+ * Copyright (C) 2015 Olle E. Johansson, Edvina AB
+ *
  * Based on functions from siputil
  * 	Copyright (C) 2008 Juha Heinanen
  * 	Copyright (C) 2013 Carsten Bock, ng-voice GmbH
- * This module
- * 	Copyright (C) 2015 Olle E. Johansson, Edvina AB
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -48,7 +48,8 @@
 
 /* Forward declaration */
 static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *username, 
-		const char *secret, const char *contenttype, char* _post, const unsigned int timeout);
+		const char *secret, const char *contenttype, char* _post, const unsigned int timeout,
+		unsigned int http_follow_redirect);
 
 /* 
  * curl write function that saves received data as zero terminated
@@ -82,7 +83,7 @@ size_t write_function( void *ptr, size_t size, size_t nmemb, void *stream_ptr)
 
 /*! Send query to server, optionally post data.
  */
-static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *_username, const char *_secret, const char *contenttype, char* _post, unsigned int timeout)
+static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char *_username, const char *_secret, const char *contenttype, char* _post, unsigned int timeout, unsigned int http_follow_redirect)
 {
     CURL *curl;
     CURLcode res;  
@@ -160,6 +161,8 @@ static int curL_query_url(struct sip_msg* _m, char* _url, char* _dst, const char
 
     res |= curl_easy_setopt(curl, CURLOPT_NOSIGNAL, (long) 1);
     res |= curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long) timeout);
+    res |= curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, (long) http_follow_redirect);
+
 
     res |= curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_function);
     res |= curl_easy_setopt(curl, CURLOPT_WRITEDATA, &stream);
@@ -239,7 +242,6 @@ int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _
 	char connurlbuf[BUFSIZ/2];
 	char urlbuf[512];
 	unsigned int len = 0;
-	unsigned int timeout = default_connection_timeout;
 
 	memset(usernamebuf,0,sizeof(usernamebuf));
 	memset(passwordbuf,0,sizeof(passwordbuf));
@@ -262,9 +264,6 @@ int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _
 	strncpy(usernamebuf, conn->username.s, conn->username.len);
 	strncpy(passwordbuf, conn->password.s, conn->password.len);
 	strncpy(connurlbuf, conn->url.s, conn->url.len);
-	if (conn->timeout > 0) {
-		timeout = (unsigned int) conn->timeout;	/* Override default timeout */
-	}
 
 	strncpy(urlbuf,conn->schema.s, conn->schema.len);
 	snprintf(&urlbuf[conn->schema.len],(sizeof(urlbuf) - conn->schema.len), "://%s%s%s", connurlbuf, 
@@ -275,7 +274,8 @@ int curl_con_query_url(struct sip_msg* _m, char *connection, char* _url, char* _
 	}
 
 	/* TODO: Concatenate URL in connection with URL given in function */
-	return curL_query_url(_m, urlbuf, _result, usernamebuf, passwordbuf, (contenttype ? contenttype : "text/plain"), _post, timeout );
+	return curL_query_url(_m, urlbuf, _result, usernamebuf, passwordbuf, (contenttype ? contenttype : "text/plain"), _post,
+		conn->timeout, conn->http_follow_redirect );
 }
 
 
@@ -288,7 +288,7 @@ int http_query(struct sip_msg* _m, char* _url, char* _dst, char* _post)
 {
 	int res;
 
-	res =  curL_query_url(_m, _url, _dst, NULL, NULL, "text/plain", _post, default_connection_timeout);
+	res =  curL_query_url(_m, _url, _dst, NULL, NULL, "text/plain", _post, default_connection_timeout, default_http_follow_redirect);
 
 	return res;
 }

@@ -40,7 +40,7 @@
 curl_con_t *_curl_con_root = NULL;
 
 /* Forward declaration */
-curl_con *curl_init_con(str *name);
+curl_con_t *curl_init_con(str *name);
 
 /*! Count the number of connections 
  */
@@ -95,7 +95,7 @@ int curl_parse_param(char *val)
 	str schema	= STR_NULL;
 	str url		= STR_NULL;
 	str username	= STR_NULL;
-	str secret	= STR_NULL;
+	str password	= STR_NULL;
 	str params	= STR_NULL;
 	str failover	= STR_NULL;
 	unsigned int timeout	= default_connection_timeout;
@@ -109,7 +109,7 @@ int curl_parse_param(char *val)
 	curl_con_t *cc;
 
 	username.len = 0;
-	secret.len = 0;
+	password.len = 0;
 	LM_INFO("curl modparam parsing starting\n");
 	LM_DBG("modparam curlcon: %s\n", val);
 
@@ -212,11 +212,11 @@ int curl_parse_param(char *val)
 		if (*u == ':') {
 			u++;
 			/* Go look for password */
-			secret.s = u;
+			password.s = u;
 			while (u < p) {
 				u++;
 			}
-			secret.len = u - secret.s;
+			password.len = u - password.s;
 		}
 		p++;	/* Skip the at sign */
 		url.s = p;
@@ -269,16 +269,16 @@ int curl_parse_param(char *val)
 					http_follow_redirect = default_http_follow_redirect;
 				}
 				LM_DBG("curl [%.*s] - httpredirect [%d]\n", pit->name.len, pit->name.s, http_follow_redirect);
-			if(pit->name.len==7 && strncmp(pit->name.s, "timeout", 7)==0) {
+			} else if(pit->name.len==7 && strncmp(pit->name.s, "timeout", 7)==0) {
 				if(str2int(&tok, &timeout)!=0) {
 					/* Bad timeout */
 					LM_DBG("curl connection [%.*s]: timeout bad value. Using default\n", name.len, name.s);
-					timeout = default_timeout;
+					timeout = default_connection_timeout;
 				}
 				LM_DBG("curl [%.*s] - timeout [%d]\n", pit->name.len, pit->name.s, timeout);
 			} else if(pit->name.len==9 && strncmp(pit->name.s, "useragent", 9)==0) {
 				useragent = tok;
-				LM_DBG("curl [%.*s] - failover [%.*s]\n", pit->name.len, pit->name.s,
+				LM_DBG("curl [%.*s] - useragent [%.*s]\n", pit->name.len, pit->name.s,
 						useragent.len, useragent.s);
 			} else if(pit->name.len==8 && strncmp(pit->name.s, "failover", 8)==0) {
 				failover = tok;
@@ -293,9 +293,9 @@ int curl_parse_param(char *val)
 	/* The URL ends either with nothing or parameters. Parameters start with ; */
 	
 
-	LM_DBG("cname: [%.*s] url: [%.*s] username [%.*s] secret [%.*s] failover [%.*s] timeout [%d] useragent [%.*s]\n", 
+	LM_DBG("cname: [%.*s] url: [%.*s] username [%.*s] password [%.*s] failover [%.*s] timeout [%d] useragent [%.*s]\n", 
 			name.len, name.s, url.len, url.s, username.len, username.s,
-			secret.len, secret.s, failover.len, failover.s, timeout, useragent.len, useragent.s);
+			password.len, password.s, failover.len, failover.s, timeout, useragent.len, useragent.s);
 
 	if(conparams != NULL) {
 		free_params(conparams);
@@ -305,14 +305,14 @@ int curl_parse_param(char *val)
 	if (cc == NULL) {
 		return -1;
 	}
-	cc->conid = conid;
-	cc->username = *username;
-	cc->password = *password;
-	cc->schema = *schema;
-	cc->failover = *failover;
-	cc->useragent = *useragent;
-	cc->url = *url;
+	cc->username = username;
+	cc->password = password;
+	cc->schema = schema;
+	cc->failover = failover;
+	cc->useragent = useragent;
+	cc->url = url;
 	cc->timeout = timeout;
+	cc->http_follow_redirect = http_follow_redirect;
 	return 0;
 
 error:
@@ -326,7 +326,7 @@ error:
 
 /*! Init connection structure and place it in structure
  */
-curl_con *curl_init_con(str *name)
+curl_con_t *curl_init_con(str *name)
 {
 	curl_con_t *cc;
 	unsigned int conid;

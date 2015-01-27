@@ -111,6 +111,8 @@ static int w_curl_connect_post(struct sip_msg* _m, char* _con, char * _url, char
 static int curl_con_param(modparam_t type, void* val);
 static int pv_parse_curlerror(pv_spec_p sp, str *in);
 static int pv_get_curlerror(struct sip_msg *msg, pv_param_t *param, pv_value_t *res);
+static int pv_parse_curlredirect(pv_spec_p sp, str *in);
+static int pv_get_curlredirect(struct sip_msg *msg, pv_param_t *param, pv_value_t *res);
 
 /* Exported functions */
 static cmd_export_t cmds[] = {
@@ -138,10 +140,11 @@ static param_export_t params[] = {
 	{"tls_clientkey", PARAM_STRING, &default_tls_clientkey },
 	{"tls_verifyserver", INT_PARAM, &default_tls_verifyserver },
 	{"httpproxyport", INT_PARAM, &default_http_proxy_port },
-	{"httpfollowredirect", INT_PARAM, &default_http_follow_redirect },
+	{"httpredirect", INT_PARAM, &default_http_follow_redirect },
 	{"useragent", PARAM_STRING,  &default_useragent },
     	{0, 0, 0}
 };
+
 //		str	default_tls_clientcert;			/*!< File name: Default client certificate to use for curl TLS connection */
 //		str	default_tls_clientkey;			/*!< File name: Key in PEM format that belongs to client cert */
 //		int	default_tls_verifyserver = 1;		/*!< 0 = Do not verify TLS server cert. 1 = Verify TLS cert (default) */
@@ -157,6 +160,9 @@ static pv_export_t mod_pvs[] = {
     {{"curlerror", (sizeof("curlerror")-1)}, /* Curl error codes */
      PVT_OTHER, pv_get_curlerror, 0,
 	pv_parse_curlerror, 0, 0, 0},
+    {{"curlredirect", (sizeof("redirect")-1)}, /* Curl error codes */
+     PVT_OTHER, pv_get_curlredirect, 0,
+	pv_parse_curlredirect, 0, 0, 0},
     {{0, 0}, 0, 0, 0, 0, 0, 0, 0}
 };
 
@@ -506,7 +512,7 @@ static int w_http_query_post(struct sip_msg* _m, char* _url, char* _post, char* 
 }
 
 /*!
- * Parse arguments to PV
+ * Parse arguments to  pv $curlerror
  */
 static int pv_parse_curlerror(pv_spec_p sp, str *in)
 {
@@ -526,7 +532,7 @@ static int pv_parse_curlerror(pv_spec_p sp, str *in)
 }
 
 /*
- * PV - return error explanation as string
+ * PV - return curl error explanation as string
  */
 static int pv_get_curlerror(struct sip_msg *msg, pv_param_t *param, pv_value_t *res)
 {
@@ -552,4 +558,34 @@ static int pv_get_curlerror(struct sip_msg *msg, pv_param_t *param, pv_value_t *
 	curlerr.len = strlen(err);
 
 	return pv_get_strval(msg, param, res, &curlerr);
+}
+
+/*!
+ * Parse arguments to  pv $curlredirect
+ */
+static int pv_parse_curlredirect(pv_spec_p sp, str *in)
+{
+	int cerr  = 0;
+	if(sp==NULL || in==NULL || in->len<=0) {
+		return -1;
+	}
+
+	// DO SOMETHING HERE
+	return 0;
+}
+
+/*
+ * PV - return curl redirect URL for curlcon
+ *	$curlredirect("curlcon");
+ */
+static int pv_get_curlredirect(struct sip_msg *msg, pv_param_t *param, pv_value_t *res)
+{
+	str redirecturl;
+
+	if(param==NULL) {
+		return -1;
+	}
+
+	// DO SOMETHING HERE
+	return pv_get_strval(msg, param, res, &redirecturl);
 }
