@@ -57,6 +57,7 @@
 #include "../../lib/srdb1/db.h"
 #include "../../rpc.h"
 #include "../../rpc_lookup.h"
+#include "../../config.h"
 
 #include "functions.h"
 #include "curlcon.h"
@@ -64,16 +65,21 @@
 
 MODULE_VERSION
 
+#define CURL_USER_AGENT  NAME  " (" VERSION " (" ARCH "/" OS_QUOTED "))"
+#define CURL_USER_AGENT_LEN (sizeof(CURL_USER_AGENT)-1)
+
 /* Module parameter variables */
-int default_connection_timeout = 4;
-static char	*default_tls_cacert;			/*!< File name: Default CA cert to use for curl TLS connection */
-static char	*default_tls_clientcert;		/*!< File name: Default client certificate to use for curl TLS connection */
-static char	*default_tls_clientkey;			/*!< File name: Key in PEM format that belongs to client cert */
-int		default_tls_verifyserver = 1;		/*!< 0 = Do not verify TLS server cert. 1 = Verify TLS cert (default) */
-static char 	*default_http_proxy;			/*!< Default HTTP proxy to use */
-int		default_http_proxy_port;		/*!< Default HTTP proxy port to use */
-int		default_http_follow_redirect = 0;	/*!< Follow HTTP redirects CURLOPT_FOLLOWLOCATION */
-static char 	*default_useragent;			/*!< Default CURL useragent. Default "Kamailio Curl " */
+unsigned int	default_connection_timeout = 4;
+char		*default_tls_cacert = NULL;		/*!< File name: Default CA cert to use for curl TLS connection */
+char		*default_tls_clientcert = NULL;		/*!< File name: Default client certificate to use for curl TLS connection */
+char		*default_tls_clientkey = NULL;		/*!< File name: Key in PEM format that belongs to client cert */
+unsigned int	default_tls_verifyserver = 1;		/*!< 0 = Do not verify TLS server cert. 1 = Verify TLS cert (default) */
+char 		*default_http_proxy = NULL;		/*!< Default HTTP proxy to use */
+unsigned int	default_http_proxy_port = 0;		/*!< Default HTTP proxy port to use */
+unsigned int	default_http_follow_redirect = 0;	/*!< Follow HTTP redirects CURLOPT_FOLLOWLOCATION */
+char 		*default_useragent = CURL_USER_AGENT;	/*!< Default CURL useragent. Default "Kamailio Curl " */
+
+static curl_version_info_data *curl_info;
 
 /* lock for configuration access */
 static gen_lock_t *conf_lock = NULL;
@@ -199,7 +205,6 @@ static void curl_counter_init()
 /* Module initialization function */
 static int mod_init(void)
 {
-	curl_version_info_data *cvi;
 	
 	LM_DBG("init curl module\n");
 
@@ -208,7 +213,7 @@ static int mod_init(void)
 		LM_ERR("curl_global_init failed\n");
 		return -1;
 	}
-	cvi = curl_version_info(CURLVERSION_NOW);
+	curl_info = curl_version_info(CURLVERSION_NOW);
 
 	if(curl_init_rpc() < 0)
         {
@@ -224,13 +229,27 @@ static int mod_init(void)
 	curl_counter_init();
 	counter_add(connections, curl_connection_count());
 
-	LM_DBG("init curl module done. Curl version: %s SSL %s\n", cvi->version, cvi->ssl_version);
+
+	LM_DBG("**** init curl module done. Curl version: %s SSL %s\n", curl_info->version, curl_info->ssl_version);
+	LM_DBG("**** init curl module done. User Agent: %s \n", default_useragent);
 	LM_DBG("Extra: Curl supports %s %s %s \n",
-			(cvi->features && CURL_VERSION_SSL ? "SSL" : ""),
-			(cvi->features && CURL_VERSION_IPV6 ? "IPv6" : ""),
-			(cvi->features && CURL_VERSION_IDN ? "IDN" : "")
+			(curl_info->features & CURL_VERSION_SSL ? "SSL" : ""),
+			(curl_info->features & CURL_VERSION_IPV6 ? "IPv6" : ""),
+			(curl_info->features & CURL_VERSION_IDN ? "IDN" : "")
 		 );
 	return 0;
+}
+
+/*! Returns TRUE if curl supports TLS */
+int curl_support_tls()
+{
+	return (curl_info->features & CURL_VERSION_SSL);
+}
+
+/*! Returns TRUE if curl supports IPv6 */
+int curl_support_ipv6()
+{
+	return (curl_info->features & CURL_VERSION_IPV6);
 }
 
 

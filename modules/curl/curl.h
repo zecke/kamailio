@@ -35,7 +35,16 @@
 #include "../../counters.h"
 #include "../../lib/srdb1/db.h"
 
-extern int default_connection_timeout;
+extern unsigned int	default_connection_timeout;
+extern char	*default_tls_cacert;			/*!< File name: Default CA cert to use for curl TLS connection */
+extern char	*default_tls_clientcert;		/*!< File name: Default client certificate to use for curl TLS connection */
+extern char	*default_tls_clientkey;			/*!< File name: Key in PEM format that belongs to client cert */
+extern unsigned int	default_tls_verifyserver;		/*!< 0 = Do not verify TLS server cert. 1 = Verify TLS cert (default) */
+extern char 	*default_http_proxy;			/*!< Default HTTP proxy to use */
+extern unsigned int	default_http_proxy_port;		/*!< Default HTTP proxy port to use */
+extern unsigned int	default_http_follow_redirect;	/*!< Follow HTTP redirects CURLOPT_FOLLOWLOCATION */
+extern char 	*default_useragent;			/*!< Default CURL useragent. Default "Kamailio Curl " */
+
 extern counter_handle_t connections;	/* Number of connection definitions */
 extern counter_handle_t connok;	/* Successful Connection attempts */
 extern counter_handle_t connfail;	/* Failed Connection attempts */
@@ -60,10 +69,20 @@ typedef struct _curl_con
 	str failover;			/*!< Another connection to use if this one fails */
 	str cacert;			/*!< File name of CA cert to use */
 	str clientcert;			/*!< File name of CA client cert */
+	str useragent;			/*!< Useragent to use for this connection */
+	int tls_verifyserver;		/*!< TRUE if server cert needs to be verified */
+	int http_follow_redirect;	/*!< TRUE if we should follow HTTP 302 redirects */
 	unsigned int port;		/*!< The port to connect to */
 	int timeout;			/*!< Timeout for this connection */
 	http_res_stream_t *stream;	/*!< Curl stream */
 	struct _curl_con *next;		/*!< next connection */
 } curl_con_t;
+
+
+/*! Returns true if CURL supports TLS */
+extern int curl_support_tls();
+
+/*! Returns TRUE if curl supports IPv6 */
+extern int curl_support_ipv6();
 
 #endif /* CURL_H */
