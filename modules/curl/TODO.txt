@@ -7,6 +7,7 @@ The curl module
 	tlsverify=on/off
 	failover=curlcon	Other curlcon that can be used for failover in case of 5xx response or timeout
 	httpredirect		- DONE
+	useragent		- DONE
 
 - Make sure modparams work
 	httpproxy		- Not working with curl
