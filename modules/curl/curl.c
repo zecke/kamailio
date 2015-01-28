@@ -133,13 +133,14 @@ static cmd_export_t cmds[] = {
 
 /* Exported parameters */
 static param_export_t params[] = {
-    	{"default_connection_timeout", INT_PARAM, &default_connection_timeout},
+    	{"connection_timeout", INT_PARAM, &default_connection_timeout},
 	{"curlcon",  PARAM_STRING|USE_FUNC_PARAM, (void*)curl_con_param},
-	{"tls_cacert", PARAM_STRING,  &default_tls_cacert },
-	{"tls_clientcert", PARAM_STRING, &default_tls_clientcert },
-	{"tls_clientkey", PARAM_STRING, &default_tls_clientkey },
-	{"tls_verifyserver", INT_PARAM, &default_tls_verifyserver },
+	{"tlscacert", PARAM_STRING,  &default_tls_cacert },
+	{"tlsclientcert", PARAM_STRING, &default_tls_clientcert },
+	{"tlsclientkey", PARAM_STRING, &default_tls_clientkey },
+	{"tlsverifyserver", INT_PARAM, &default_tls_verifyserver },
 	{"httpproxyport", INT_PARAM, &default_http_proxy_port },
+	{"httpproxy", PARAM_STRING, &default_http_proxy},
 	{"httpredirect", INT_PARAM, &default_http_follow_redirect },
 	{"useragent", PARAM_STRING,  &default_useragent },
     	{0, 0, 0}
@@ -237,7 +238,11 @@ static int mod_init(void)
 
 
 	LM_DBG("**** init curl module done. Curl version: %s SSL %s\n", curl_info->version, curl_info->ssl_version);
-	LM_DBG("**** init curl module done. User Agent: %s \n", default_useragent);
+	LM_DBG("**** init curl: User Agent: %s \n", default_useragent);
+	LM_DBG("**** init curl: HTTPredirect: %d \n", default_http_follow_redirect);
+	LM_DBG("**** init curl: Client Cert: %s Key %s\n", default_tls_clientcert, default_tls_clientkey);
+	LM_DBG("**** init curl: CA Cert: %s \n", default_tls_cacert);
+	LM_DBG("**** init curl: HTTP Proxy: %s Port %d\n", default_http_proxy, default_http_proxy_port);
 	LM_DBG("Extra: Curl supports %s %s %s \n",
 			(curl_info->features & CURL_VERSION_SSL ? "SSL" : ""),
 			(curl_info->features & CURL_VERSION_IPV6 ? "IPv6" : ""),
