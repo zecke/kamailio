@@ -32,11 +32,11 @@ Carsten Bock
         3. Parameters
 
               3.1. httpredirect (int)
-              3.2. useragent (int)
+              3.2. useragent (string)
               3.3. connection_timeout (int)
-              3.4. tlsclientcert (int)
-              3.5. tlsclientkey (int)
-              3.6. tlscacert (int)
+              3.4. tlsclientcert (string)
+              3.5. tlsclientkey (string)
+              3.6. tlscacert (string)
               3.7. tlsverifyserver (int)
               3.8. curlcon (string)
 
@@ -79,11 +79,11 @@ Chapter 1. Admin Guide
    3. Parameters
 
         3.1. httpredirect (int)
-        3.2. useragent (int)
+        3.2. useragent (string)
         3.3. connection_timeout (int)
-        3.4. tlsclientcert (int)
-        3.5. tlsclientkey (int)
-        3.6. tlscacert (int)
+        3.4. tlsclientcert (string)
+        3.5. tlsclientkey (string)
+        3.6. tlscacert (string)
         3.7. tlsverifyserver (int)
         3.8. curlcon (string)
 
@@ -131,11 +131,11 @@ Chapter 1. Admin Guide
 3. Parameters
 
    3.1. httpredirect (int)
-   3.2. useragent (int)
+   3.2. useragent (string)
    3.3. connection_timeout (int)
-   3.4. tlsclientcert (int)
-   3.5. tlsclientkey (int)
-   3.6. tlscacert (int)
+   3.4. tlsclientcert (string)
+   3.5. tlsclientkey (string)
+   3.6. tlscacert (string)
    3.7. tlsverifyserver (int)
    3.8. curlcon (string)
 
@@ -152,7 +152,7 @@ Chapter 1. Admin Guide
 modparam("curl", "httpredirect", 0)
 ...
 
-3.2. useragent (int)
+3.2. useragent (string)
 
    Useragent to use in the HTTP protocol for requests. Defaults to the
    Kamailio SIP useragent string - including software version and
@@ -174,7 +174,7 @@ modparam("curl", "useragent", "Secret HTTP REST grabber 0.42")
 modparam("curl", "connection_timeout", 2)
 ...
 
-3.4. tlsclientcert (int)
+3.4. tlsclientcert (string)
 
    File name for a TLS client certificate. The certificate needs to be
    encoded in PEM format.
@@ -188,7 +188,7 @@ modparam("curl", "connection_timeout", 2)
 modparam("curl", "tlsclientcert", "/var/certs/sollentuna.example.com.cert")
 ...
 
-3.5. tlsclientkey (int)
+3.5. tlsclientkey (string)
 
    File name for a TLS client key. The key needs to be encoded in PEM
    format.
@@ -202,7 +202,7 @@ modparam("curl", "tlsclientcert", "/var/certs/sollentuna.example.com.cert")
 modparam("curl", "tlsclientkey", "/var/certs/sollentuna.example.com.key")
 ...
 
-3.6. tlscacert (int)
+3.6. tlscacert (string)
 
    File name for the trusted TLS CA cert used to verify servers. The
    certificates need to be encoded in PEM format.

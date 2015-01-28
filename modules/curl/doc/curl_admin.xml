@@ -82,7 +82,7 @@ modparam("curl", "httpredirect", 0)
 			</example>
 		</section>
 		<section id="utils.p.useragent">
-			<title><varname>useragent</varname> (int)</title>
+			<title><varname>useragent</varname> (string)</title>
 			<para>
 			Useragent to use in the HTTP protocol for requests. Defaults to
 			the &kamailio; SIP useragent string - including software version and platform.
@@ -118,7 +118,7 @@ modparam("curl", "connection_timeout", 2)
 			</example>
 		</section>
 		<section id="utils.p.tlsclientcert">
-			<title><varname>tlsclientcert</varname> (int)</title>
+			<title><varname>tlsclientcert</varname> (string)</title>
 			<para>
 			File name for a TLS client certificate. The certificate needs to be encoded
 			in PEM format.
@@ -141,7 +141,7 @@ modparam("curl", "tlsclientcert", "/var/certs/sollentuna.example.com.cert")
 			</example>
 		</section>
 		<section id="utils.p.tlsclientkey">
-			<title><varname>tlsclientkey</varname> (int)</title>
+			<title><varname>tlsclientkey</varname> (string)</title>
 			<para>
 			File name for a TLS client key. The key needs to be encoded
 			in PEM format.
@@ -164,7 +164,7 @@ modparam("curl", "tlsclientkey", "/var/certs/sollentuna.example.com.key")
 			</example>
 		</section>
 		<section id="utils.p.tlscacert">
-			<title><varname>tlscacert</varname> (int)</title>
+			<title><varname>tlscacert</varname> (string)</title>
 			<para>
 			File name for the trusted TLS CA cert used to verify servers.
 			The certificates need to be encoded in PEM format.
