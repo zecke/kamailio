@@ -96,8 +96,8 @@ modparam("curl", "useragent", "Secret HTTP REST grabber 0.42")
 				</programlisting>
 			</example>
 		</section>
-		<section id="utils.p.default_connection_timeout">
-			<title><varname>default_connection_timeout</varname> (int)</title>
+		<section id="utils.p.connection_timeout">
+			<title><varname>connection_timeout</varname> (int)</title>
 			<para>
 			Defines in seconds how long &kamailio; waits for response
 			from servers.
@@ -109,10 +109,105 @@ modparam("curl", "useragent", "Secret HTTP REST grabber 0.42")
 			</emphasis>
 			</para>
 			<example>
-			<title>Set <varname>default_connection_timeout</varname> parameter</title>
+			<title>Set <varname>connection_timeout</varname> parameter</title>
 				<programlisting format="linespecific">
 ...
-modparam("curl", "default_connection_timeout", 2)
+modparam("curl", "connection_timeout", 2)
+...
+				</programlisting>
+			</example>
+		</section>
+		<section id="utils.p.tlsclientcert">
+			<title><varname>tlsclientcert</varname> (int)</title>
+			<para>
+			File name for a TLS client certificate. The certificate needs to be encoded
+			in PEM format.
+			</para>
+			<para>
+			<emphasis>
+				Default value is empty string, i.e.
+				no client certificate used. Note that if
+				you specify a client cert, you also need to specify
+				the <varname>tlsclientkey</varname>.
+			</emphasis>
+			</para>
+			<example>
+			<title>Set <varname>tlsclientcert</varname> parameter</title>
+				<programlisting format="linespecific">
+...
+modparam("curl", "tlsclientcert", "/var/certs/sollentuna.example.com.cert")
+...
+				</programlisting>
+			</example>
+		</section>
+		<section id="utils.p.tlsclientkey">
+			<title><varname>tlsclientkey</varname> (int)</title>
+			<para>
+			File name for a TLS client key. The key needs to be encoded
+			in PEM format.
+			</para>
+			<para>
+			<emphasis>
+				Default value is empty string, i.e.
+				no client certificate or key is used. Note that if
+				you specify a client key, you also need to specify
+				the <varname>tlsclientcert</varname>.
+			</emphasis>
+			</para>
+			<example>
+			<title>Set <varname>tlsclientkey</varname> parameter</title>
+				<programlisting format="linespecific">
+...
+modparam("curl", "tlsclientkey", "/var/certs/sollentuna.example.com.key")
+...
+				</programlisting>
+			</example>
+		</section>
+		<section id="utils.p.tlscacert">
+			<title><varname>tlscacert</varname> (int)</title>
+			<para>
+			File name for the trusted TLS CA cert used to verify servers.
+			The certificates need to be encoded in PEM format.
+			</para>
+			<para>
+			<emphasis>
+				Default value is empty string, i.e.
+				no CA certificate is used to verify the host. If
+				<varname>tlsverifyhost</varname> is on, all TLS
+				connections will fail without any CA certificate
+				to validate with.
+			</emphasis>
+			</para>
+			<example>
+			<title>Set <varname>tlscacert</varname> parameter</title>
+				<programlisting format="linespecific">
+...
+modparam("curl", "tlscacert", "/var/certs/ca/edvina-sip-ca.pem")
+...
+				</programlisting>
+			</example>
+		</section>
+		<section id="utils.p.tlsverifyserver">
+			<title><varname>tlsverifyserver</varname> (int)</title>
+			<para>
+			If set to 0, TLS verification of the server certificate
+			is disabled. This means that the connection will get 
+			encrypted, but there's no authentication. There's no
+			proof that the transmission of data is to the host
+			that is meant to receive data.
+			</para>
+			<para>
+			IF set to 1, default setting, and one or more CA certificates
+			is configured, the server TLS certificate will be validated.
+			If validation fails, the connection fails.
+			</para>
+			<para>
+			</para>
+			<example>
+			<title>Set <varname>tlsverifyserver</varname> parameter</title>
+				<programlisting format="linespecific">
+...
+modparam("curl", "tlsverifyserver", 1)
 ...
 				</programlisting>
 			</example>
