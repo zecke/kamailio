@@ -236,13 +236,23 @@ static int mod_init(void)
 	curl_counter_init();
 	counter_add(connections, curl_connection_count());
 
+	if (default_connection_timeout == 0) {
+		LM_ERR("CURL connection timeout set to zero. Using default 4 secs\n");
+		default_connection_timeout = 4;
+	}
+	if (default_http_proxy_port == 0) {
+		LM_INFO("HTTP proxy port set to 0. Disabling HTTP proxy\n");
+	}
+
 
 	LM_DBG("**** init curl module done. Curl version: %s SSL %s\n", curl_info->version, curl_info->ssl_version);
+	LM_DBG("**** init curl: Number of connection objects: %d \n", curl_connection_count());
 	LM_DBG("**** init curl: User Agent: %s \n", default_useragent);
 	LM_DBG("**** init curl: HTTPredirect: %d \n", default_http_follow_redirect);
 	LM_DBG("**** init curl: Client Cert: %s Key %s\n", default_tls_clientcert, default_tls_clientkey);
 	LM_DBG("**** init curl: CA Cert: %s \n", default_tls_cacert);
 	LM_DBG("**** init curl: HTTP Proxy: %s Port %d\n", default_http_proxy, default_http_proxy_port);
+
 	LM_DBG("Extra: Curl supports %s %s %s \n",
 			(curl_info->features & CURL_VERSION_SSL ? "SSL" : ""),
 			(curl_info->features & CURL_VERSION_IPV6 ? "IPv6" : ""),
