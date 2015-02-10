@@ -7,8 +7,7 @@ auto_gen=
 NAME=kazoo.so
 
 DEFS+=-I$(CURDIR)/deps -I$(LOCALBASE)/include -I$(SYSBASE)/include 
-LIBS=-L$(LOCALBASE)/lib -I$(SYSBASE)/lib
-
+LIBS=-L$(LOCALBASE)/lib -I$(SYSBASE)/lib -luuid
 DEFS += -DKAMAILIO_MOD_INTERFACE
 
 
