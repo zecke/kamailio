@@ -1155,7 +1155,7 @@ int db_mongodb_update(const db1_con_t* _h, const db_key_t* _k,
 	mongoc_collection_t *collection = NULL;
 	bson_error_t error;
 	bson_t *mdoc = NULL;
-	bson_t *udoc = NULL;
+	bson_t *udoc = NULL, *sdoc = NULL;
 	char *cname;
 	char b1;
 
@@ -1189,6 +1189,11 @@ int db_mongodb_update(const db1_con_t* _h, const db_key_t* _k,
 		LM_ERR("cannot initialize update bson document\n");
 		goto error;
 	}
+	sdoc = bson_new();
+	if(sdoc==NULL) {
+		LM_ERR("cannot initialize update bson document\n");
+		goto error;
+	}
 	mdoc = bson_new();
 	if(mdoc==NULL) {
 		LM_ERR("cannot initialize match bson document\n");
@@ -1196,9 +1201,13 @@ int db_mongodb_update(const db1_con_t* _h, const db_key_t* _k,
 	}
 
 	for(i = 0; i < _un; i++) {
-		if(db_mongodb_bson_add(udoc, _uk[i], _uv+i, i)<0)
+		if(db_mongodb_bson_add(sdoc, _uk[i], _uv+i, i)<0)
 			goto error;
 	}
+	if(bson_append_document(udoc, "$set", 4, sdoc)<0) {
+                LM_ERR("failed to append document to bson document\n");
+                goto error;
+        }
 
 	if(_o==NULL) {
 		for(i = 0; i < _n; i++) {
@@ -1217,19 +1226,21 @@ int db_mongodb_update(const db1_con_t* _h, const db_key_t* _k,
 		}
 	}
 
-	if (!mongoc_collection_find_and_modify (collection, mdoc, NULL, udoc, NULL,
-				false, false, false, NULL, &error)) {
+	if (!mongoc_collection_update (collection, MONGOC_UPDATE_NONE, mdoc,
+				udoc, NULL, &error)) {
 		LM_ERR("failed to update in collection: %s\n", error.message);
 		goto error;
 	}
 	bson_destroy (mdoc);
 	bson_destroy (udoc);
+	bson_destroy (sdoc);
 	mongoc_collection_destroy (collection);
 	
 	return 0;
 error:
 	if(mdoc) bson_destroy (mdoc);
 	if(udoc) bson_destroy (udoc);
+	if(sdoc) bson_destroy (sdoc);
 	if(collection) mongoc_collection_destroy (collection);
 	return -1;
 }

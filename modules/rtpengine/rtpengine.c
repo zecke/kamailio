@@ -182,7 +182,7 @@ static struct mi_root* mi_show_rtpproxies(struct mi_root* cmd_tree,
 
 static int rtpengine_disable_tout = 60;
 static int rtpengine_retr = 5;
-static int rtpengine_tout = 1;
+static int rtpengine_tout_ms = 1000;
 static pid_t mypid;
 static unsigned int myseqn = 0;
 static str extra_id_pv_param = {NULL, 0};
@@ -211,7 +211,12 @@ static int *rtpp_socks = 0;
 static int     setid_avp_type;
 static int_str setid_avp;
 
+static str            write_sdp_pvar_str = {NULL, 0};
+static pv_spec_t*     write_sdp_pvar = NULL;
+
+
 char* force_send_ip_str="";
+
 
 typedef struct rtpp_set_link {
 	struct rtpp_set *rset;
@@ -274,7 +279,7 @@ static param_export_t params[] = {
 	                         (void*)rtpengine_set_store          },
 	{"rtpengine_disable_tout",INT_PARAM, &rtpengine_disable_tout },
 	{"rtpengine_retr",        INT_PARAM, &rtpengine_retr         },
-	{"rtpengine_tout",        INT_PARAM, &rtpengine_tout         },
+	{"rtpengine_tout_ms",     INT_PARAM, &rtpengine_tout_ms      },
 	{"db_url",                PARAM_STR, &rtpp_db_url },
 	{"table_name",            PARAM_STR, &rtpp_table_name },
 	{"url_col",               PARAM_STR, &rtpp_url_col },
@@ -282,6 +287,7 @@ static param_export_t params[] = {
 	{"setid_avp",             PARAM_STRING, &setid_avp_param },
 	{"force_send_interface",  PARAM_STRING, &force_send_ip_str	},
 	{"rtp_inst_pvar",         PARAM_STR, &rtp_inst_pv_param },
+	{"write_sdp_pv",          PARAM_STR, &write_sdp_pvar_str          },
 	{0, 0, 0}
 };
 
@@ -851,6 +857,16 @@ mod_init(void)
 		return -1;
 	    }
 	    setid_avp_type = avp_flags;
+	}
+
+	if (write_sdp_pvar_str.len > 0) {
+		write_sdp_pvar = pv_cache_get(&write_sdp_pvar_str);
+		if (write_sdp_pvar == NULL
+		    || (write_sdp_pvar->type != PVT_AVP &&  write_sdp_pvar->type != PVT_SCRIPTVAR) ) {
+			LM_ERR("write_sdp_pv: not a valid AVP or VAR definition <%.*s>\n",
+		       write_sdp_pvar_str.len, write_sdp_pvar_str.s);
+			return -1;
+		}
 	}
 
 	if (rtpp_strings)
@@ -1530,7 +1546,7 @@ send_rtpp_command(struct rtpp_node *node, bencode_item_t *dict, int *outlen)
 				LM_ERR("can't send command to a RTP proxy\n");
 				goto badproxy;
 			}
-			while ((poll(fds, 1, rtpengine_tout * 1000) == 1) &&
+			while ((poll(fds, 1, rtpengine_tout_ms) == 1) &&
 			    (fds[0].revents & POLLIN) != 0) {
 				do {
 					len = recv(rtpp_socks[node->idx], buf, sizeof(buf)-1, 0);
@@ -1962,6 +1978,7 @@ rtpengine_offer_answer(struct sip_msg *msg, const char *flags, int op, int more)
 	bencode_item_t *dict;
 	str body, newbody;
 	struct lump *anchor;
+	pv_value_t pv_val;
 
 	dict = rtpp_function_call_ok(&bencbuf, msg, op, flags, &body);
 	if (!dict)
@@ -1978,14 +1995,28 @@ rtpengine_offer_answer(struct sip_msg *msg, const char *flags, int op, int more)
 	if (more)
 		body_intermediate = newbody;
 	else {
-		anchor = del_lump(msg, body.s - msg->buf, body.len, 0);
-		if (!anchor) {
-			LM_ERR("del_lump failed\n");
-			goto error_free;
-		}
-		if (!insert_new_lump_after(anchor, newbody.s, newbody.len, 0)) {
-			LM_ERR("insert_new_lump_after failed\n");
-			goto error_free;
+		if (write_sdp_pvar!= NULL) {
+			pv_val.rs = newbody;
+			pv_val.flags = PV_VAL_STR;
+
+			if (write_sdp_pvar->setf(msg,&write_sdp_pvar->pvp, (int)EQ_T, &pv_val) < 0)
+			{
+				LM_ERR("error setting pvar <%.*s>\n", write_sdp_pvar_str.len, write_sdp_pvar_str.s);
+				goto error_free;
+			}
+
+			pkg_free(newbody.s);
+
+		} else {
+			anchor = del_lump(msg, body.s - msg->buf, body.len, 0);
+			if (!anchor) {
+				LM_ERR("del_lump failed\n");
+				goto error_free;
+			}
+			if (!insert_new_lump_after(anchor, newbody.s, newbody.len, 0)) {
+				LM_ERR("insert_new_lump_after failed\n");
+				goto error_free;
+			}
 		}
 	}
 
