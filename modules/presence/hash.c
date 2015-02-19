@@ -380,7 +380,7 @@ int update_shtable(shtable_t htable,unsigned int hash_code,
 		subs->version = ++s->version;
 	}
 	
-	if(presence_sip_uri_match(&s->contact, &subs->contact))
+	if(strncmp(s->contact.s, subs->contact.s, subs->contact.len))
 	{
 		shm_free(s->contact.s);
 		s->contact.s= (char*)shm_malloc(subs->contact.len* sizeof(char));
@@ -488,7 +488,7 @@ pres_entry_t* search_phtable(str* pres_uri,int event, unsigned int hash_code)
 	while(p)
 	{
 		if(p->event== event && p->pres_uri.len== pres_uri->len &&
-				presence_sip_uri_match(&p->pres_uri, pres_uri)== 0 )
+				strncmp(p->pres_uri.s, pres_uri->s, pres_uri->len)== 0 )
 			return p;
 		p= p->next;
 	}
