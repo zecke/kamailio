@@ -121,6 +121,8 @@ int lookup_helper(struct sip_msg* _m, udomain_t* _d, str* _uri, int _mode)
 	sr_xavp_t *list=NULL;
 	str xname = {"ruid", 4};
 	sr_xval_t xval;
+	sip_uri_t path_uri;
+	str path_str;
 
 	ret = -1;
 
@@ -256,16 +258,47 @@ int lookup_helper(struct sip_msg* _m, udomain_t* _d, str* _uri, int _mode)
 				xavp_add_value(&reg_xavp_rcd, &xval, NULL);
 			}
 		}
+
 		/* If a Path is present, use first path-uri in favour of
 		 * received-uri because in that case the last hop towards the uac
 		 * has to handle NAT. - agranig */
 		if (ptr->path.s && ptr->path.len) {
-			if (get_path_dst_uri(&ptr->path, &path_dst) < 0) {
+			/* make a copy, so any change we need to make here does not mess up the structure in usrloc */
+			path_str = ptr->path;
+			if (get_path_dst_uri(&path_str, &path_dst) < 0) {
 				LM_ERR("failed to get dst_uri for Path\n");
 				ret = -3;
 				goto done;
 			}
-			if (set_path_vector(_m, &ptr->path) < 0) {
+			if (path_check_local > 0) {
+				if (parse_uri(path_dst.s, path_dst.len, &path_uri) < 0){
+					LM_ERR("failed to parse the Path URI\n");
+					ret = -3;
+					goto done;
+				}
+				if (check_self(&(path_uri.host), 0, 0)) {
+					/* first hop in path vector is local - check for additional hops and if present, point to next one */
+					if (path_str.len > (path_dst.len + 3)) {
+						path_str.s = path_str.s + path_dst.len + 3;
+						path_str.len = path_str.len - path_dst.len - 3;
+						if (get_path_dst_uri(&path_str, &path_dst) < 0) {
+							LM_ERR("failed to get second dst_uri for Path\n");
+							ret = -3;
+							goto done;
+						}
+					} else {
+						/* no more hops */
+						path_dst.s = NULL;
+						path_dst.len = 0;
+					}
+				}
+			}
+		} else {
+			path_dst.s = NULL;
+			path_dst.len = 0;
+		}
+		if (path_dst.s && path_dst.len) {
+			if (set_path_vector(_m, &path_str) < 0) {
 				LM_ERR("failed to set path vector\n");
 				ret = -3;
 				goto done;
@@ -333,30 +366,56 @@ int lookup_helper(struct sip_msg* _m, udomain_t* _d, str* _uri, int _mode)
 	for( ; ptr ; ptr = ptr->next ) {
 		if (VALID_CONTACT(ptr, act_time) && allowed_method(_m, ptr)) {
 			path_dst.len = 0;
-			if(ptr->path.s && ptr->path.len 
-			&& get_path_dst_uri(&ptr->path, &path_dst) < 0) {
-				LM_ERR("failed to get dst_uri for Path\n");
-				continue;
+			if(ptr->path.s && ptr->path.len) {
+				path_str = ptr->path;
+				if (get_path_dst_uri(&path_str, &path_dst) < 0) {
+					LM_ERR("failed to get dst_uri for Path\n");
+					continue;
+				}
+				if (path_check_local > 0) {
+					if (parse_uri(path_dst.s, path_dst.len, &path_uri) < 0) {
+						LM_ERR("failed to parse the Path URI\n");
+						continue;
+					}
+					if (check_self(&(path_uri.host), 0, 0)) {
+						/* first hop in path vector is local - check for additional hops and if present, point to next one */
+						if (path_str.len > (path_dst.len + 3)) {
+							path_str.s = path_str.s + path_dst.len + 3;
+							path_str.len = path_str.len - path_dst.len - 3;
+							if (get_path_dst_uri(&path_str, &path_dst) < 0) {
+								LM_ERR("failed to get second dst_uri for Path\n");
+								continue;
+							}
+						} else {
+							/* no more hops */
+							path_dst.s = NULL;
+							path_dst.len = 0;
+						}
+					}
+				}
+			} else {
+				path_dst.s = NULL;
+				path_dst.len = 0;
 			}
 
-			if(_mode == 0) {
-			/* The same as for the first contact applies for branches 
-			 * regarding path vs. received. */
-			LM_DBG("instance is %.*s\n",
-			       ptr->instance.len, ptr->instance.s);
-			if (append_branch(_m, &ptr->c,
-					  path_dst.len?&path_dst:&ptr->received,
-					  &ptr->path, ptr->q, ptr->cflags,
-					  ptr->sock,
-					  ptr->instance.len?&(ptr->instance):0,
-				          ptr->instance.len?ptr->reg_id:0,
-					  &ptr->ruid, &ptr->user_agent)
-			    == -1) {
-				LM_ERR("failed to append a branch\n");
-				/* Also give a chance to the next branches*/
-				continue;
-			}
-			}
+            if(_mode == 0) {
+                /* The same as for the first contact applies for branches
+                 * regarding path vs. received. */
+                LM_DBG("instance is %.*s\n",
+                       ptr->instance.len, ptr->instance.s);
+                if (append_branch(_m, &ptr->c,
+                          path_dst.len?&path_dst:&ptr->received,
+                          path_dst.len?&path_str:0, ptr->q, ptr->cflags,
+                          ptr->sock,
+                          ptr->instance.len?&(ptr->instance):0,
+                              ptr->instance.len?ptr->reg_id:0,
+                          &ptr->ruid, &ptr->user_agent)
+                    == -1) {
+                    LM_ERR("failed to append a branch\n");
+                    /* Also give a chance to the next branches*/
+                    continue;
+                }
+            }
 			if(ptr->xavp!=NULL) {
 				xavp = xavp_clone_level_nodata(ptr->xavp);
 				if(xavp_insert(xavp, nr_branches, NULL)<0) {
