@@ -51,16 +51,19 @@ static int parse_ipv6(struct ip_addr* ip, cfg_token_t* token,
 	cfg_token_t t;
 	struct ip_addr* ipv6;
 	str ip6_str;
+	char ip6_buff[IP_ADDR_MAX_STR_SIZE+3];
 
+	ip6_buff[0] = '\0';
 	while(1) {
 		ret = cfg_get_token(&t, st, 0);
 		if (ret != 0) goto err;
 		if (t.type == ']') break;
 		if (t.type != CFG_TOKEN_ALPHA && t.type != ':') goto err;
+		strncat(ip6_buff, t.val.s, t.val.len);
 	}
-	ip6_str.s = t.val.s;
-	ip6_str.len = (int)(long)(t.val.s - ip6_str.s);
-
+	ip6_str.s = ip6_buff;
+	ip6_str.len = strlen(ip6_buff);
+	LM_DBG("found IPv6 address [%.*s]\n", ip6_str.len, ip6_str.s);
 	ipv6 = str2ip6(&ip6_str);
 	if (ipv6 == 0) goto err;
 	*ip = *ipv6;
@@ -160,6 +163,7 @@ static cfg_option_t options[] = {
 	{"cipher_list",         .f = cfg_parse_str_opt, .flags = CFG_STR_SHMMEM},
 	{"ca_list",             .f = cfg_parse_str_opt, .flags = CFG_STR_SHMMEM},
 	{"crl",                 .f = cfg_parse_str_opt, .flags = CFG_STR_SHMMEM},
+	{"server_name",         .f = cfg_parse_str_opt, .flags = CFG_STR_SHMMEM},
 	{0}
 };
 
@@ -183,6 +187,7 @@ static void update_opt_variables(void)
 	options[12].param = &domain->cipher_list;
 	options[13].param = &domain->ca_file;
 	options[14].param = &domain->crl_file;
+	options[15].param = &domain->server_name;
 }
 
 

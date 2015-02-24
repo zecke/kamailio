@@ -202,10 +202,10 @@ cmodules=$(foreach mods,$(modules_dirs), $($(mods)))
 
 
 # list of utils directories that should be compiled by make utils
-C_COMPILE_UTILS=	utils/sercmd
+C_COMPILE_UTILS=	utils/kamcmd
 # list of binaries that should be installed alongside
 # (they should be created after make utils, see C_COMPILE_UTILS)
-C_INSTALL_BIN=	# sercmd is now installed by ctl
+C_INSTALL_BIN=	# kamcmd is now installed by ctl
 
 # which utils know to install themselves and should be installed
 # along the core (list of utils directories)
@@ -663,13 +663,16 @@ man: $(foreach mods,$(modules_dirs),$(mods)-man)
 mk-install_dirs: $(cfg_prefix)/$(cfg_dir) $(bin_prefix)/$(bin_dir) \
 			$(modules_prefix)/$(modules_dir) $(doc_prefix)/$(doc_dir) \
 			$(man_prefix)/$(man_dir)/man8 $(man_prefix)/$(man_dir)/man5 \
-			$(share_prefix)/$(share_dir) \
+			$(share_prefix)/$(share_dir) $(run_prefix)/$(run_dir) \
 			$(foreach mods,$(modules_dirs),\
 				$(modules_prefix)/$(modules_dir)$(mods) \
 				$(doc_prefix)/$(doc_dir)$(mods) )
 
 $(cfg_prefix)/$(cfg_dir): 
 		mkdir -p $(cfg_prefix)/$(cfg_dir)
+
+$(run_prefix)/$(run_dir): 
+		mkdir -p $(run_prefix)/$(run_dir)
 
 $(bin_prefix)/$(bin_dir):
 		mkdir -p $(bin_prefix)/$(bin_dir)
@@ -792,7 +795,7 @@ install-every-module-doc: $(foreach mods,$(modules_dirs),install-$(mods)-doc)
 
 install-every-module-man: $(foreach mods,$(modules_dirs),install-$(mods)-man)
 
-install-utils: utils $(bin_prefix)/$(bin_dir)
+install-utils: utils $(bin_prefix)/$(bin_dir) $(run_prefix)/$(run_dir)
 	@for r in $(C_INSTALL_BIN) "" ; do \
 		if [ -n "$$r" ]; then \
 			if [ -f "$$r" ]; then \
@@ -1024,6 +1027,7 @@ uninstall:
 	@echo " *LIBDIR Path is: ${lib_prefix}/${lib_dir}"
 	@echo " *MANDIR Path is: ${man_prefix}/${man_dir}"
 	@echo " *SHRDIR Path is: ${share_prefix}/${share_dir}"
+	@echo " *RUNDIR Path is: $(run_prefix)/$(run_dir)"
 	@if [ "${PREFIX}" != "/usr/local" ] ; then \
 		echo "-Custom PREFIX Path" ; \
 		if [ "${PREFIX}" = "/" -o "${PREFIX}" = "/usr" ] ; then \
@@ -1054,6 +1058,7 @@ uninstall:
 		echo "rm -rf ${doc_prefix}/${doc_dir}" ; \
 		echo "rm -rf ${lib_prefix}/${lib_dir}" ; \
 		echo "rm -rf ${share_prefix}/${share_dir}" ; \
+		echo "rm -rf $(run_prefix)/$(run_dir)" ; \
 		echo ; \
 		echo "-WARNING: before running the commands, be sure they don't delete any system directory or file" ; \
 	fi ;

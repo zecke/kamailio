@@ -25,10 +25,20 @@ extern str dbk_consumer_event_key;
 extern str dbk_consumer_event_subkey;
 extern int dbk_consumer_processes;
 
-
-typedef struct kz_amqp_conn_t {
+typedef struct kz_amqp_connection_t {
 	kz_amqp_connection_info info;
 	char* url;
+    struct kz_amqp_connection_t* next;
+} kz_amqp_connection, *kz_amqp_connection_ptr;
+
+typedef struct {
+	kz_amqp_connection_ptr current;
+	kz_amqp_connection_ptr head;
+	kz_amqp_connection_ptr tail;
+} kz_amqp_connection_pool, *kz_amqp_connection_pool_ptr;
+
+typedef struct kz_amqp_conn_t {
+	kz_amqp_connection_ptr info;
 	amqp_connection_state_t conn;
 	amqp_socket_t *socket;
 	amqp_channel_t channel_count;
@@ -110,6 +120,7 @@ typedef struct {
 	amqp_channel_t channel;
 	kz_amqp_channel_state state;
 	struct timeval timer;
+	gen_lock_t lock;
 } kz_amqp_channel, *kz_amqp_channel_ptr;
 
 typedef struct kz_amqp_binding_t {
@@ -122,7 +133,7 @@ typedef struct {
 	kz_amqp_binding_ptr tail;
 } kz_amqp_bindings, *kz_amqp_bindings_ptr;
 
-void kz_amqp_init();
+int kz_amqp_init();
 void kz_amqp_destroy();
 int kz_amqp_add_connection(modparam_t type, void* val);
 
@@ -138,6 +149,10 @@ void kz_amqp_consumer_loop(int child_no);
 
 //void kz_amqp_generic_consumer_loop(int child_no);
 void kz_amqp_manager_loop(int child_no);
+
+void kz_amqp_consumer_proc(int child_no);
+void kz_amqp_publisher_proc(int child_no);
+void kz_amqp_timeout_proc(int child_no);
 
 int kz_pv_get_event_payload(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
 int kz_pv_get_last_query_result(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
