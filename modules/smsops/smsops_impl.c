@@ -39,22 +39,25 @@
 #include "../../basex.h"
 
 #include "../../lib/kcore/strcommon.h"
+#include "../../parser/parse_content.h" 
+
 
 #include "smsops_impl.h"
 
 // Types of RP-DATA
 typedef enum _rp_message_type {
-	RP_DATA_MS_TO_NETWORK = 0x00;
-	RP_DATA_NETWORK_TO_MS = 0x01;
-	RP_ACK_NETWORK_TO_MS  = 0x03;
+	RP_DATA_MS_TO_NETWORK = 0x00,
+	RP_DATA_NETWORK_TO_MS = 0x01,
+	RP_ACK_MS_TO_NETWORK  = 0x02,
+	RP_ACK_NETWORK_TO_MS  = 0x03,
 } rp_message_type_t;
 
 // Types of the PDU-Message
 typedef enum _pdu_message_type {
-	DELIVER = 0x00;
-	SUBMIT = 0x01;
-	COMMAND = 0x02;
-	ANY = 0x03;
+	DELIVER = 0x00,
+	SUBMIT = 0x01,
+	COMMAND = 0x02,
+	ANY = 0x03,
 } pdu_message_type_t;
 
 #define TP_RD 0x4;
@@ -79,6 +82,7 @@ typedef struct _sms_rp_data {
 	char reference;
 	str originator;
 	str destination;
+	int pdu_len;
 	sms_pdu_t pdu;	
 } sms_rp_data_t;
 
@@ -103,10 +107,10 @@ void freeRP_DATA() {
 	}
 }
 
-#define BITMASK_7BITS 0x7F;
-#define BITMASK_8BITS 0xFF;
-#define BITMASK_HIGH_4BITS 0xF0;
-#define BITMASK_LOW_4BITS 0x0F;
+#define BITMASK_7BITS 0x7F
+#define BITMASK_8BITS 0xFF
+#define BITMASK_HIGH_4BITS 0xF0
+#define BITMASK_LOW_4BITS 0x0F
 
 // Encode SMS-Message by merging 7 bit ASCII characters into 8 bit octets.
 static int EncodeSMSMessage(str sms, char * output_buffer, int buffer_size) {
@@ -130,21 +134,21 @@ static int EncodeSMSMessage(str sms, char * output_buffer, int buffer_size) {
 	}
 
 	if (i <= sms.len)
-		output_buffer[output_buffer_length++] =	(sms_text[i] & BITMASK_7BITS) >> (carry_on_bits - 1);
+		output_buffer[output_buffer_length++] =	(sms.s[i] & BITMASK_7BITS) >> (carry_on_bits - 1);
 
 	return output_buffer_length;
 }
 
 // Decode SMS-Message by splitting 8 bit encoded buffer into 7 bit ASCII characters.
-static int DecodeSMSMessage(char* buffer, int buffer_length, str sms)
+static int DecodeSMSMessage(char* buffer, str sms)
 {
 	int output_text_length = 0;
-	if (buffer_length > 0)
+	if (sms.len > 0)
 		sms.s[output_text_length++] = BITMASK_7BITS & buffer[0];
 
 	int carry_on_bits = 1;
 	int i = 1;
-	for (; i < buffer_length; ++i) {
+	for (; i < sms.len; ++i) {
 		sms.s[output_text_length++] = BITMASK_7BITS &	((buffer[i] << carry_on_bits) | (buffer[i - 1] >> (8 - carry_on_bits)));
 
 		carry_on_bits++;
@@ -152,7 +156,6 @@ static int DecodeSMSMessage(char* buffer, int buffer_length, str sms)
 			carry_on_bits = 1;
 			sms.s[output_text_length++] = buffer[i] & BITMASK_7BITS;
 		}
-
 	}
 
 	return output_text_length;
@@ -165,9 +168,7 @@ static unsigned char SwapDecimalNibble(char x) {
 
 // Encode a digit based phone number for SMS based format.
 static int EncodePhoneNumber(str phone, char * output_buffer, int buffer_size) {
-	int output_buffer_length = 0;  
-	const int phone_number_length = strlen(phone_number);
-
+	int output_buffer_length = 0;
 	// Check if the output buffer is big enough.
 	if ((phone.len + 1) / 2 > buffer_size)
 		return -1;
@@ -204,8 +205,8 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 	// Parse only the body again, if the mesage differs from the last call:
 	if (msg->id != current_msg_id) {
 		// Extract Message-body and length: taken from RTPEngine's code
-		body->s = get_body(msg);
-		if (body->s==0) {
+		body.s = get_body(msg);
+		if (body.s == 0) {
 			LM_ERR("failed to get the message body\n");
 			return -1;
 		}
@@ -220,15 +221,15 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 			return -1;
 		}
 
-		body->len = get_content_length(msg);
-		if (body->len==0) {
+		body.len = get_content_length(msg);
+		if (body.len==0) {
 			LM_ERR("message body has length zero\n");
 			return -1;
 		}
 
-		if (body->len + body->s > msg->buf + msg->len) {
+		if (body.len + body.s > msg->buf + msg->len) {
 			LM_ERR("content-length exceeds packet-length by %d\n",
-					(int)((body->len + body->s) - (msg->buf + msg->len)));
+					(int)((body.len + body.s) - (msg->buf + msg->len)));
 			return -1;
 		}
 
@@ -236,7 +237,7 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 		if (!rp_data) {
 			rp_data = (sms_rp_data_t*)pkg_malloc(sizeof(struct _sms_rp_data));
 			if (!rp_data) {
-				LM_ERR("Error allocating %d bytes!\n", sizeof(struct _sms_rp_data));
+				LM_ERR("Error allocating %lu bytes!\n", sizeof(struct _sms_rp_data));
 				return -1;
 			}
 		} else {
@@ -246,20 +247,55 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 		// Initialize structure:
 		memset(rp_data, 0, sizeof(struct _sms_rp_data));
 
+		////////////////////////////////////////////////
+		// RP-Data
+		////////////////////////////////////////////////
 		int p = 0;
-		rp_data->msg_type = body->s[p++];
-		rp_data->reference = body->s[p++];
-		if (body->s[p++] > 0) {
-			rp_data->originator.len = body->s[p-1];
-			rp_data->originator.s = pkg_malloc(rp_data->originator.len);
-			DecodePhoneNumber(body->s[p], rp_data->originator);
-			p += rp_data->originator.len;
-		}
-		if (body->s[p++] > 0) {
-			rp_data->destination.len = body->s[p-1];
-			rp_data->destination.s = pkg_malloc(rp_data->destination.len);
-			DecodePhoneNumber(body->s[p], rp_data->destination);
-			p += rp_data->destination.len;
+		rp_data->msg_type = body.s[p++];
+		rp_data->reference = body.s[p++];
+		if ((rp_data->msg_type == RP_DATA_MS_TO_NETWORK) || (rp_data->msg_type == RP_DATA_NETWORK_TO_MS)) {
+			rp_data->originator.len = body.s[p++];
+			if (rp_data->originator.len > 0) {
+				p++; // Type of Number, we assume E164, thus ignored
+				rp_data->originator.s = pkg_malloc(rp_data->originator.len);
+				DecodePhoneNumber(&body.s[p], rp_data->originator);
+				p += rp_data->originator.len;
+			}
+			rp_data->destination.len = body.s[p++];
+			if (rp_data->destination.len > 0) {
+				p++; // Type of Number, we assume E164, thus ignored
+				rp_data->destination.s = pkg_malloc(rp_data->destination.len);
+				DecodePhoneNumber(&body.s[p], rp_data->destination);
+				p += rp_data->destination.len;
+			}
+
+			////////////////////////////////////////////////
+			// TPDU
+			////////////////////////////////////////////////
+			rp_data->pdu_len = body.s[p++];
+			if (rp_data->pdu_len > 0) {
+				rp_data->pdu.flags = body.s[p++];
+				rp_data->pdu.msg_type = rp_data->pdu.flags & 0x03;
+				rp_data->pdu.flags = body.s[p++];
+				rp_data->pdu.reference = body.s[p++];
+				// TP-DA
+				rp_data->pdu.destination.len = body.s[p++];
+				if (rp_data->pdu.destination.len > 0) {
+					p++; // Type of Number, we assume E164, thus ignored
+					rp_data->pdu.destination.s = pkg_malloc(rp_data->pdu.destination.len);
+					DecodePhoneNumber(&body.s[p], rp_data->pdu.destination);
+					p += rp_data->pdu.destination.len;	
+				}
+				p++; // TP-Protocol Identifier, ignored
+				p++; // TP-Data-Coding-Scheme, ignored (default 7 Bit assumed)
+				p++; // TP-Validity Period, ignored for now, relative assumes
+				rp_data->pdu.payload.len = body.s[p++];
+				if (rp_data->pdu.payload.len > 0) {
+					rp_data->pdu.payload.s = pkg_malloc(rp_data->pdu.payload.len);
+					DecodeSMSMessage(&body.s[p], rp_data->pdu.payload);
+					p += rp_data->pdu.payload.len;	
+				}
+			}				
 		}
 	}
 
@@ -267,7 +303,27 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 }
 
 int dumpRPData(struct sip_msg *msg) {
+	// Decode message:
+	// Decode the 3GPP-SMS:
+	if (decode_3gpp_sms(msg) != 1) {
+		LM_ERR("Error getting/decoding RP-Data from request!\n");
+		return -1;
+	}
 
+	LM_INFO("SMS-Message\r\n");
+	LM_INFO("------------------------\r\n");
+	LM_INFO("RP-Data\r\n");
+	LM_INFO("  Type:         %x\r\n", rp_data->msg_type);
+	LM_INFO("  Reference:    %x (%i)\r\n", rp_data->reference, rp_data->reference);
+	LM_INFO("  Originator:   %.*s\r\n", rp_data->originator.len, rp_data->originator.s);
+	LM_INFO("  Destination:  %.*s\r\n", rp_data->destination.len, rp_data->destination.s);
+	LM_INFO("T-PDU\r\n");
+	LM_INFO("  Type:         %x\r\n", rp_data->pdu.msg_type);
+	LM_INFO("  Flags:        %x (%i)\r\n", rp_data->pdu.flags, rp_data->pdu.flags);
+	LM_INFO("  Reference:    %x (%i)\r\n", rp_data->pdu.reference, rp_data->pdu.reference);
+	LM_INFO("  Destination:  %.*s\r\n", rp_data->pdu.destination.len, rp_data->pdu.destination.s);
+	LM_INFO("  Payload:      %.*s\r\n", rp_data->pdu.payload.len, rp_data->pdu.payload.s);
+	return 1;
 }
 
 /*******************************************************************
@@ -277,7 +333,7 @@ int dumpRPData(struct sip_msg *msg) {
 /*
  * Creates the body for SMS-ACK from the current message
  */
-static int pv_sms_ack(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
+int pv_sms_ack(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
 	str rp_data_ack = {0, 0};
 
 	// Decode the 3GPP-SMS:
@@ -295,18 +351,19 @@ static int pv_sms_ack(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
 	}
 
 	// Encode the data (RP-Data)
+	// Always ACK NETWORK to MS
 	rp_data_ack.s[0] = RP_ACK_NETWORK_TO_MS;
+	// Take the reference from request:
 	rp_data_ack.s[1] = rp_data->reference;
+	
 	rp_data_ack.s[2] = 0x41;
+	// Length
 	rp_data_ack.s[3] = 9;
 	// PDU
 	// SMS-SUBMIT-Report
-	rp_data_ack.s[4] = 0x1;
+	rp_data_ack.s[4] = SUBMIT;
 	// Parameters (none)
 	rp_data_ack.s[5] = 0x0;
-
-
-	
 
 	return pv_get_strval(msg, param, res, &rp_data_ack);
 }
@@ -314,8 +371,19 @@ static int pv_sms_ack(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
 /*
  * Dumps the content of the SMS-Message:
  */
-static int smsdump(struct sip_msg *msg, char *str1, char *str2) {
+int smsdump(struct sip_msg *msg, char *str1, char *str2) {
 	return dumpRPData(msg);
 }
 
+int isRPDATA(struct sip_msg *msg, char *str1, char *str2) {
+	// Decode the 3GPP-SMS:
+	if (decode_3gpp_sms(msg) != 1) {
+		LM_ERR("Error getting/decoding RP-Data from request!\n");
+		return -1;
+	}
+	if ((rp_data->msg_type == RP_DATA_MS_TO_NETWORK) || (rp_data->msg_type == RP_DATA_NETWORK_TO_MS))
+		return 1;
+	else
+		return -1;
+}
 

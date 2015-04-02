@@ -31,7 +31,7 @@
 MODULE_VERSION
 
 static pv_export_t mod_pvs[] = {
-	{ {"smsack", sizeof("smsack")-1}, PVT_OTHER, pv_smsack, 0, 0, 0, 0, 0 },
+	{ {"smsack", sizeof("smsack")-1}, PVT_OTHER, pv_sms_ack, 0, 0, 0, 0, 0 },
 	{ {0, 0}, 0, 0, 0, 0, 0, 0, 0 }
 };
 

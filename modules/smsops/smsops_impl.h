@@ -22,17 +22,10 @@
 #ifndef _SMSOPS_TRANS_H_
 #define _SMSOPS_TRANS_H_
 
-/*
 #include "../../pvar.h"
 
-enum _tr_smsops_type { 
-	TR_SMSOPS_NONE=0, TR_SMSOPS_DESTINATION, TR_SMSOPS_MESSAGETYPE,
-	TR_SMSOPS_USERDATA, TR_SMSOPS_MESSAGEID, TR_SMSOPS_ENCODE7BIT,
-	TR_SMSOPS_DECODE7BIT
-};
+// Generate SMS-ACK
+int pv_sms_ack(struct sip_msg *, pv_param_t *, pv_value_t *);
+int smsdump(struct sip_msg *, char *, char *);
 
-char* tr_parse_sms(str *in, trans_t *tr);
-
-int tr_init_buffers(void);
-*/
 #endif
