@@ -52,6 +52,23 @@ typedef enum _rp_message_type {
 	RP_ACK_NETWORK_TO_MS  = 0x03,
 } rp_message_type_t;
 
+enum SMS_DATA { 
+	SMS_ALL,
+	SMS_RPDATA_TYPE,
+	SMS_RPDATA_REFERENCE,
+	SMS_RPDATA_ORIGINATOR,
+	SMS_RPDATA_DESTINATION,
+	SMS_TPDU_TYPE,
+	SMS_TPDU_FLAGS,
+	SMS_TPDU_CODING,
+	SMS_TPDU_PAYLOAD,
+	SMS_TPDU_PROTOCOL,
+	SMS_TPDU_VALIDITY,
+	SMS_TPDU_REFERENCE,
+	SMS_TPDU_ORIGINATING_ADDRESS,
+	SMS_TPDU_DESTINATION,
+};
+
 // Types of the PDU-Message
 typedef enum _pdu_message_type {
 	DELIVER = 0x00,
@@ -74,7 +91,7 @@ typedef struct _sms_pdu {
 	unsigned char pid;
 	unsigned char coding;
 	unsigned char validity;
-	str source;
+	str originating_address;
 	str destination;
 	str payload;
 } sms_pdu_t;
@@ -89,8 +106,10 @@ typedef struct _sms_rp_data {
 	sms_pdu_t pdu;	
 } sms_rp_data_t;
 
-// Pointer to current contact_t
+// Pointer to current parsed rp_data/tpdu
 static sms_rp_data_t * rp_data = NULL;
+// Pointer to rp_data/tpdu used for sending
+static sms_rp_data_t * rp_send_data = NULL;
 
 // ID of current message
 static unsigned int current_msg_id = 0;
@@ -100,13 +119,13 @@ static unsigned int current_msg_id = 0;
  *******************************************************************/
 
 // Frees internal pointers within the SMS-PDU-Type:
-void freeRP_DATA() {
-	if (rp_data) {
-		if (rp_data->originator.s) pkg_free(rp_data->originator.s);
-		if (rp_data->destination.s) pkg_free(rp_data->destination.s);
-		if (rp_data->pdu.source.s) pkg_free(rp_data->pdu.source.s);
-		if (rp_data->pdu.destination.s) pkg_free(rp_data->pdu.destination.s);
-		if (rp_data->pdu.payload.s) pkg_free(rp_data->pdu.payload.s);
+void freeRP_DATA(sms_rp_data_t * rpdata) {
+	if (rpdata) {
+		if (rpdata->originator.s) pkg_free(rpdata->originator.s);
+		if (rpdata->destination.s) pkg_free(rpdata->destination.s);
+		if (rpdata->pdu.originating_address.s) pkg_free(rpdata->pdu.originating_address.s);
+		if (rpdata->pdu.destination.s) pkg_free(rpdata->pdu.destination.s);
+		if (rpdata->pdu.payload.s) pkg_free(rpdata->pdu.payload.s);
 	}
 }
 
@@ -143,8 +162,7 @@ static int EncodeSMSMessage(str sms, char * output_buffer, int buffer_size) {
 }
 
 // Decode 7bit encoded message by splitting 8 bit encoded buffer into 7 bit ASCII characters.
-int gsm_to_ascii(char* buffer, int buffer_length, str sms)
-{
+int gsm_to_ascii(char* buffer, int buffer_length, str sms) {
         int output_text_length = 0;
         if (buffer_length > 0)
                 sms.s[output_text_length++] = BITMASK_7BITS & buffer[0];
@@ -323,7 +341,7 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 				return -1;
 			}
 		} else {
-			freeRP_DATA();
+			freeRP_DATA(rp_data);
 		}
 
 		// Initialize structure:
@@ -371,17 +389,23 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 				rp_data->pdu.pid = (unsigned char)body.s[p++];
 				rp_data->pdu.coding = (unsigned char)body.s[p++];
 				rp_data->pdu.validity = (unsigned char)body.s[p++];
-
 				len = body.s[p++];
 				if (len > 0) {
-					// Length is worst-case 2 * len (UCS2 is 2 Bytes, UTF8 is worst-case 4 Bytes)
-					rp_data->pdu.payload.s = pkg_malloc(len*4);
-					rp_data->pdu.payload.len = 0;
-					while (len > 0) {
-						j = (body.s[p] << 8) + body.s[p + 1];
-						p += 2;
-						rp_data->pdu.payload.len += ucs2_to_utf8(j, &rp_data->pdu.payload.s[rp_data->pdu.payload.len]);
-						len -= 2;
+					// Coding: 7 Bit
+					if (rp_data->pdu.coding == 0x00) {
+						// We don't care about the extra used bytes here.
+						rp_data->pdu.payload.s = pkg_malloc(len);
+						rp_data->pdu.payload.len = gsm_to_ascii(&body.s[p], len, rp_data->pdu.payload);
+					} else {
+						// Length is worst-case 2 * len (UCS2 is 2 Bytes, UTF8 is worst-case 4 Bytes)
+						rp_data->pdu.payload.s = pkg_malloc(len*4);
+						rp_data->pdu.payload.len = 0;
+						while (len > 0) {
+							j = (body.s[p] << 8) + body.s[p + 1];
+							p += 2;
+							rp_data->pdu.payload.len += ucs2_to_utf8(j, &rp_data->pdu.payload.s[rp_data->pdu.payload.len]);
+							len -= 2;
+						}
 					}
 				}
 			}				
@@ -402,21 +426,23 @@ int dumpRPData(struct sip_msg *msg) {
 	LM_INFO("SMS-Message\n");
 	LM_INFO("------------------------\n");
 	LM_INFO("RP-Data\n");
-	LM_INFO("  Type:         %x\n", rp_data->msg_type);
-	LM_INFO("  Reference:    %x (%i)\n", rp_data->reference, rp_data->reference);
-	LM_INFO("  Originator:   %.*s (%i)\n", rp_data->originator.len, rp_data->originator.s, rp_data->originator.len);
-	LM_INFO("  Destination:  %.*s (%i)\n", rp_data->destination.len, rp_data->destination.s, rp_data->destination.len);
+	LM_INFO("  Type:                       %x\n", rp_data->msg_type);
+	LM_INFO("  Reference:                  %x (%i)\n", rp_data->reference, rp_data->reference);
+	LM_INFO("  Originator:                 %.*s (%i)\n", rp_data->originator.len, rp_data->originator.s, rp_data->originator.len);
+	LM_INFO("  Destination:                %.*s (%i)\n", rp_data->destination.len, rp_data->destination.s, rp_data->destination.len);
 	LM_INFO("T-PDU\n");
-	LM_INFO("  Type:         %x\n", rp_data->pdu.msg_type);
-	LM_INFO("  Flags:        %x (%i)\n", rp_data->pdu.flags, rp_data->pdu.flags);
-	LM_INFO("  Reference:    %x (%i)\n", rp_data->pdu.reference, rp_data->pdu.reference);
-	LM_INFO("  Destination:  %.*s (%i)\n", rp_data->pdu.destination.len, rp_data->pdu.destination.s, rp_data->pdu.destination.len);
+	LM_INFO("  Type:                       %x\n", rp_data->pdu.msg_type);
+	LM_INFO("  Flags:                      %x (%i)\n", rp_data->pdu.flags, rp_data->pdu.flags);
+	LM_INFO("  Reference:                  %x (%i)\n", rp_data->pdu.reference, rp_data->pdu.reference);
 
-	LM_INFO("  Protocol:     %x (%i)\n", rp_data->pdu.pid, rp_data->pdu.pid);
-	LM_INFO("  Coding:       %x (%i)\n", rp_data->pdu.coding, rp_data->pdu.coding);
-	LM_INFO("  Validity:     %x (%i)\n", rp_data->pdu.validity, rp_data->pdu.validity);
+	LM_INFO("  Originating-Address:        %.*s (%i)\n", rp_data->pdu.originating_address.len, rp_data->pdu.originating_address.s, rp_data->pdu.originating_address.len);
+	LM_INFO("  Destination:                %.*s (%i)\n", rp_data->pdu.destination.len, rp_data->pdu.destination.s, rp_data->pdu.destination.len);
 
-	LM_INFO("  Payload:      %.*s (%i)\n", rp_data->pdu.payload.len, rp_data->pdu.payload.s, rp_data->pdu.payload.len);
+	LM_INFO("  Protocol:                   %x (%i)\n", rp_data->pdu.pid, rp_data->pdu.pid);
+	LM_INFO("  Coding:                     %x (%i)\n", rp_data->pdu.coding, rp_data->pdu.coding);
+	LM_INFO("  Validity:                   %x (%i)\n", rp_data->pdu.validity, rp_data->pdu.validity);
+
+	LM_INFO("  Payload:                    %.*s (%i)\n", rp_data->pdu.payload.len, rp_data->pdu.payload.s, rp_data->pdu.payload.len);
 	return 1;
 }
 
@@ -464,49 +490,361 @@ int pv_sms_ack(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
 	return pv_get_strval(msg, param, res, &rp_data_ack);
 }
 
-/*
- * Creates the body for SMS-ACK from the current message
- */
-int pv_sms_text(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
-	// Decode the 3GPP-SMS:
-	if (decode_3gpp_sms(msg) != 1) {
-		LM_ERR("Error getting/decoding RP-Data from request!\n");
-		return -1;
-	}
-	if ((rp_data->msg_type == RP_DATA_MS_TO_NETWORK) || (rp_data->msg_type == RP_DATA_NETWORK_TO_MS))
-		return pv_get_strval(msg, param, res, &rp_data->pdu.payload);
-	else
-		return -1;
-}
 
 /*
  * Creates the body for SMS-ACK from the current message
  */
-int pv_sms_destination(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
-	// Decode the 3GPP-SMS:
-	if (decode_3gpp_sms(msg) != 1) {
-		LM_ERR("Error getting/decoding RP-Data from request!\n");
+int pv_sms_body(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
+	str rp_data_ack = {0, 0};
+
+	// RP-Type (1) + RP-Ref (1) + RP-User-Data (Element-ID (1) + Length (9 => Msg-Type (1) + Parameter (1) + Service-Centre-Time (7)) = 13;
+	rp_data_ack.len = 13;
+	rp_data_ack.s = (char*)pkg_malloc(rp_data_ack.len);
+	if (!rp_data_ack.s) {
+		LM_ERR("Error allocating %d bytes!\n", rp_data_ack.len);
 		return -1;
 	}
-	if ((rp_data->msg_type == RP_DATA_MS_TO_NETWORK) || (rp_data->msg_type == RP_DATA_NETWORK_TO_MS))
-		return pv_get_strval(msg, param, res, &rp_data->pdu.destination);
-	else
-		return -1;
+
+	// Encode the data (RP-Data)
+	// Always ACK NETWORK to MS
+	rp_data_ack.s[0] = RP_ACK_NETWORK_TO_MS;
+	// Take the reference from request:
+	rp_data_ack.s[1] = rp_data->reference;
+	// RP-Data-Element-ID
+	rp_data_ack.s[2] = 0x41;
+	// Length
+	rp_data_ack.s[3] = 9;
+	// PDU
+	// SMS-SUBMIT-Report
+	rp_data_ack.s[4] = SUBMIT;
+	// Parameters (none)
+	rp_data_ack.s[5] = 0x0;
+
+	EncodeTime(&rp_data_ack.s[6]);
+
+	return pv_get_strval(msg, param, res, &rp_data_ack);
 }
 
-/*
- * Creates the body for SMS-ACK from the current message
- */
-int pv_sms_validity(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
+int pv_get_sms(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
+	if (param==NULL) return -1;
+
 	// Decode the 3GPP-SMS:
 	if (decode_3gpp_sms(msg) != 1) {
 		LM_ERR("Error getting/decoding RP-Data from request!\n");
 		return -1;
 	}
-	if ((rp_data->msg_type == RP_DATA_MS_TO_NETWORK) || (rp_data->msg_type == RP_DATA_NETWORK_TO_MS))
-		return pv_get_sintval(msg, param, res, (int)rp_data->pdu.validity);
-	else
+
+	switch(param->pvn.u.isname.name.n) {
+		case SMS_RPDATA_TYPE:
+			return pv_get_sintval(msg, param, res, (int)rp_data->msg_type);
+		case SMS_RPDATA_REFERENCE:
+			return pv_get_sintval(msg, param, res, (int)rp_data->reference);
+		case SMS_RPDATA_ORIGINATOR:
+			return pv_get_strval(msg, param, res, &rp_data->originator);
+		case SMS_RPDATA_DESTINATION:
+			return pv_get_strval(msg, param, res, &rp_data->destination);
+		case SMS_TPDU_TYPE:
+			return  pv_get_sintval(msg, param, res, (int)rp_data->pdu.msg_type);
+		case SMS_TPDU_FLAGS:
+			return  pv_get_sintval(msg, param, res, (int)rp_data->pdu.flags);
+		case SMS_TPDU_CODING:
+			return  pv_get_sintval(msg, param, res, (int)rp_data->pdu.coding);
+		case SMS_TPDU_PROTOCOL:
+			return  pv_get_sintval(msg, param, res, (int)rp_data->pdu.pid);
+		case SMS_TPDU_VALIDITY:
+			return  pv_get_sintval(msg, param, res, (int)rp_data->pdu.validity);
+		case SMS_TPDU_REFERENCE:
+			return  pv_get_sintval(msg, param, res, (int)rp_data->pdu.reference);
+		case SMS_TPDU_PAYLOAD:
+			return pv_get_strval(msg, param, res, &rp_data->pdu.payload);
+		case SMS_TPDU_DESTINATION:
+			return pv_get_strval(msg, param, res, &rp_data->pdu.destination);
+		case SMS_TPDU_ORIGINATING_ADDRESS:
+			return pv_get_strval(msg, param, res, &rp_data->pdu.originating_address);
+	}
+	return 0;
+}
+
+int pv_set_sms(struct sip_msg* msg, pv_param_t *param, int op, pv_value_t *val) {
+	if (param==NULL)
 		return -1;
+	
+	if (!rp_send_data) {
+		rp_send_data = (sms_rp_data_t*)pkg_malloc(sizeof(struct _sms_rp_data));
+		if (!rp_send_data) {
+			LM_ERR("Error allocating %lu bytes!\n", sizeof(struct _sms_rp_data));
+			return -1;
+		}
+	}
+
+	switch(param->pvn.u.isname.name.n) {
+		case SMS_ALL:
+			freeRP_DATA(rp_send_data);
+			// Initialize structure:
+			memset(rp_send_data, 0, sizeof(struct _sms_rp_data));
+			break;
+		case SMS_RPDATA_TYPE:
+			if (val == NULL) {
+				rp_send_data->msg_type = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->msg_type = (unsigned char)val->ri;
+			break;
+		case SMS_RPDATA_REFERENCE:
+			if (val == NULL) {
+				rp_send_data->reference = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->reference = (unsigned char)val->ri;
+			break;
+		case SMS_RPDATA_ORIGINATOR:
+			if (rp_send_data->originator.s) {
+				pkg_free(rp_send_data->originator.s);
+				rp_send_data->originator.s = 0;
+				rp_send_data->originator.len = 0;
+			}
+			if (val == NULL)
+				return 0;
+			if (!(val->flags&PV_VAL_STR)) {
+				LM_ERR("Invalid type\n");
+				return -1;
+			}
+			rp_send_data->originator.s = pkg_malloc(val->rs.len);
+			rp_send_data->originator.len = val->rs.len;
+			memcpy(rp_send_data->originator.s, val->rs.s, val->rs.len);
+			break;
+		case SMS_RPDATA_DESTINATION:
+			if (rp_send_data->destination.s) {
+				pkg_free(rp_send_data->destination.s);
+				rp_send_data->destination.s = 0;
+				rp_send_data->destination.len = 0;
+			}
+			if (val == NULL)
+				return 0;
+			if (!(val->flags&PV_VAL_STR)) {
+				LM_ERR("Invalid type\n");
+				return -1;
+			}
+			rp_send_data->destination.s = pkg_malloc(val->rs.len);
+			rp_send_data->destination.len = val->rs.len;
+			memcpy(rp_send_data->destination.s, val->rs.s, val->rs.len);
+			break;
+		case SMS_TPDU_TYPE:
+			if (val == NULL) {
+				rp_send_data->pdu.msg_type = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->pdu.msg_type = (unsigned char)val->ri;
+			break;
+
+		case SMS_TPDU_FLAGS:
+			if (val == NULL) {
+				rp_send_data->pdu.flags = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->pdu.flags = (unsigned char)val->ri;
+			break;
+		case SMS_TPDU_CODING:
+			if (val == NULL) {
+				rp_send_data->pdu.coding = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->pdu.coding = (unsigned char)val->ri;
+			break;
+		case SMS_TPDU_PROTOCOL:
+			if (val == NULL) {
+				rp_send_data->pdu.pid = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->pdu.pid = (unsigned char)val->ri;
+			break;
+		case SMS_TPDU_REFERENCE:
+			if (val == NULL) {
+				rp_send_data->pdu.reference = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->pdu.reference = (unsigned char)val->ri;
+			break;
+		case SMS_TPDU_VALIDITY:
+			if (val == NULL) {
+				rp_send_data->pdu.validity = 0;
+				return 0;
+			}
+			if (!(val->flags & PV_VAL_INT)) {
+				LM_ERR("Invalid value type\n");
+				return -1;
+			}
+			rp_send_data->pdu.validity = (unsigned char)val->ri;
+			break;
+		case SMS_TPDU_PAYLOAD:
+			if (rp_send_data->pdu.payload.s) {
+				pkg_free(rp_send_data->pdu.payload.s);
+				rp_send_data->pdu.payload.s = 0;
+				rp_send_data->pdu.payload.len = 0;
+			}
+			if (val == NULL)
+				return 0;
+			if (!(val->flags&PV_VAL_STR)) {
+				LM_ERR("Invalid type\n");
+				return -1;
+			}
+			rp_send_data->pdu.payload.s = pkg_malloc(val->rs.len);
+			rp_send_data->pdu.payload.len = val->rs.len;
+			memcpy(rp_send_data->pdu.payload.s, val->rs.s, val->rs.len);
+			break;
+		case SMS_TPDU_DESTINATION:
+			if (rp_send_data->pdu.destination.s) {
+				pkg_free(rp_send_data->pdu.destination.s);
+				rp_send_data->pdu.destination.s = 0;
+				rp_send_data->pdu.destination.len = 0;
+			}
+			if (val == NULL)
+				return 0;
+			if (!(val->flags&PV_VAL_STR)) {
+				LM_ERR("Invalid type\n");
+				return -1;
+			}
+			rp_send_data->pdu.destination.s = pkg_malloc(val->rs.len);
+			rp_send_data->pdu.destination.len = val->rs.len;
+			memcpy(rp_send_data->pdu.destination.s, val->rs.s, val->rs.len);
+			break;
+		case SMS_TPDU_ORIGINATING_ADDRESS:
+			if (rp_send_data->pdu.originating_address.s) {
+				pkg_free(rp_send_data->pdu.originating_address.s);
+				rp_send_data->pdu.originating_address.s = 0;
+				rp_send_data->pdu.originating_address.len = 0;
+			}
+			if (val == NULL)
+				return 0;
+			if (!(val->flags&PV_VAL_STR)) {
+				LM_ERR("Invalid type\n");
+				return -1;
+			}
+			rp_send_data->pdu.originating_address.s = pkg_malloc(val->rs.len);
+			rp_send_data->pdu.originating_address.len = val->rs.len;
+			memcpy(rp_send_data->pdu.originating_address.s, val->rs.s, val->rs.len);
+			break;
+
+	}
+	return 0;
+}
+
+int pv_parse_rpdata_name(pv_spec_p sp, str *in) {
+	if (sp==NULL || in==NULL || in->len<=0) return -1;
+
+	switch(in->len) {
+		case 3: 
+			if (strncmp(in->s, "all", 3) == 0) sp->pvp.pvn.u.isname.name.n = SMS_ALL;
+			else goto error;
+			break;
+		case 4: 
+			if (strncmp(in->s, "type", 4) == 0) sp->pvp.pvn.u.isname.name.n = SMS_RPDATA_TYPE;
+			else goto error;
+			break;
+		case 9: 
+			if (strncmp(in->s, "reference", 9) == 0) sp->pvp.pvn.u.isname.name.n = SMS_RPDATA_REFERENCE;
+			else goto error;
+			break;
+		case 10: 
+			if (strncmp(in->s, "originator", 10) == 0) sp->pvp.pvn.u.isname.name.n = SMS_RPDATA_ORIGINATOR;
+			else goto error;
+			break;
+		case 12: 
+			if (strncmp(in->s, "destination", 12) == 0) sp->pvp.pvn.u.isname.name.n = SMS_RPDATA_DESTINATION;
+			else goto error;
+			break;
+		default:
+			goto error;
+	}
+	sp->pvp.pvn.type = PV_NAME_INTSTR;
+	sp->pvp.pvn.u.isname.type = 0;
+
+	return 0;
+
+error:
+	LM_ERR("unknown uac_req name %.*s\n", in->len, in->s);
+	return -1;
+}
+
+int pv_parse_tpdu_name(pv_spec_p sp, str *in) {
+	if (sp==NULL || in==NULL || in->len<=0) return -1;
+
+	switch(in->len) {
+		case 3: 
+			if (strncmp(in->s, "all", 3) == 0) sp->pvp.pvn.u.isname.name.n = SMS_ALL;
+			else goto error;
+			break;
+		case 4: 
+			if (strncmp(in->s, "type", 4) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_TYPE;
+			else goto error;
+			break;
+		case 5: 
+			if (strncmp(in->s, "flags", 5) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_FLAGS;
+			else goto error;
+			break;
+		case 6: 
+			if (strncmp(in->s, "coding", 6) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_CODING;
+			else if (strncmp(in->s, "origen", 6) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_ORIGINATING_ADDRESS;
+			else goto error;
+			break;
+		case 7: 
+			if (strncmp(in->s, "payload", 7) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_PAYLOAD;
+			else goto error;
+			break;
+		case 8: 
+			if (strncmp(in->s, "protocol", 8) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_PROTOCOL;
+			else if (strncmp(in->s, "validity", 8) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_VALIDITY;
+			else goto error;
+			break;
+		case 9: 
+			if (strncmp(in->s, "reference", 9) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_REFERENCE;
+			else goto error;
+			break;
+
+
+		case 12: 
+			if (strncmp(in->s, "destination", 12) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_DESTINATION;
+			else goto error;
+			break;
+		default:
+			goto error;
+	}
+	sp->pvp.pvn.type = PV_NAME_INTSTR;
+	sp->pvp.pvn.u.isname.type = 0;
+
+	return 0;
+
+error:
+	LM_ERR("unknown uac_req name %.*s\n", in->len, in->s);
+	return -1;
 }
 
 /*

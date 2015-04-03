@@ -31,15 +31,16 @@
 MODULE_VERSION
 
 static pv_export_t mod_pvs[] = {
-	{ {"sms_ack", sizeof("sms_ack")-1}, PVT_OTHER, pv_sms_ack, 0, 0, 0, 0, 0 },
-	{ {"sms.text", sizeof("sms.text")-1}, PVT_OTHER, pv_sms_text, 0, 0, 0, 0, 0 },
-	{ {"sms.destination", sizeof("sms.destination")-1}, PVT_OTHER, pv_sms_destination, 0, 0, 0, 0, 0 },
-	{ {"sms.validity", sizeof("sms.validity")-1}, PVT_OTHER, pv_sms_validity, 0, 0, 0, 0, 0 },
+	{ {"smsack", sizeof("smsack")-1}, PVT_OTHER, pv_sms_ack, 0, 0, 0, 0, 0 },
+	{ {"rpdata", sizeof("rpdata")-1}, PVT_OTHER, pv_get_sms, pv_set_sms, pv_parse_rpdata_name, 0, 0, 0 },
+	{ {"tpdu", sizeof("tpdu")-1}, PVT_OTHER, pv_get_sms, pv_set_sms, pv_parse_tpdu_name, 0, 0, 0 },
+	{ {"smsbody", sizeof("smsbody")-1}, PVT_OTHER, pv_sms_body, 0, 0, 0, 0, 0 },
 	{ {0, 0}, 0, 0, 0, 0, 0, 0, 0 }
 };
 
 static cmd_export_t cmds[]={
 	{"smsdump",   (cmd_function)smsdump, 0, 0, 0, REQUEST_ROUTE},
+	{"isRPDATA",  (cmd_function)isRPDATA, 0, 0, 0, REQUEST_ROUTE},
 	{0,0,0,0,0,0}
 };
 
@@ -58,4 +59,5 @@ struct module_exports exports= {
 	0,
 	0           /* per-child init function */
 };
+
 

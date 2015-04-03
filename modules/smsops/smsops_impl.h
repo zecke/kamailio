@@ -24,15 +24,18 @@
 
 #include "../../pvar.h"
 
-// Generate SMS-ACK
-int pv_sms_ack(struct sip_msg *, pv_param_t *, pv_value_t *);
-// Gets the Text from a SMS:
-int pv_sms_text(struct sip_msg *, pv_param_t *, pv_value_t *);
-// Gets the Destination from a SMS:
-int pv_sms_destination(struct sip_msg *, pv_param_t *, pv_value_t *);
-// Gets the Validity from a SMS:
-int pv_sms_validity(struct sip_msg *, pv_param_t *, pv_value_t *);
 
 int smsdump(struct sip_msg *, char *, char *);
+int isRPDATA(struct sip_msg *, char *, char *);
+
+int pv_parse_rpdata_name(pv_spec_p, str *);
+int pv_parse_tpdu_name(pv_spec_p, str *);
+int pv_get_sms(struct sip_msg *, pv_param_t *, pv_value_t *);
+int pv_set_sms(struct sip_msg *, pv_param_t *, int, pv_value_t *);
+
+// Generate SMS-ACK
+int pv_sms_ack(struct sip_msg *, pv_param_t *, pv_value_t *);
+// Generate a SMS-Body
+int pv_sms_body(struct sip_msg *, pv_param_t *, pv_value_t *);
 
 #endif
