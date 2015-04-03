@@ -31,7 +31,10 @@
 MODULE_VERSION
 
 static pv_export_t mod_pvs[] = {
-	{ {"smsack", sizeof("smsack")-1}, PVT_OTHER, pv_sms_ack, 0, 0, 0, 0, 0 },
+	{ {"sms_ack", sizeof("sms_ack")-1}, PVT_OTHER, pv_sms_ack, 0, 0, 0, 0, 0 },
+	{ {"sms.text", sizeof("sms.text")-1}, PVT_OTHER, pv_sms_text, 0, 0, 0, 0, 0 },
+	{ {"sms.destination", sizeof("sms.destination")-1}, PVT_OTHER, pv_sms_destination, 0, 0, 0, 0, 0 },
+	{ {"sms.validity", sizeof("sms.validity")-1}, PVT_OTHER, pv_sms_validity, 0, 0, 0, 0, 0 },
 	{ {0, 0}, 0, 0, 0, 0, 0, 0, 0 }
 };
 
