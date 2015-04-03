@@ -415,34 +415,29 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 	return 1;	
 }
 
-int dumpRPData(struct sip_msg *msg) {
-	// Decode message:
-	// Decode the 3GPP-SMS:
-	if (decode_3gpp_sms(msg) != 1) {
-		LM_ERR("Error getting/decoding RP-Data from request!\n");
-		return -1;
+int dumpRPData(sms_rp_data_t * rpdata, int level) {
+	if (rpdata) {
+		LOG(level, "SMS-Message\n");
+		LOG(level, "------------------------\n");
+		LOG(level, "RP-Data\n");
+		LOG(level, "  Type:                       %x\n", rpdata->msg_type);
+		LOG(level, "  Reference:                  %x (%i)\n", rpdata->reference, rpdata->reference);
+		LOG(level, "  Originator:                 %.*s (%i)\n", rpdata->originator.len, rpdata->originator.s, rpdata->originator.len);
+		LOG(level, "  Destination:                %.*s (%i)\n", rpdata->destination.len, rpdata->destination.s, rpdata->destination.len);
+		LOG(level, "T-PDU\n");
+		LOG(level, "  Type:                       %x\n", rpdata->pdu.msg_type);
+		LOG(level, "  Flags:                      %x (%i)\n", rpdata->pdu.flags, rpdata->pdu.flags);
+		LOG(level, "  Reference:                  %x (%i)\n", rpdata->pdu.reference, rpdata->pdu.reference);
+
+		LOG(level, "  Originating-Address:        %.*s (%i)\n", rpdata->pdu.originating_address.len, rpdata->pdu.originating_address.s, rpdata->pdu.originating_address.len);
+		LOG(level, "  Destination:                %.*s (%i)\n", rpdata->pdu.destination.len, rpdata->pdu.destination.s, rpdata->pdu.destination.len);
+
+		LOG(level, "  Protocol:                   %x (%i)\n", rpdata->pdu.pid, rpdata->pdu.pid);
+		LOG(level, "  Coding:                     %x (%i)\n", rpdata->pdu.coding, rpdata->pdu.coding);
+		LOG(level, "  Validity:                   %x (%i)\n", rpdata->pdu.validity, rpdata->pdu.validity);
+
+		LOG(level, "  Payload:                    %.*s (%i)\n", rpdata->pdu.payload.len, rpdata->pdu.payload.s, rpdata->pdu.payload.len);
 	}
-
-	LM_INFO("SMS-Message\n");
-	LM_INFO("------------------------\n");
-	LM_INFO("RP-Data\n");
-	LM_INFO("  Type:                       %x\n", rp_data->msg_type);
-	LM_INFO("  Reference:                  %x (%i)\n", rp_data->reference, rp_data->reference);
-	LM_INFO("  Originator:                 %.*s (%i)\n", rp_data->originator.len, rp_data->originator.s, rp_data->originator.len);
-	LM_INFO("  Destination:                %.*s (%i)\n", rp_data->destination.len, rp_data->destination.s, rp_data->destination.len);
-	LM_INFO("T-PDU\n");
-	LM_INFO("  Type:                       %x\n", rp_data->pdu.msg_type);
-	LM_INFO("  Flags:                      %x (%i)\n", rp_data->pdu.flags, rp_data->pdu.flags);
-	LM_INFO("  Reference:                  %x (%i)\n", rp_data->pdu.reference, rp_data->pdu.reference);
-
-	LM_INFO("  Originating-Address:        %.*s (%i)\n", rp_data->pdu.originating_address.len, rp_data->pdu.originating_address.s, rp_data->pdu.originating_address.len);
-	LM_INFO("  Destination:                %.*s (%i)\n", rp_data->pdu.destination.len, rp_data->pdu.destination.s, rp_data->pdu.destination.len);
-
-	LM_INFO("  Protocol:                   %x (%i)\n", rp_data->pdu.pid, rp_data->pdu.pid);
-	LM_INFO("  Coding:                     %x (%i)\n", rp_data->pdu.coding, rp_data->pdu.coding);
-	LM_INFO("  Validity:                   %x (%i)\n", rp_data->pdu.validity, rp_data->pdu.validity);
-
-	LM_INFO("  Payload:                    %.*s (%i)\n", rp_data->pdu.payload.len, rp_data->pdu.payload.s, rp_data->pdu.payload.len);
 	return 1;
 }
 
@@ -777,8 +772,8 @@ int pv_parse_rpdata_name(pv_spec_p sp, str *in) {
 			if (strncmp(in->s, "originator", 10) == 0) sp->pvp.pvn.u.isname.name.n = SMS_RPDATA_ORIGINATOR;
 			else goto error;
 			break;
-		case 12: 
-			if (strncmp(in->s, "destination", 12) == 0) sp->pvp.pvn.u.isname.name.n = SMS_RPDATA_DESTINATION;
+		case 11: 
+			if (strncmp(in->s, "destination", 11) == 0) sp->pvp.pvn.u.isname.name.n = SMS_RPDATA_DESTINATION;
 			else goto error;
 			break;
 		default:
@@ -828,10 +823,8 @@ int pv_parse_tpdu_name(pv_spec_p sp, str *in) {
 			if (strncmp(in->s, "reference", 9) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_REFERENCE;
 			else goto error;
 			break;
-
-
-		case 12: 
-			if (strncmp(in->s, "destination", 12) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_DESTINATION;
+		case 11: 
+			if (strncmp(in->s, "destination", 11) == 0) sp->pvp.pvn.u.isname.name.n = SMS_TPDU_DESTINATION;
 			else goto error;
 			break;
 		default:
@@ -843,7 +836,7 @@ int pv_parse_tpdu_name(pv_spec_p sp, str *in) {
 	return 0;
 
 error:
-	LM_ERR("unknown uac_req name %.*s\n", in->len, in->s);
+	LM_ERR("unknown pdu name %.*s\n", in->len, in->s);
 	return -1;
 }
 
@@ -851,7 +844,13 @@ error:
  * Dumps the content of the SMS-Message:
  */
 int smsdump(struct sip_msg *msg, char *str1, char *str2) {
-	return dumpRPData(msg);
+	// Decode the 3GPP-SMS:
+	if (decode_3gpp_sms(msg) != 1) {
+		LM_ERR("Error getting/decoding RP-Data from request!\n");
+		return -1;
+	}
+
+	return dumpRPData(rp_data, L_INFO);
 }
 
 int isRPDATA(struct sip_msg *msg, char *str1, char *str2) {
