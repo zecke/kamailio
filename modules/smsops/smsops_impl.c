@@ -135,7 +135,7 @@ void freeRP_DATA(sms_rp_data_t * rpdata) {
 #define BITMASK_LOW_4BITS 0x0F
 
 // Encode SMS-Message by merging 7 bit ASCII characters into 8 bit octets.
-static int EncodeSMSMessage(str sms, char * output_buffer, int buffer_size) {
+static int ascii_to_gsm(str sms, char * output_buffer, int buffer_size) {
 	// Check if output buffer is big enough.
 	if ((sms.len * 7 + 7) / 8 > buffer_size)
 		return -1;
@@ -262,15 +262,15 @@ static int EncodePhoneNumber(str phone, char * output_buffer, int buffer_size) {
 }
 
 // Decode a digit based phone number for SMS based format.
-static int DecodePhoneNumber(char* buffer, str phone) {
+static int DecodePhoneNumber(char* buffer, int len, str phone) {
 	int i = 0;
-	for (; i < phone.len; ++i) {
+	for (; i < len; ++i) {
 		if (i % 2 == 0)
 			phone.s[i] = (buffer[i / 2] & BITMASK_LOW_4BITS) + '0';
 	        else
 			phone.s[i] = ((buffer[i / 2] & BITMASK_HIGH_4BITS) >> 4) + '0';
 	}
-	return phone.len;
+	return i;
 }
 
 // Generate a 7 Byte Long Time
@@ -353,21 +353,21 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 		rp_data->msg_type = (unsigned char)body.s[p++];
 		rp_data->reference = (unsigned char)body.s[p++];
 		if ((rp_data->msg_type == RP_DATA_MS_TO_NETWORK) || (rp_data->msg_type == RP_DATA_NETWORK_TO_MS)) {
-			rp_data->originator.len = body.s[p++];
-			if (rp_data->originator.len > 0) {
+			len = body.s[p++];
+			if (len > 0) {
 				p++; // Type of Number, we assume E164, thus ignored
-				rp_data->originator.len = (rp_data->originator.len * 2)  - 1;
-				rp_data->originator.s = pkg_malloc(rp_data->originator.len);
-				DecodePhoneNumber(&body.s[p], rp_data->originator);
-				p += rp_data->originator.len/2;
+				len--; // Deduct the type of number from the len
+				rp_data->originator.s = pkg_malloc(len * 2);
+				rp_data->originator.len = DecodePhoneNumber(&body.s[p], len * 2, rp_data->originator);
+				p += len;
 			}
-			rp_data->destination.len = body.s[p++];
-			if (rp_data->destination.len > 0) {
+			len = body.s[p++];
+			if (len > 0) {
 				p++; // Type of Number, we assume E164, thus ignored
-				rp_data->destination.len = (rp_data->destination.len * 2)  - 1;
-				rp_data->destination.s = pkg_malloc(rp_data->destination.len);
-				DecodePhoneNumber(&body.s[p], rp_data->destination);
-				p += rp_data->destination.len/2;
+				len--; // Deduct the type of number from the len
+				rp_data->destination.s = pkg_malloc(len * 2);
+				rp_data->destination.len = DecodePhoneNumber(&body.s[p], len * 2, rp_data->destination);
+				p += len;
 			}
 
 			////////////////////////////////////////////////
@@ -383,8 +383,13 @@ int decode_3gpp_sms(struct sip_msg *msg) {
 				if (rp_data->pdu.destination.len > 0) {
 					p++; // Type of Number, we assume E164, thus ignored
 					rp_data->pdu.destination.s = pkg_malloc(rp_data->pdu.destination.len);
-					DecodePhoneNumber(&body.s[p], rp_data->pdu.destination);
-					p += rp_data->pdu.destination.len/2;	
+					DecodePhoneNumber(&body.s[p], rp_data->pdu.destination.len, rp_data->pdu.destination);
+					if (rp_data->pdu.destination.len % 2 == 0) {
+						p += rp_data->pdu.destination.len/2;	
+					} else {
+						p += (rp_data->pdu.destination.len/2)+1;	
+					}
+					
 				}
 				rp_data->pdu.pid = (unsigned char)body.s[p++];
 				rp_data->pdu.coding = (unsigned char)body.s[p++];
@@ -490,34 +495,64 @@ int pv_sms_ack(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
  * Creates the body for SMS-ACK from the current message
  */
 int pv_sms_body(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
-	str rp_data_ack = {0, 0};
+	dumpRPData(rp_send_data, L_DBG);
 
-	// RP-Type (1) + RP-Ref (1) + RP-User-Data (Element-ID (1) + Length (9 => Msg-Type (1) + Parameter (1) + Service-Centre-Time (7)) = 13;
-	rp_data_ack.len = 13;
-	rp_data_ack.s = (char*)pkg_malloc(rp_data_ack.len);
-	if (!rp_data_ack.s) {
-		LM_ERR("Error allocating %d bytes!\n", rp_data_ack.len);
+	str sms_body = {0, 0};
+	int buffer_size = 1024, lenpos = 0, i = 0;
+
+	// We assume a maximum size of 1024 Bytes, to be verified.
+	sms_body.s = (char*)pkg_malloc(buffer_size);
+	if (!sms_body.s) {
+		LM_ERR("Error allocating %i bytes!\n", buffer_size);
 		return -1;
 	}
 
 	// Encode the data (RP-Data)
-	// Always ACK NETWORK to MS
-	rp_data_ack.s[0] = RP_ACK_NETWORK_TO_MS;
-	// Take the reference from request:
-	rp_data_ack.s[1] = rp_data->reference;
-	// RP-Data-Element-ID
-	rp_data_ack.s[2] = 0x41;
-	// Length
-	rp_data_ack.s[3] = 9;
-	// PDU
-	// SMS-SUBMIT-Report
-	rp_data_ack.s[4] = SUBMIT;
-	// Parameters (none)
-	rp_data_ack.s[5] = 0x0;
+	sms_body.s[sms_body.len++] = rp_send_data->msg_type;
+	sms_body.s[sms_body.len++] = rp_send_data->reference;
+	lenpos = sms_body.len;
+	sms_body.s[sms_body.len++] = 0x00;
+	if (rp_send_data->originator.len > 0) {
+		sms_body.s[sms_body.len++] = 0x91; // Type of number: ISDN/Telephony Numbering (E164), no extension
+		i = EncodePhoneNumber(rp_send_data->originator, &sms_body.s[sms_body.len], buffer_size - sms_body.len);
+		sms_body.s[lenpos] = i + 1;
+		sms_body.len += i;
+	}
+	lenpos = sms_body.len;
+	sms_body.s[sms_body.len++] = 0x00;
+	if (rp_send_data->destination.len > 0) {
+		sms_body.s[sms_body.len++] = 0x91; // Type of number: ISDN/Telephony Numbering (E164), no extension
+		i = EncodePhoneNumber(rp_send_data->destination, &sms_body.s[sms_body.len], buffer_size - sms_body.len);
+		sms_body.s[lenpos] = i + 1;
+		sms_body.len += i;
+	}
+	// Store the position of the length for later usage:
+	lenpos = sms_body.len;
+	sms_body.s[sms_body.len++] = 0x00;
+	
+	///////////////////////////////////////////////////
+	// T-PDU
+	///////////////////////////////////////////////////
+	sms_body.s[sms_body.len++] = rp_send_data->pdu.msg_type | rp_send_data->pdu.flags | 0x4; // We've always got no more messages to send.
+	// Originating Address:
+	sms_body.s[sms_body.len++] = rp_send_data->pdu.originating_address.len;
+	sms_body.s[sms_body.len++] = 0x91; // Type of number: ISDN/Telephony Numbering (E164), no extension
+	sms_body.len += EncodePhoneNumber(rp_send_data->pdu.originating_address, &sms_body.s[sms_body.len], buffer_size - sms_body.len);
+	// Protocol ID
+	sms_body.s[sms_body.len++] = rp_send_data->pdu.pid;
+	// Encoding (0 => default 7 Bit)
+	sms_body.s[sms_body.len++] = rp_send_data->pdu.coding;
+	// Service-Center-Timestamp (always 7 octets)
+	EncodeTime(&sms_body.s[sms_body.len]);
+	sms_body.len += 7;
+	sms_body.s[sms_body.len++] = rp_send_data->pdu.payload.len;
+	i = ascii_to_gsm(rp_send_data->pdu.payload, &sms_body.s[sms_body.len], buffer_size - sms_body.len);
+	sms_body.len += i - 1;
 
-	EncodeTime(&rp_data_ack.s[6]);
-
-	return pv_get_strval(msg, param, res, &rp_data_ack);
+	// Update the len of the PDU
+	sms_body.s[lenpos] = (unsigned char)(sms_body.len - lenpos - 1);
+	
+	return pv_get_strval(msg, param, res, &sms_body);
 }
 
 int pv_get_sms(struct sip_msg *msg, pv_param_t *param, pv_value_t *res) {
@@ -570,6 +605,8 @@ int pv_set_sms(struct sip_msg* msg, pv_param_t *param, int op, pv_value_t *val) 
 			LM_ERR("Error allocating %lu bytes!\n", sizeof(struct _sms_rp_data));
 			return -1;
 		}
+		// Initialize structure:
+		memset(rp_send_data, 0, sizeof(struct _sms_rp_data));
 	}
 
 	switch(param->pvn.u.isname.name.n) {
@@ -850,7 +887,7 @@ int smsdump(struct sip_msg *msg, char *str1, char *str2) {
 		return -1;
 	}
 
-	return dumpRPData(rp_data, L_INFO);
+	return dumpRPData(rp_data, L_DBG);
 }
 
 int isRPDATA(struct sip_msg *msg, char *str1, char *str2) {
