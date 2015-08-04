@@ -116,10 +116,10 @@ static int pv_get_curlredirect(struct sip_msg *msg, pv_param_t *param, pv_value_
 
 /* Exported functions */
 static cmd_export_t cmds[] = {
-    {"http_query", (cmd_function)w_http_query, 2, fixup_http_query_get,
+    {"curl_http_query", (cmd_function)w_http_query, 2, fixup_http_query_get,
      fixup_free_http_query_get,
      REQUEST_ROUTE|ONREPLY_ROUTE|FAILURE_ROUTE|BRANCH_ROUTE},
-    {"http_query", (cmd_function)w_http_query_post, 3, fixup_http_query_post,
+    {"curl_http_query", (cmd_function)w_http_query_post, 3, fixup_http_query_post,
      fixup_free_http_query_post,
      REQUEST_ROUTE|ONREPLY_ROUTE|FAILURE_ROUTE|BRANCH_ROUTE},
     {"curl_connect", (cmd_function)w_curl_connect, 3, fixup_curl_connect,
