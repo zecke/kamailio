@@ -358,7 +358,8 @@ static unsigned int raw_ip = 0;
 static unsigned short raw_port = 0;
 static int nh_keepalive_timeout = 0;
 static request_method_t sipping_method_id = 0;
-
+/* filter contacts by server_id */
+static int nh_filter_srvid = 0;
 
 /*0-> disabled, 1 ->enabled*/
 unsigned int *natping_state=0;
@@ -426,6 +427,7 @@ static param_export_t params[] = {
 	{"keepalive_timeout",     INT_PARAM, &nh_keepalive_timeout  },
 	{"udpping_from_path",     INT_PARAM, &udpping_from_path     },
 	{"append_sdp_oldmediaip", INT_PARAM, &sdp_oldmediaip        },
+	{"filter_server_id",      INT_PARAM, &nh_filter_srvid },
 
 	{0, 0, 0}
 };
@@ -675,6 +677,7 @@ mod_init(void)
 			LM_ERR("bad config - natping_processes must be >= 0\n");
 			return -1;
 		}
+		ul.set_max_partition(natping_processes*natping_interval);
 
 		sipping_flag = (sipping_flag==-1)?0:(1<<sipping_flag);
 		natping_disable_flag = (natping_disable_flag==-1)?0:(1<<natping_disable_flag);
@@ -920,8 +923,8 @@ set_contact_alias_f(struct sip_msg* msg, char* str1, char* str2)
 		pkg_free(buf);
 		return -1;
 	}
-	c->uri.s = buf;
-	c->uri.len = len;
+	c->uri.s = buf + br;
+	c->uri.len = len -2*br;
 
 	return 1;
 }
@@ -2066,6 +2069,7 @@ nh_timer(unsigned int ticks, void *timer_idx)
 	char *path_ip_str = NULL;
 	unsigned int path_ip = 0;
 	unsigned short path_port = 0;
+	int options = 0;
 
 	if((*natping_state) == 0)
 		goto done;
@@ -2078,9 +2082,10 @@ nh_timer(unsigned int ticks, void *timer_idx)
 			goto done;
 		}
 	}
+	if(nh_filter_srvid) options |= GAU_OPT_SERVER_ID;
 	rval = ul.get_all_ucontacts(buf, cblen, (ping_nated_only?ul.nat_flag:0),
 		((unsigned int)(unsigned long)timer_idx)*natping_interval+iteration,
-		natping_processes*natping_interval);
+		natping_processes*natping_interval, options);
 	if (rval<0) {
 		LM_ERR("failed to fetch contacts\n");
 		goto done;
@@ -2096,7 +2101,7 @@ nh_timer(unsigned int ticks, void *timer_idx)
 		}
 		rval = ul.get_all_ucontacts(buf,cblen,(ping_nated_only?ul.nat_flag:0),
 		   ((unsigned int)(unsigned long)timer_idx)*natping_interval+iteration,
-		   natping_processes*natping_interval);
+		   natping_processes*natping_interval, options);
 		if (rval != 0) {
 			pkg_free(buf);
 			goto done;

@@ -38,6 +38,15 @@
 #include "../../data_lump.h"
 #include "../../data_lump_rpl.h"
 
+
+#ifdef ENABLE_ASYNC_MUTEX
+#define LOCK_ASYNC_CONTINUE(_t) lock(&(_t)->async_mutex )
+#define UNLOCK_ASYNC_CONTINUE(_t) unlock(&(_t)->async_mutex )
+#else
+#define LOCK_ASYNC_CONTINUE(_t) LOCK_REPLIES(_t)
+#define UNLOCK_ASYNC_CONTINUE(_t) UNLOCK_REPLIES(_t)
+#endif
+
 /* Suspends the transaction for later use.
  * Save the returned hash_index and label to get
  * back to the SIP request processing, see the readme.
@@ -93,6 +102,10 @@ int t_suspend(struct sip_msg *msg,
 			LM_ERR("failed to add the blind UAC\n");
 			return -1;
 		}
+		/* propagate failure route to new branch
+		 * - failure route to be executed if the branch is not continued
+		 *   before timeout */
+		t->uac[t->async_backup.blind_uac].on_failure = t->on_failure;
 	} else {
 		LM_DBG("this is a suspend on reply - setting msg flag to SUSPEND\n");
 		msg->msg_flags |= FL_RPL_SUSPENDED;
@@ -176,9 +189,9 @@ int t_continue(unsigned int hash_index, unsigned int label,
 	 * form calling t_continue() multiple times simultaneously */
 	LOCK_ASYNC_CONTINUE(t);
 
-	t->flags |= T_ASYNC_CONTINUE;   /* we can now know anywhere in kamailio 
+	t->flags |= T_ASYNC_CONTINUE;   /* we can now know anywhere in kamailio
 					 * that we are executing post a suspend */
-	
+
 	/* which route block type were we in when we were suspended */
 	cb_type =  FAILURE_CB_TYPE;;
 	switch (t->async_backup.backup_route) {
@@ -211,10 +224,15 @@ int t_continue(unsigned int hash_index, unsigned int label,
 				return 1;
 			}
 
-			/*we really don't need this next line anymore otherwise we will 
-			never be able to forward replies after a (t_relay) on this branch.
-			We want to try and treat this branch as 'normal' (as if it were a normal req, not async)' */
-			//t->uac[branch].last_received=500;
+			/* Set last_received to something >= 200,
+			 * the actual value does not matter, the branch
+			 * will never be picked up for response forwarding.
+			 * If last_received is lower than 200,
+			 * then the branch may tried to be cancelled later,
+			 * for example when t_reply() is called from
+			 * a failure route => deadlock, because both
+			 * of them need the reply lock to be held. */
+			t->uac[branch].last_received=500;
 			uac = &t->uac[branch];
 		}
 		/* else
@@ -419,6 +437,10 @@ done:
 		sip_msg_free(t->uac[branch].reply);
 		t->uac[branch].reply = 0;
 	}
+
+        t->flags &= ~T_ASYNC_SUSPENDED;   /*This transaction is no longer suspended so unsetting the SUSPEND flag*/
+
+
 	return 0;
 
 kill_trans:

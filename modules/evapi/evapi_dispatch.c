@@ -332,12 +332,13 @@ void evapi_accept_client(struct ev_loop *loop, struct ev_io *watcher, int revent
 	
 	evapi_client = (struct ev_io*) malloc (sizeof(struct ev_io));
 	if(evapi_client==NULL) {
-		perror("no more memory\n");
+		LM_ERR("no more memory\n");
 		return;
 	}
 
 	if(EV_ERROR & revents) {
-		perror("received invalid event\n");
+		LM_ERR("received invalid event\n");
+		free(evapi_client);
 		return;
 	}
 
@@ -346,6 +347,7 @@ void evapi_accept_client(struct ev_loop *loop, struct ev_io *watcher, int revent
 
 	if (csock < 0) {
 		LM_ERR("cannot accept the client\n");
+		free(evapi_client);
 		return;
 	}
 	for(i=0; i<EVAPI_MAX_CLIENTS; i++) {
@@ -357,6 +359,7 @@ void evapi_accept_client(struct ev_loop *loop, struct ev_io *watcher, int revent
 							EVAPI_IPADDR_SIZE)==NULL) {
 					LM_ERR("cannot convert ipv4 address\n");
 					close(csock);
+					free(evapi_client);
 					return;
 				}
 			} else {
@@ -366,6 +369,7 @@ void evapi_accept_client(struct ev_loop *loop, struct ev_io *watcher, int revent
 							EVAPI_IPADDR_SIZE)==NULL) {
 					LM_ERR("cannot convert ipv6 address\n");
 					close(csock);
+					free(evapi_client);
 					return;
 				}
 			}
@@ -378,6 +382,7 @@ void evapi_accept_client(struct ev_loop *loop, struct ev_io *watcher, int revent
 	if(i==EVAPI_MAX_CLIENTS) {
 		LM_ERR("too many clients\n");
 		close(csock);
+		free(evapi_client);
 		return;
 	}
 
@@ -389,8 +394,10 @@ void evapi_accept_client(struct ev_loop *loop, struct ev_io *watcher, int revent
 	evenv.eset = 1;
 	evapi_run_cfg_route(&evenv, _evapi_rts.con_new);
 
-	if(_evapi_clients[i].connected == 0)
+	if(_evapi_clients[i].connected == 0) {
+		free(evapi_client);
 		return;
+	}
 
 	/* start watcher to read messages from whatchers */
 	ev_io_init(evapi_client, evapi_recv_client, csock, EV_READ);
@@ -527,8 +534,8 @@ int evapi_relay(str *evdata)
 	int sbsize;
 	str *sbuf;
 
-	LM_DBG("relaying event data [%.*s]\n",
-			evdata->len, evdata->s);
+	LM_DBG("relaying event data [%.*s] (%d)\n",
+			evdata->len, evdata->s, evdata->len);
 
 	sbsize = evdata->len;
 	sbuf = (str*)shm_malloc(sizeof(str) + ((sbsize+32) * sizeof(char)));
@@ -553,12 +560,12 @@ int evapi_relay(str *evdata)
 		return -1;
 	}
 
+	LM_DBG("sending [%p] [%.*s] (%d)\n", sbuf, sbuf->len, sbuf->s, sbuf->len);
 	len = write(_evapi_notify_sockets[1], &sbuf, sizeof(str*));
 	if(len<=0) {
 		LM_ERR("failed to pass the pointer to evapi dispatcher\n");
 		return -1;
 	}
-	LM_DBG("sent [%p] [%.*s] (%d)\n", sbuf, sbuf->len, sbuf->s, sbuf->len);
 	return 0;
 }
 

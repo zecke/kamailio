@@ -40,6 +40,8 @@
 #define DB_ONLY       3
 #define DB_READONLY   4
 
+#define GAU_OPT_SERVER_ID  (1<<0)  /* filter query by server_id */
+
 /*forward declaration necessary for udomain*/
 
 struct udomain;
@@ -90,7 +92,9 @@ typedef struct ucontact {
 	unsigned int methods;   /*!< Supported methods */
 	str instance;           /*!< SIP instance value - gruu */
 	unsigned int reg_id;    /*!< reg-id parameters */
-	int tcpconn_id;          /* unique tcp connection id */
+	int server_id;          /*!< server id */
+	int tcpconn_id;         /*!< unique tcp connection id */
+	int keepalive;          /*!< keepalive */
 #ifdef WITH_XAVP
 	sr_xavp_t * xavp;       /*!< per contact xavps */
 #endif
@@ -116,7 +120,9 @@ typedef struct ucontact_info {
 	unsigned int methods;     /*!< supported methods */
 	str instance;             /*!< SIP instance value - gruu */
 	unsigned int reg_id;      /*!< reg-id parameters */
-	int tcpconn_id;
+	int server_id;            /*!< server id */
+	int tcpconn_id;           /*!< connection id */
+	int keepalive;            /*!< keepalive */
 #ifdef WITH_XAVP
 	sr_xavp_t * xavp;         /*!< per contact xavps */
 #endif
@@ -177,7 +183,7 @@ typedef void (*unlock_udomain_t)(struct udomain* _d, str *_aor);
 typedef int (*register_udomain_t)(const char* _n, struct udomain** _d);
 
 typedef int  (*get_all_ucontacts_t) (void* buf, int len, unsigned int flags,
-		unsigned int part_idx, unsigned int part_max);
+		unsigned int part_idx, unsigned int part_max, int options);
 
 typedef int (*get_udomain_t)(const char* _n, udomain_t** _d);
 
@@ -189,6 +195,9 @@ int ul_set_keepalive_timeout(int _to);
 
 typedef int (*ul_refresh_keepalive_t)(unsigned int _aorhash, str *_ruid);
 int ul_refresh_keepalive(unsigned int _aorhash, str *_ruid);
+
+
+typedef void (*ul_set_max_partition_t)(unsigned int m);
 
 /*! usrloc API export structure */
 typedef struct usrloc_api {
@@ -222,6 +231,7 @@ typedef struct usrloc_api {
 
 	ul_set_keepalive_timeout_t set_keepalive_timeout;
 	ul_refresh_keepalive_t     refresh_keepalive;
+	ul_set_max_partition_t     set_max_partition;
 } usrloc_api_t;
 
 

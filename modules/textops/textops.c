@@ -2111,6 +2111,11 @@ int add_hf_helper(struct sip_msg* msg, str *str1, str *str2,
 	len=s0.len;
 	if (str2) len+= str2->len + REQ_LINE(msg).uri.len;
 
+	if(len==0) {
+		LM_INFO("nothing to add\n");
+		return -1;
+	}
+
 	s  = (char*)pkg_malloc(len);
 	if (!s) {
 		LM_ERR("no pkg memory left\n");
@@ -2764,7 +2769,7 @@ static int search_hf_f(struct sip_msg* msg, char* str_hf, char* re, char *flags)
 					return 1;
 			} else {
 				if(flags!=NULL && *flags=='f')
-					return 1;
+					return -1;
 			}
 		} else {
 			hfl = hf;
@@ -2874,6 +2879,9 @@ static int subst_hf_f(struct sip_msg *msg, char *str_hf, char *subst, char *flag
 		} else {
 			hfl = hf;
 		}
+		/* if flags set for first header, then all done */
+		if(flags!=NULL && *flags=='f')
+			return ret;
 	}
 	if(hfl!=NULL)
 	{

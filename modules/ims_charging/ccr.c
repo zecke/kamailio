@@ -96,7 +96,7 @@ int Ro_write_ims_information_avps(AAA_AVP_LIST * avp_list, ims_information_t* x)
         if (!cdp_avp->epcapp.add_Called_Party_Address(&aList2, *(x->called_party_address), 0))
             goto error;
     
-    if (x->incoming_trunk_id && x->outgoing_trunk_id) {
+    if (x->incoming_trunk_id && (x->incoming_trunk_id->len > 0) && x->outgoing_trunk_id && (x->outgoing_trunk_id->len > 0)) {
 	if (!cdp_avp->epcapp.add_Outgoing_Trunk_Group_Id(&aList, *(x->outgoing_trunk_id), 0))
 	    goto error;
 	    
@@ -107,6 +107,10 @@ int Ro_write_ims_information_avps(AAA_AVP_LIST * avp_list, ims_information_t* x)
             goto error;
 	cdp_avp->cdp->AAAFreeAVPList(&aList);
         aList.head = aList.tail = 0;
+    }
+    
+    if (x->access_network_info) {
+		cdp_avp->imsapp.add_Access_Network_Information(&aList2, *(x->access_network_info), 0);
     }
 
     for (sl = x->called_asserted_identity.head; sl; sl = sl->next) {

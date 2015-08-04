@@ -27,26 +27,8 @@ void dlg_reply(struct dlg_cell *dlg, int type, struct dlg_cb_params *_params) {
 	reply = _params->rpl;
 	if (!reply) {
 		LM_WARN("dlg_reply has no SIP reply associated.\n");
+		return;
 	}
-	
-//	if (reply != FAKED_REPLY && reply->REPLY_STATUS == 200) {
-//		//get CC session from callback param
-//		char* cdp_session_id = (char*)*_params->param;
-//		LM_INFO("Call answered\n");
-//		LM_DBG("Call answered and we have a session id of [%s]\n", cdp_session_id);
-//
-//		str session_id;
-//		session_id.s = cdp_session_id;
-//		session_id.len = strlen(cdp_session_id);
-//		AAASession* cdp_session = cdpb.AAAGetCCAccSession(session_id);
-//		if (!cdp_session) {
-//			LM_ERR("could not find find CC App CDP session\n");
-//			return;
-//		}
-//
-//		cdpb.AAAStartChargingCCAccSession(cdp_session);
-//		cdpb.AAASessionsUnlock(cdp_session->hash);
-//	}
 
 	if (reply != FAKED_REPLY && reply->REPLY_STATUS == 200) {
 		LM_DBG("Call answered on dlg [%p] - search for Ro Session and initialise timers.\n", dlg);
@@ -182,9 +164,11 @@ void dlg_terminated(struct dlg_cell *dlg, int type, struct dlg_cb_params *_param
 					}
 				}
 
-				LM_DBG("Sending CCR STOP on Ro_Session [%p]\n", ro_session);
-				send_ccr_stop(ro_session);
-				ro_session->active = 0;
+				if (ro_session->event_type != unknown) {
+					LM_DBG("Sending CCR STOP on Ro_Session [%p], as it is in '%d' state\n", ro_session, ro_session->event_type);
+					send_ccr_stop(ro_session);
+					ro_session->active = 0;
+				}
 				
 				if (ro_db_mode == DB_MODE_REALTIME) {
 				    ro_session->flags |= RO_SESSION_FLAG_DELETED;

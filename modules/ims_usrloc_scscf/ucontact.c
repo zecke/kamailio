@@ -67,6 +67,7 @@
 #include "usrloc_db.h"
 #include "../../hashes.h"
 #include "contact_hslot.h"
+#include "utime.h"
 
 extern struct contact_list* contact_list;
 extern int db_mode;
@@ -92,7 +93,14 @@ ucontact_t* new_ucontact(str* _dom, str* _aor, str* _contact, ucontact_info_t* _
     memset(c, 0, sizeof (ucontact_t));
     
     c->lock = lock_alloc();
-    c->lock = lock_init(c->lock);
+    if (c->lock==0){
+        goto error;
+    }
+    if (lock_init(c->lock)==0){
+	lock_dealloc(c->lock);
+	c->lock=0;
+	goto error;
+    }
 
     //setup callback list
     c->cbs = (struct ulcb_head_list*) shm_malloc(sizeof (struct ulcb_head_list));
@@ -139,7 +147,7 @@ ucontact_t* new_ucontact(str* _dom, str* _aor, str* _contact, ucontact_info_t* _
     }
     
     LM_DBG("generating hash based on [%.*s]\n", _contact->len, _contact->s);
-    c->contact_hash = core_hash(_contact, 0, contact_list->size);
+    c->sl = core_hash(_contact, 0, contact_list->size);
     c->ref_count = 1;
     c->expires = _ci->expires;
     c->q = _ci->q;
@@ -331,6 +339,20 @@ int mem_update_ucontact(ucontact_t* _c, ucontact_info_t* _ci) {
 }
 
 /*!
+ * \brief Setting contact expires to now in memory
+ * \param _c contact
+  * \return 0 on success, -1 on failure
+ */
+int mem_expire_ucontact(ucontact_t* _c) {
+    get_act_time();
+    _c->expires = act_time;
+
+    return 0;
+}
+
+
+
+/*!
  * \brief Insert a new contact into the list at the correct position
  * \param _r record that holds the sorted contacts
  * \param _c new contact
@@ -367,6 +389,43 @@ static inline void update_contact_pos(struct impurecord* _r, ucontact_t* _c) {
         }
     }
 }
+
+/*!
+ * \brief Setting ucontact expires to now
+ * \param _r record the contact belongs to
+ * \param _c updated contact
+ * \return 0 on success, -1 on failure
+ */
+int expire_ucontact(struct impurecord* _r, ucontact_t* _c) {
+    /* we have to update memory in any case, but database directly
+     * only in db_mode 1 */
+    LM_DBG("Expiring contact aor: [%.*s] and contact uri: [%.*s]\n", _c->aor.len, _c->aor.s, _c->c.len, _c->c.s);
+    if (mem_expire_ucontact(_c) < 0) {
+        LM_ERR("failed to update memory\n");
+        return -1;
+    }
+    
+    if (db_mode == WRITE_THROUGH && (db_insert_ucontact(_r, _c) != 0)) {  /* this is an insert/update */
+	LM_ERR("failed to update contact in DB [%.*s]\n", _c->aor.len, _c->aor.s);
+	return -1;
+    }
+    
+    //make sure IMPU is linked to this contact
+    link_contact_to_impu(_r, _c, 1);
+
+    /* run callbacks for UPDATE event */
+    if (exists_ulcb_type(_c->cbs, UL_CONTACT_EXPIRE)) {
+        LM_DBG("exists callback for type= UL_CONTACT_UPDATE\n");
+        run_ul_callbacks(_c->cbs, UL_CONTACT_EXPIRE, _r, _c);
+    }
+    if (exists_ulcb_type(_r->cbs, UL_IMPU_EXPIRE_CONTACT)) {
+        run_ul_callbacks(_r->cbs, UL_IMPU_EXPIRE_CONTACT, _r, _c);
+    }
+
+    return 0;
+}
+
+
 
 /*!
  * \brief Update ucontact with new values
@@ -472,7 +531,7 @@ int remove_dialog_data_from_contact(ucontact_t* _c, unsigned int h_entry, unsign
 }
 
 void release_ucontact(struct ucontact* _c) {
-    lock_contact_slot_i(_c->contact_hash);
-    _c->ref_count--;
-    unlock_contact_slot_i(_c->contact_hash);
+    lock_contact_slot_i(_c->sl);
+    unref_contact_unsafe(_c);
+    unlock_contact_slot_i(_c->sl);
 }

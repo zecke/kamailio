@@ -18,19 +18,19 @@
 	<para>
 		This module offers SIP load balancer functionality and it can be
 		used as SIP traffic dispatcher. There are many load balancing and
-		traffic dispaching algorithms that you can choose from, like:
+		traffic dispaching algorithms that you can choose from, for example:
 		round-robin, weight based load balancing, call load distribution,
-		hashing over SIP message attributes.
+		and hashing over SIP message attributes.
 	</para>
 	<para>
-		The module can be used as a stateless load balancer, it does not
+		The module can be used as a stateless load balancer; it does not
 		depend on any call state tracking module. It requires the TM module if
 		you enable auto-discovery of active/inactive gateways.
 	</para>
 	<para>
 		It is very lightweight, therefore suitable for handling heavy SIP
-		traffic. The module has a small footprint and ability to load balancing rules
-		from a text plain file makes it suitable for embedded systems.
+		traffic. As the module has a small footprint and the ability to load 
+		balancing rules from a plain text file, it is suitable for embedded systems.
 	</para>
 	</section>
 	<section>
@@ -917,6 +917,24 @@ modparam("dispatcher", "force_dst", 1)
 			</listitem>
 			<listitem>
 				<para>
+				<quote>11</quote> - use relative weight based load distribution.
+				You have to set the attribute 'rweight' per each address in
+				destination set. Active host usage probability is 
+				rweight/(SUM of all active host rweights in destination group). 
+				</para>
+				<para>
+				The major difference from the weight distribution is the
+				probability recalculation according to rweight value in case of 
+				host enabling/disabling
+				</para>
+				<para>
+				For example, 100 calls in 3-hosts group with rweight params 1/2/1  
+				will be distributed as 25/50/25. After third host failing 
+				distribution will be changed to 33/67/0.
+				</para>
+			</listitem>
+			<listitem>
+				<para>
 				<quote>X</quote> - if the algorithm is not implemented, the
 				first entry in set is chosen.
 				</para>
@@ -1141,7 +1159,7 @@ if(ds_list_exist("10")) {
 			This function can be used from ANY_ROUTE.
 		</para>
 		<example>
-		<title><function>ds_mark_dst</function> usage</title>
+		<title><function>ds_is_from_list</function> usage</title>
 		<programlisting format="linespecific">
 ...
 if(ds_is_from_list()) {
@@ -1150,7 +1168,10 @@ if(ds_is_from_list()) {
 if(ds_is_from_list("10")) {
     ...
 }
-if(ds_is_from_list("10", "sip:127.0.0.1:5080", "3")) {
+if(ds_is_from_list("10", "3")) {
+    ...
+}
+if(ds_is_from_list("10", "3", "sip:127.0.0.1:5080")) {
     ...
 }
 ...
@@ -1445,6 +1466,12 @@ onreply_route {
 					must be set to a positive integer value beteen 0 and
 					100. The value represents the percent of calls to be
 					sent to that gateways.
+				</listitem>
+				<listitem>
+					'rweight' - used for relative weight based load 
+					distribution. It must be set to a positive integer value 
+					between 1 and 100 (otherwise host will be excluded from 
+					relative weight distribution type). 
 				</listitem>
 				<listitem>
 					'socket' - used to set the sending socket for the gateway.

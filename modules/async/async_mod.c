@@ -94,7 +94,7 @@ static int mod_init(void)
 {
 	if (load_tm_api( &tmb ) == -1)
 	{
-		LM_ERR("cannot load the TM-functions\n");
+		LM_ERR("cannot load the TM-functions. Missing TM module?\n");
 		return -1;
 	}
 
@@ -116,16 +116,20 @@ static int mod_init(void)
  */
 static int child_init(int rank)
 {
+	int i;
+
 	if (rank!=PROC_MAIN)
 		return 0;
 
 	if(async_workers<=0)
 		return 0;
 
-	if(fork_dummy_timer(PROC_TIMER, "ASYNC MOD TIMER", 1 /*socks flag*/,
+	for(i=0; i<async_workers; i++) {
+		if(fork_dummy_timer(PROC_TIMER, "ASYNC MOD TIMER", 1 /*socks flag*/,
 				async_timer_exec, NULL, 1 /*sec*/)<0) {
-		LM_ERR("failed to register timer routine as process\n");
-		return -1; /* error */
+			LM_ERR("failed to register timer routine as process (%d)\n", i);
+			return -1; /* error */
+		}
 	}
 
 	return 0;
@@ -151,7 +155,7 @@ static int w_async_sleep(struct sip_msg* msg, char* sec, char* str2)
 
 	if(async_workers<=0)
 	{
-		LM_ERR("no async mod timer wokers\n");
+		LM_ERR("no async mod timer workers (modparam missing?)\n");
 		return -1;
 	}
 
@@ -188,7 +192,7 @@ static int fixup_async_sleep(void** param, int param_no)
 	ap = (async_param_t*)pkg_malloc(sizeof(async_param_t));
 	if(ap==NULL)
 	{
-		LM_ERR("no more pkg\n");
+		LM_ERR("no more pkg memory available\n");
 		return -1;
 	}
 	memset(ap, 0, sizeof(async_param_t));
@@ -215,7 +219,7 @@ static int w_async_route(struct sip_msg* msg, char* rt, char* sec)
 
 	if(async_workers<=0)
 	{
-		LM_ERR("no async mod timer wokers\n");
+		LM_ERR("no async mod timer workers\n");
 		return -1;
 	}
 

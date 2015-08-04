@@ -1,17 +1,14 @@
-
 /*
- * $Id$
- *
  * Copyright (C)  2007-2008 Voice Sistem SRL
  *
- * This file is part of SIP-router, a free SIP server.
+ * This file is part of Kamailio, a free SIP server.
  *
- * SIP-router is free software; you can redistribute it and/or modify
+ * Kamailio is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version
  *
- * SIP-router is distributed in the hope that it will be useful,
+ * Kamailio is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
@@ -20,14 +17,11 @@
  * along with this program; if not, write to the Free Software 
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2007-08-01 initial version (ancuta onofrei)
  */
 
 /*!
  * \file
- * \brief SIP-router dialplan :: Module interface
+ * \brief Kamailio dialplan :: Module interface
  * \ingroup dialplan
  * Module: \ref dialplan
  */
@@ -103,7 +97,7 @@ dpl_id_p select_dpid(int id);
 struct subst_expr* repl_exp_parse(str subst);
 void repl_expr_free(struct subst_expr *se);
 int translate(struct sip_msg *msg, str user_name, str* repl_user, dpl_id_p idp, str *);
-int rule_translate(struct sip_msg *msg, str , dpl_node_t * rule,  str *);
+int rule_translate(struct sip_msg *msg, str , dpl_node_t * rule, pcre *subst_comp,  str *);
 
 pcre *reg_ex_comp(const char *pattern, int *cap_cnt, int mtype);
 #endif

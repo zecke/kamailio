@@ -39,7 +39,8 @@ PACKAGE_GROUPS=mysql postgres berkeley unixodbc radius presence \
 			   ldap xml perl utils lua memcached \
 			   snmpstats carrierroute xmpp cpl redis python geoip\
 			   sqlite json mono ims sctp java \
-			   purple tls outbound websocket autheph dnssec kazoo cnxcc
+			   purple tls outbound websocket autheph dnssec kazoo cnxcc \
+			   erlang
 
 # module groups to be packaged onto kamailio-extra-modules
 EXTRA_GROUPS=gzcompress uuid ev jansson
@@ -172,7 +173,7 @@ binary-common:
 	dh_testroot
 	dh_installdebconf
 	dh_installdocs
-	dh_installexamples -Xobsoleted
+	dh_installexamples -Xobsoleted -Xsr
 	dh_installmenu
 	dh_installinit -pkamailio -- defaults 23
 	dh_installcron

@@ -161,7 +161,7 @@ if(mongodb_cmd("mgs1", "kamailio", "acc", "{ \"collStats\": \"acc\" }", "mgr1"))
 	</section>
 	<section id="ndb_mongodb.f.mongodb_cmd_simple">
 	    <title>
-		<function moreinfo="none">mongodb_cmd(srvname, dbname, cname, command, replyid)</function>
+		<function moreinfo="none">mongodb_cmd_simple(srvname, dbname, cname, command, replyid)</function>
 	    </title>
 	    <para>
 			Send a valid command to MongoDB server identified by srvname. The reply will
@@ -227,6 +227,30 @@ if(mongodb_cmd_simple("mgs1", "kamailio", "acc", "{ \"collStats\": \"acc\" }", "
 		<programlisting format="linespecific">
 ...
 if(mongodb_find("mgs1", "kamailio", "acc", "{ \"src_user\" : \"111\" }", "mgr1")) {
+	xlog("response from mongodb is [[$mongodb(mgr1=>value)]]\n");
+}
+...
+</programlisting>
+	    </example>
+	</section>
+	<section id="ndb_mongodb.f.mongodb_find_one">
+	    <title>
+		<function moreinfo="none">mongodb_find_one(srvname, dbname, cname, command, replyid)</function>
+	    </title>
+	    <para>
+			Similar to mongodb_find(...), but it stops searching after first
+			match, returning the result with one object - faster when expecting
+			to have a single match. Parameters and behaviour are the same
+			as for mongodb_find(...).
+		</para>
+		<para>
+			The function can be used from ANY_ROUTE.
+		</para>
+		<example>
+		<title><function>mongodb_find_one</function> usage</title>
+		<programlisting format="linespecific">
+...
+if(mongodb_find_one("mgs1", "kamailio", "subscriber", "{ \"username\" : \"111\" }", "mgr1")) {
 	xlog("response from mongodb is [[$mongodb(mgr1=>value)]]\n");
 }
 ...

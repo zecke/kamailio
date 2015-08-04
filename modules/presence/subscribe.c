@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * presence module - presence server implementation
  *
  * Copyright (C) 2006 Voice Sistem S.R.L.
@@ -21,9 +19,6 @@
  * along with this program; if not, write to the Free Software 
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2006-08-15  initial version (Anca Vamanu)
  */
 
 /*! \file
@@ -468,7 +463,7 @@ void delete_subs(str* pres_uri, str* ev_name, str* to_tag,
 	/* delete record from hash table also if not in dbonly mode */
 	if(subs_dbmode != DB_ONLY)
 	{
-		unsigned int hash_code= core_hash(pres_uri, ev_name, shtable_size);
+		unsigned int hash_code= core_case_hash(pres_uri, ev_name, shtable_size);
 		if(delete_shtable(subs_htable, hash_code, &subs) < 0) {
 			LM_ERR("Failed to delete subscription from memory"
 					" [slot: %u ev: %.*s pu: %.*s ci: %.*s ft: %.*s tt: %.*s]\n",
@@ -491,7 +486,7 @@ int update_subscription_notifier(struct sip_msg* msg, subs_t* subs,
 	*sent_reply= 0;
 
 	/* Set the notifier/update fields for the subscription */
-	subs->updated = core_hash(&subs->callid, &subs->from_tag, 0) %
+	subs->updated = core_case_hash(&subs->callid, &subs->from_tag, 0) %
 				(pres_waitn_time * pres_notifier_poll_rate
 					* pres_notifier_processes);
 	if (subs->event->type & WINFO_TYPE)
@@ -611,7 +606,7 @@ int update_subscription(struct sip_msg* msg, subs_t* subs, int to_tag_gen,
 		/* if subscriptions are stored in memory, update them */
 		if(subs_dbmode != DB_ONLY)
 		{
-			hash_code= core_hash(&subs->pres_uri, &subs->event->name, shtable_size);
+			hash_code= core_case_hash(&subs->pres_uri, &subs->event->name, shtable_size);
 			if(update_shtable(subs_htable, hash_code, subs, REMOTE_TYPE)< 0)
 			{
 				LM_ERR("failed to update subscription in memory\n");
@@ -638,7 +633,7 @@ int update_subscription(struct sip_msg* msg, subs_t* subs, int to_tag_gen,
 			{
 				LM_DBG("inserting in shtable\n");
 				subs->db_flag = (subs_dbmode==WRITE_THROUGH)?WTHROUGHDB_FLAG:INSERTDB_FLAG;
-				hash_code= core_hash(&subs->pres_uri, &subs->event->name, shtable_size);
+				hash_code= core_case_hash(&subs->pres_uri, &subs->event->name, shtable_size);
 				subs->version = 0;
 				if(insert_shtable(subs_htable,hash_code,subs)< 0)
 				{
@@ -760,6 +755,46 @@ void msg_watchers_clean(unsigned int ticks,void *param)
 		LM_ERR("cleaning pending subscriptions\n");
 }
 
+static char* _pres_subs_last_presentity = NULL;
+
+int pv_parse_subscription_name(pv_spec_p sp, str *in)
+{
+	if(sp==NULL || in==NULL || in->len<=0)
+		return -1;
+
+	switch(in->len)
+	{
+		case 3:
+			if(strncmp(in->s, "uri", 3)==0) {
+				sp->pvp.pvn.u.isname.name.n = 1;
+			} else {
+				goto error;
+			};
+			break;
+		default:
+			goto error;
+	}
+	sp->pvp.pvn.type = PV_NAME_INTSTR;
+	sp->pvp.pvn.u.isname.type = 0;
+
+	return 0;
+
+error:
+	LM_ERR("unknown PV subscription name %.*s\n", in->len, in->s);
+	return -1;
+}
+
+int pv_get_subscription(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res)
+{
+	if(param->pvn.u.isname.name.n==1) /* presentity */
+		return (_pres_subs_last_presentity == NULL) ? pv_get_null(msg, param, res)
+						: pv_get_strzval(msg, param, res, _pres_subs_last_presentity);
+
+	LM_ERR("unknown specifier\n");
+	return pv_get_null(msg, param, res);
+
+}
+
 int handle_subscribe0(struct sip_msg* msg)
 {
 	struct to_body *pfrom;
@@ -807,12 +842,17 @@ int handle_subscribe(struct sip_msg* msg, str watcher_user, str watcher_domain)
 	pres_ev_t* event= NULL;
 	event_t* parsed_event= NULL;
 	param_t* ev_param= NULL;
-	int found;
+	int found = 0;
 	str reason= {0, 0};
 	struct sip_uri uri;
 	int reply_code;
 	str reply_str;
 	int sent_reply= 0;
+
+	if(_pres_subs_last_presentity) {
+		pkg_free(_pres_subs_last_presentity);
+		_pres_subs_last_presentity = NULL;
+	}
 
 	/* ??? rename to avoid collisions with other symbols */
 	counter++;
@@ -911,6 +951,14 @@ int handle_subscribe(struct sip_msg* msg, str watcher_user, str watcher_domain)
 		}
 		reason= subs.reason;
 	}
+
+	if(subs.pres_uri.len > 0 && subs.pres_uri.s) {
+		_pres_subs_last_presentity =
+				(char*)pkg_malloc((subs.pres_uri.len+1) * sizeof(char));
+		strncpy(_pres_subs_last_presentity, subs.pres_uri.s, subs.pres_uri.len);
+		_pres_subs_last_presentity[subs.pres_uri.len] = '\0';
+	}
+		
 	/* mark that the received event is a SUBSCRIBE message */
 	subs.recv_event = PRES_SUBSCRIBE_RECV;
 
@@ -992,7 +1040,7 @@ int handle_subscribe(struct sip_msg* msg, str watcher_user, str watcher_domain)
 		goto error;
 	}
 	LM_DBG("subscription status= %s - %s\n", get_status_str(subs.status), 
-            found==0?"inserted":"found in watcher table");
+            (found==0)?"inserted":"found in watcher table");
 	
 	if (pres_notifier_processes > 0)
 	{
@@ -1372,7 +1420,7 @@ int get_stored_info(struct sip_msg* msg, subs_t* subs, int* reply_code,
 	else
 		pres_uri = subs->pres_uri;
 
-	hash_code= core_hash(&pres_uri, &subs->event->name, shtable_size);
+	hash_code= core_case_hash(&pres_uri, &subs->event->name, shtable_size);
 	lock_get(&subs_htable[hash_code].lock);
 	s= search_shtable(subs_htable, subs->callid, subs->to_tag,
 		subs->from_tag, hash_code);
@@ -2481,7 +2529,7 @@ int restore_db_subs(void)
 			s.sockinfo_str.s=(char*)row_vals[sockinfo_col].val.string_val;
 			s.sockinfo_str.len= strlen(s.sockinfo_str.s);
 			s.db_flag = (subs_dbmode==WRITE_THROUGH)?WTHROUGHDB_FLAG:NO_UPDATEDB_FLAG;
-			hash_code= core_hash(&s.pres_uri, &s.event->name, shtable_size);
+			hash_code= core_case_hash(&s.pres_uri, &s.event->name, shtable_size);
 			if(insert_shtable(subs_htable, hash_code, &s)< 0)
 			{
 				LM_ERR("adding new record in hash table\n");

@@ -1,6 +1,4 @@
 /**
- * $Id$
- *
  * Copyright (C) 2010 Daniel-Constantin Mierla (asipto.com)
  *
  * This file is part of Kamailio, a free SIP server.
@@ -55,6 +53,7 @@
 #include "../../modules/cfgutils/api.h"
 #include "../../modules/tmx/api.h"
 #include "../../modules/mqueue/api.h"
+#include "../../modules/ndb_mongodb/api.h"
 
 #include "app_lua_api.h"
 
@@ -82,6 +81,7 @@
 #define SR_LUA_EXP_MOD_CFGUTILS   (1<<21)
 #define SR_LUA_EXP_MOD_TMX        (1<<22)
 #define SR_LUA_EXP_MOD_MQUEUE     (1<<23)
+#define SR_LUA_EXP_MOD_NDB_MONGODB (1<<24)
 
 /**
  *
@@ -210,6 +210,12 @@ static tmx_api_t _lua_tmxb;
 static mq_api_t _lua_mqb;
 
 /**
+ * mqueue
+ */
+static ndb_mongodb_api_t _lua_ndb_mongodbb;
+
+
+/**
  *
  */
 static int lua_sr_sl_send_reply (lua_State *L)
@@ -280,7 +286,7 @@ static int lua_sr_sl_get_reply_totag (lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_sl_Map [] = {
+static const luaL_Reg _sr_sl_Map [] = {
 	{"send_reply",      lua_sr_sl_send_reply},
 	{"get_reply_totag", lua_sr_sl_get_reply_totag},
 	{NULL, NULL}
@@ -711,7 +717,7 @@ static int lua_sr_tm_t_next_contacts(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_tm_Map [] = {
+static const luaL_Reg _sr_tm_Map [] = {
 	{"t_reply",             lua_sr_tm_t_reply},
 	{"t_relay",             lua_sr_tm_t_relay},
 	{"t_on_failure",        lua_sr_tm_t_on_failure},
@@ -979,7 +985,7 @@ static int lua_sr_sqlops_xquery(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_sqlops_Map [] = {
+static const luaL_Reg _sr_sqlops_Map [] = {
 	{"query",   lua_sr_sqlops_query},
 	{"value",   lua_sr_sqlops_value},
 	{"is_null", lua_sr_sqlops_is_null},
@@ -1088,7 +1094,7 @@ static int lua_sr_rr_add_rr_param(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_rr_Map [] = {
+static const luaL_Reg _sr_rr_Map [] = {
 	{"record_route",    lua_sr_rr_record_route},
 	{"loose_route",     lua_sr_rr_loose_route},
 	{"add_rr_param",    lua_sr_rr_add_rr_param},
@@ -1237,7 +1243,7 @@ static int lua_sr_auth_consume_credentials(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_auth_Map [] = {
+static const luaL_Reg _sr_auth_Map [] = {
 	{"www_challenge",            lua_sr_auth_www_challenge},
 	{"proxy_challenge",          lua_sr_auth_proxy_challenge},
 	{"pv_www_authenticate",      lua_sr_auth_pv_www_authenticate},
@@ -1308,7 +1314,7 @@ static int lua_sr_auth_db_proxy_authenticate(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_auth_db_Map [] = {
+static const luaL_Reg _sr_auth_db_Map [] = {
 	{"www_authenticate",      lua_sr_auth_db_www_authenticate},
 	{"proxy_authenticate",    lua_sr_auth_db_proxy_authenticate},
 	{NULL, NULL}
@@ -1356,7 +1362,7 @@ static int lua_sr_maxfwd_process_maxfwd(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_maxfwd_Map [] = {
+static const luaL_Reg _sr_maxfwd_Map [] = {
 	{"process_maxfwd",      lua_sr_maxfwd_process_maxfwd},
 	{NULL, NULL}
 };
@@ -1469,6 +1475,57 @@ static int lua_sr_registrar_lookup(lua_State *L)
 /**
  *
  */
+static int lua_sr_registrar_lookup_to_dset(lua_State *L)
+{
+	int ret;
+	char *table = NULL;
+	str uri = {NULL, 0};
+	sr_lua_env_t *env_L;
+
+	env_L = sr_lua_env_get();
+
+	if(!(_sr_lua_exp_reg_mods&SR_LUA_EXP_MOD_REGISTRAR))
+	{
+		LM_WARN("weird: registrar function executed but module not registered\n");
+		return app_lua_return_error(L);
+	}
+	if(env_L->msg==NULL)
+	{
+		LM_WARN("invalid parameters from Lua env\n");
+		return app_lua_return_error(L);
+	}
+	if(lua_gettop(L)==1)
+	{
+		table = (char*)lua_tostring(L, -1);
+	}
+	else if (lua_gettop(L)==2)
+	{
+		table = (char*)lua_tostring(L, -2);
+		uri.s = (char*)lua_tostring(L, -1);
+		uri.len = strlen(uri.s);
+	} else
+	{
+		LM_WARN("invalid number of parameters from Lua\n");
+		return app_lua_return_error(L);
+	}
+	if(table==NULL || strlen(table)==0)
+	{
+		LM_WARN("invalid parameters from Lua\n");
+		return app_lua_return_error(L);
+	}
+	if(lua_gettop(L)==2)
+	{
+		ret = _lua_registrarb.lookup_to_dset(env_L->msg, table, &uri);
+	} else {
+		ret = _lua_registrarb.lookup_to_dset(env_L->msg, table, NULL);
+	}
+
+	return app_lua_return_int(L, ret);
+}
+
+/**
+ *
+ */
 static int lua_sr_registrar_registered(lua_State *L)
 {
 	int ret;
@@ -1507,9 +1564,10 @@ static int lua_sr_registrar_registered(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_registrar_Map [] = {
+static const luaL_Reg _sr_registrar_Map [] = {
 	{"save",      lua_sr_registrar_save},
 	{"lookup",    lua_sr_registrar_lookup},
+	{"lookup_to_dset",lua_sr_registrar_lookup_to_dset},
 	{"registered",lua_sr_registrar_registered},
 	{NULL, NULL}
 };
@@ -1659,7 +1717,7 @@ static int lua_sr_dispatcher_is_from(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_dispatcher_Map [] = {
+static const luaL_Reg _sr_dispatcher_Map [] = {
 	{"select",      lua_sr_dispatcher_select},
 	{"next",        lua_sr_dispatcher_next},
 	{"mark",        lua_sr_dispatcher_mark},
@@ -1714,7 +1772,7 @@ static int lua_sr_xhttp_reply(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_xhttp_Map [] = {
+static const luaL_Reg _sr_xhttp_Map [] = {
 	{"reply",       lua_sr_xhttp_reply},
 	{NULL, NULL}
 };
@@ -1759,7 +1817,7 @@ static int lua_sr_sdpops_with_media(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_sdpops_Map [] = {
+static const luaL_Reg _sr_sdpops_Map [] = {
 	{"sdp_with_media",       lua_sr_sdpops_with_media},
 	{NULL, NULL}
 };
@@ -1884,7 +1942,7 @@ static int lua_sr_pres_handle_subscribe(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_presence_Map [] = {
+static const luaL_Reg _sr_presence_Map [] = {
 	{"pres_auth_status",       lua_sr_pres_auth_status},
 	{"handle_publish",         lua_sr_pres_handle_publish},
 	{"handle_subscribe",       lua_sr_pres_handle_subscribe},
@@ -1970,7 +2028,7 @@ static int lua_sr_pres_check_activities(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_presence_xml_Map [] = {
+static const luaL_Reg _sr_presence_xml_Map [] = {
 	{"pres_check_basic",       lua_sr_pres_check_basic},
 	{"pres_check_activities",  lua_sr_pres_check_activities},
 	{NULL, NULL}
@@ -2015,7 +2073,7 @@ static int lua_sr_textops_is_privacy(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_textops_Map [] = {
+static const luaL_Reg _sr_textops_Map [] = {
 	{"is_privacy",       lua_sr_textops_is_privacy},
 	{NULL, NULL}
 };
@@ -2055,7 +2113,7 @@ static int lua_sr_pua_usrloc_set_publish(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_pua_usrloc_Map [] = {
+static const luaL_Reg _sr_pua_usrloc_Map [] = {
 	{"set_publish",            lua_sr_pua_usrloc_set_publish},
 	{NULL, NULL}
 };
@@ -2134,7 +2192,7 @@ static int lua_sr_siputils_is_uri_user_e164(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_siputils_Map [] = {
+static const luaL_Reg _sr_siputils_Map [] = {
 	{"has_totag",            lua_sr_siputils_has_totag},
 	{"is_uri_user_e164",     lua_sr_siputils_is_uri_user_e164},
 	{NULL, NULL}
@@ -2222,7 +2280,7 @@ static int lua_sr_rls_handle_notify(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_rls_Map [] = {
+static const luaL_Reg _sr_rls_Map [] = {
 	{"handle_subscribe",       lua_sr_rls_handle_subscribe},
 	{"handle_notify",          lua_sr_rls_handle_notify},
 	{NULL, NULL}
@@ -2267,7 +2325,7 @@ static int lua_sr_alias_db_lookup(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_alias_db_Map [] = {
+static const luaL_Reg _sr_alias_db_Map [] = {
 	{"lookup",       lua_sr_alias_db_lookup},
 	{NULL, NULL}
 };
@@ -2367,7 +2425,7 @@ static int lua_sr_msilo_dump(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_msilo_Map [] = {
+static const luaL_Reg _sr_msilo_Map [] = {
 	{"store",       lua_sr_msilo_store},
 	{"dump",        lua_sr_msilo_dump},
 	{NULL, NULL}
@@ -2376,7 +2434,7 @@ static const luaL_reg _sr_msilo_Map [] = {
 /**
  *
  */
-static int lua_sr_uac_replace_from(lua_State *L)
+static int lua_sr_uac_replace_x(lua_State *L, int htype)
 {
 	int ret;
 	sr_lua_env_t *env_L;
@@ -2417,15 +2475,64 @@ static int lua_sr_uac_replace_from(lua_State *L)
 		return app_lua_return_error(L);
 	}
 
-	ret = _lua_uacb.replace_from(env_L->msg, &param[0], &param[1]);
+	if(htype==1) {
+		ret = _lua_uacb.replace_to(env_L->msg, &param[0], &param[1]);
+	} else {
+		ret = _lua_uacb.replace_from(env_L->msg, &param[0], &param[1]);
+	}
 	return app_lua_return_int(L, ret);
 }
 
 /**
  *
  */
-static const luaL_reg _sr_uac_Map [] = {
+static int lua_sr_uac_replace_from(lua_State *L)
+{
+	return lua_sr_uac_replace_x(L, 0);
+}
+
+/**
+ *
+ */
+static int lua_sr_uac_replace_to(lua_State *L)
+{
+	return lua_sr_uac_replace_x(L, 1);
+}
+
+/**
+ *
+ */
+static int lua_sr_uac_req_send(lua_State *L)
+{
+	int ret;
+	sr_lua_env_t *env_L;
+
+	env_L = sr_lua_env_get();
+
+	if (!(_sr_lua_exp_reg_mods & SR_LUA_EXP_MOD_UAC))
+	{
+		LM_WARN("weird:uac function executed but module not registered\n");
+		return app_lua_return_error(L);
+	}
+
+	if (env_L->msg == NULL)
+	{
+		LM_WARN("invalid parameters from Lua env\n");
+		return app_lua_return_error(L);
+	}
+
+	ret = _lua_uacb.req_send();
+
+	return app_lua_return_int(L, ret);
+}
+
+/**
+ *
+ */
+static const luaL_Reg _sr_uac_Map [] = {
 	{"replace_from",lua_sr_uac_replace_from},
+	{"replace_to",lua_sr_uac_replace_to},
+	{"uac_req_send",lua_sr_uac_req_send},
 	{NULL, NULL}
 };
 
@@ -2463,7 +2570,7 @@ static int lua_sr_sanity_check(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_sanity_Map [] = {
+static const luaL_Reg _sr_sanity_Map [] = {
 	{"sanity_check",       lua_sr_sanity_check},
 	{NULL, NULL}
 };
@@ -2524,7 +2631,7 @@ static int lua_sr_cfgutils_unlock(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_cfgutils_Map [] = {
+static const luaL_Reg _sr_cfgutils_Map [] = {
 	{"lock",      lua_sr_cfgutils_lock},
 	{"unlock",    lua_sr_cfgutils_unlock},
 	{NULL, NULL}
@@ -2558,7 +2665,7 @@ static int lua_sr_tmx_t_suspend(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_tmx_Map [] = {
+static const luaL_Reg _sr_tmx_Map [] = {
 	{"t_suspend", lua_sr_tmx_t_suspend},
 	{NULL, NULL}
 };
@@ -2596,8 +2703,149 @@ static int lua_sr_mq_add(lua_State *L)
 /**
  *
  */
-static const luaL_reg _sr_mqueue_Map [] = {
+static const luaL_Reg _sr_mqueue_Map [] = {
 	{"add", lua_sr_mq_add},
+	{NULL, NULL}
+};
+
+/**
+ *
+ */
+static int lua_sr_ndb_mongodb_cmd_x(lua_State *L, int ctype)
+{
+	int ret = 0;
+	str param[6];
+
+	if(!(_sr_lua_exp_reg_mods&SR_LUA_EXP_MOD_NDB_MONGODB))
+	{
+		LM_WARN("weird: ndb_mongodb function executed but module not registered\n");
+		return app_lua_return_error(L);
+	}
+	if(lua_gettop(L)!=5)
+	{
+		LM_WARN("invalid number of parameters from Lua\n");
+		return app_lua_return_error(L);
+	}
+
+	param[0].s = (char *) lua_tostring(L, -5);
+	param[0].len = strlen(param[0].s);
+	param[1].s = (char *) lua_tostring(L, -4);
+	param[1].len = strlen(param[1].s);
+	param[2].s = (char *) lua_tostring(L, -3);
+	param[2].len = strlen(param[2].s);
+	param[3].s = (char *) lua_tostring(L, -2);
+	param[3].len = strlen(param[3].s);
+	param[4].s = (char *) lua_tostring(L, -1);
+	param[4].len = strlen(param[4].s);
+
+	if(ctype==1) {
+		ret = _lua_ndb_mongodbb.cmd_simple(&param[0], &param[1], &param[2], &param[3], &param[4]);
+	} else if(ctype==2) {
+		ret = _lua_ndb_mongodbb.find(&param[0], &param[1], &param[2], &param[3], &param[4]);
+	} else if(ctype==3) {
+		ret = _lua_ndb_mongodbb.find_one(&param[0], &param[1], &param[2], &param[3], &param[4]);
+	} else {
+		ret = _lua_ndb_mongodbb.cmd(&param[0], &param[1], &param[2], &param[3], &param[4]);
+	}
+	return app_lua_return_int(L, ret);
+}
+
+/**
+ *
+ */
+static int lua_sr_ndb_mongodb_cmd(lua_State *L)
+{
+	return lua_sr_ndb_mongodb_cmd_x(L, 0);
+}
+
+/**
+ *
+ */
+static int lua_sr_ndb_mongodb_cmd_simple(lua_State *L)
+{
+	return lua_sr_ndb_mongodb_cmd_x(L, 1);
+}
+
+/**
+ *
+ */
+static int lua_sr_ndb_mongodb_find(lua_State *L)
+{
+	return lua_sr_ndb_mongodb_cmd_x(L, 2);
+}
+
+/**
+ *
+ */
+static int lua_sr_ndb_mongodb_find_one(lua_State *L)
+{
+	return lua_sr_ndb_mongodb_cmd_x(L, 3);
+}
+
+/**
+ *
+ */
+static int lua_sr_ndb_mongodb_next_reply(lua_State *L)
+{
+	int ret = 0;
+	str param[1];
+
+	if(!(_sr_lua_exp_reg_mods&SR_LUA_EXP_MOD_NDB_MONGODB))
+	{
+		LM_WARN("weird: ndb_mongodb function executed but module not registered\n");
+		return app_lua_return_error(L);
+	}
+	if(lua_gettop(L)!=1)
+	{
+		LM_WARN("invalid number of parameters from Lua\n");
+		return app_lua_return_error(L);
+	}
+
+	param[0].s = (char *) lua_tostring(L, -1);
+	param[0].len = strlen(param[0].s);
+
+	ret = _lua_ndb_mongodbb.next_reply(&param[0]);
+
+	return app_lua_return_int(L, ret);
+}
+
+/**
+ *
+ */
+static int lua_sr_ndb_mongodb_free_reply(lua_State *L)
+{
+	int ret = 0;
+	str param[1];
+
+	if(!(_sr_lua_exp_reg_mods&SR_LUA_EXP_MOD_NDB_MONGODB))
+	{
+		LM_WARN("weird: ndb_mongodb function executed but module not registered\n");
+		return app_lua_return_error(L);
+	}
+	if(lua_gettop(L)!=1)
+	{
+		LM_WARN("invalid number of parameters from Lua\n");
+		return app_lua_return_error(L);
+	}
+
+	param[0].s = (char *) lua_tostring(L, -1);
+	param[0].len = strlen(param[0].s);
+
+	ret = _lua_ndb_mongodbb.free_reply(&param[0]);
+
+	return app_lua_return_int(L, ret);
+}
+
+/**
+ *
+ */
+static const luaL_Reg _sr_ndb_mongodb_Map [] = {
+	{"cmd", lua_sr_ndb_mongodb_cmd},
+	{"cmd_simple", lua_sr_ndb_mongodb_cmd_simple},
+	{"find", lua_sr_ndb_mongodb_find},
+	{"find_one", lua_sr_ndb_mongodb_find_one},
+	{"next_reply", lua_sr_ndb_mongodb_next_reply},
+	{"free_reply", lua_sr_ndb_mongodb_free_reply},
 	{NULL, NULL}
 };
 
@@ -2852,6 +3100,17 @@ int lua_sr_exp_init_mod(void)
 		}
 		LM_DBG("loaded mqueue api\n");
 	}
+	if(_sr_lua_exp_reg_mods&SR_LUA_EXP_MOD_NDB_MONGODB)
+	{
+		/* bind the NDB_MONGODB API */
+		if (ndb_mongodb_load_api(&_lua_ndb_mongodbb) < 0)
+		{
+			LM_ERR("cannot bind to NDB_MONGODB API\n");
+			return -1;
+		}
+		LM_DBG("loaded ndb_mongodb api\n");
+	}
+
 	return 0;
 }
 
@@ -2937,6 +3196,9 @@ int lua_sr_exp_register_mod(char *mname)
 	} else 	if(len==6 && strcmp(mname, "mqueue")==0) {
 		_sr_lua_exp_reg_mods |= SR_LUA_EXP_MOD_MQUEUE;
 		return 0;
+	} else 	if(len==11 && strcmp(mname, "ndb_mongodb")==0) {
+		_sr_lua_exp_reg_mods |= SR_LUA_EXP_MOD_NDB_MONGODB;
+		return 0;
 	}
 
 	return -1;
@@ -2995,5 +3257,7 @@ void lua_sr_exp_openlibs(lua_State *L)
 		luaL_openlib(L, "sr.tmx", _sr_tmx_Map,                0);
 	if(_sr_lua_exp_reg_mods&SR_LUA_EXP_MOD_MQUEUE)
 		luaL_openlib(L, "sr.mq", _sr_mqueue_Map,              0);
+	if(_sr_lua_exp_reg_mods&SR_LUA_EXP_MOD_NDB_MONGODB)
+		luaL_openlib(L, "sr.ndb_mongodb", _sr_ndb_mongodb_Map, 0);
 }
 

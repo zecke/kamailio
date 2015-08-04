@@ -1,6 +1,4 @@
 /*
- * $Id: rls.c 2230 2007-06-06 07:13:20Z anca_vamanu $
- *
  * rls module - resource list server
  *
  * Copyright (C) 2007 Voice Sistem S.R.L.
@@ -21,9 +19,6 @@
  * along with this program; if not, write to the Free Software 
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2007-09-11  initial version (anca)
  */
 
 #include <stdio.h>
@@ -338,7 +333,7 @@ static int mod_init(void)
 					port_str.len, port_str.s);
 				return -1;
 			}
-			if(xcap_port< 0 || xcap_port> 65535)
+			if(xcap_port< 1 || xcap_port> 65535)
 			{
 				LM_ERR("wrong xcap server port\n");
 				return -1;

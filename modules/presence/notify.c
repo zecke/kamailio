@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * presence module- presence server implementation
  *
  * Copyright (C) 2006 Voice Sistem S.R.L.
@@ -21,9 +19,6 @@
  * along with this program; if not, write to the Free Software 
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2006-08-15  initial version (Anca Vamanu)
  */
 
 /*! \file
@@ -99,6 +94,7 @@ str str_id_col = str_init("id");
 str str_sender_col = str_init("sender");
 str str_updated_col = str_init("updated");
 str str_updated_winfo_col = str_init("updated_winfo");
+str str_priority_col = str_init("priority");
 
 int subset=0;
 
@@ -375,7 +371,7 @@ str* get_wi_notify_body(subs_t* subs, subs_t* watcher_subs)
 			goto error;
 		}
 	} else {
-		hash_code= core_hash(&subs->pres_uri, &subs->event->wipeer->name,
+		hash_code= core_case_hash(&subs->pres_uri, &subs->event->wipeer->name,
 				shtable_size);
 		lock_get(&subs_htable[hash_code].lock);
 		s= subs_htable[hash_code].entries;
@@ -391,7 +387,7 @@ str* get_wi_notify_body(subs_t* subs, subs_t* watcher_subs)
 
 			if(s->event== subs->event->wipeer &&
 				s->pres_uri.len== subs->pres_uri.len &&
-				strncmp(s->pres_uri.s, subs->pres_uri.s,subs->pres_uri.len)== 0)
+				presence_sip_uri_match(&s->pres_uri, &subs->pres_uri)== 0)
 			{
 				if(add_watcher_list(s, watchers)< 0)
 				{
@@ -601,6 +597,7 @@ str* get_p_notify_body(str pres_uri, pres_ev_t* event, str* etag,
 	struct sip_uri uri;
 	unsigned int hash_code;
 	str sender;
+	static str query_str;
 
 	if(parse_uri(pres_uri.s, pres_uri.len, &uri)< 0)
 	{
@@ -612,7 +609,7 @@ str* get_p_notify_body(str pres_uri, pres_ev_t* event, str* etag,
 	if( publ_cache_enabled )
 	{
 		/* search in hash table if any record exists */
-		hash_code= core_hash(&pres_uri, NULL, phtable_size);
+		hash_code= core_case_hash(&pres_uri, NULL, phtable_size);
 		if(search_phtable(&pres_uri, event->evp->type, hash_code)== NULL)
 		{
 			LM_DBG("No record exists in hash_table\n");
@@ -656,7 +653,11 @@ str* get_p_notify_body(str pres_uri, pres_ev_t* event, str* etag,
 		return NULL;
 	}
 
-	static str query_str = str_init("received_time");
+	if(pres_retrieve_order==1) {
+		query_str = str_priority_col;
+	} else {
+		query_str = str_received_time_col;
+	}
 	if (pa_dbf.query (pa_db, query_cols, 0, query_vals,
 		 result_cols, n_query_cols, n_result_cols, &query_str ,  &result) < 0) 
 	{
@@ -704,7 +705,7 @@ str* get_p_notify_body(str pres_uri, pres_ev_t* event, str* etag,
 				sender.len= strlen(sender.s);
 			
 				if(sender.len== contact->len &&
-						strncmp(sender.s, contact->s, sender.len)== 0)
+						presence_sip_uri_match(&sender, contact)== 0)
 				{
 					notify_body= build_empty_bla_body(pres_uri);
 					pa_dbf.free_result(pa_db, result);
@@ -1191,7 +1192,7 @@ subs_t* get_subs_dialog(str* pres_uri, pres_ev_t* event, str* sender)
 			goto error;
 		}
 	}else {
-		hash_code= core_hash(pres_uri, &event->name, shtable_size);
+		hash_code= core_case_hash(pres_uri, &event->name, shtable_size);
 		
 		lock_get(&subs_htable[hash_code].lock);
 
@@ -1212,9 +1213,9 @@ subs_t* get_subs_dialog(str* pres_uri, pres_ev_t* event, str* sender)
 			if((!(s->status== ACTIVE_STATUS &&
 		    s->reason.len== 0 &&
 				s->event== event && s->pres_uri.len== pres_uri->len &&
-				strncmp(s->pres_uri.s, pres_uri->s, pres_uri->len)== 0)) || 
+				presence_sip_uri_match(&s->pres_uri, pres_uri)== 0)) || 
 				(sender && sender->len== s->contact.len && 
-				strncmp(sender->s, s->contact.s, sender->len)== 0))
+				presence_sip_uri_match(sender, &s->contact)== 0))
 				continue;
 
 			s_new= mem_copy_subs(s, PKG_MEM_TYPE);
@@ -1653,7 +1654,7 @@ int notify(subs_t* subs, subs_t * watcher_subs,str* n_body,int force_null_body)
 	if(subs->expires!= 0 && subs->status != TERMINATED_STATUS)
 	{
 		unsigned int hash_code;
-		hash_code= core_hash(&subs->pres_uri, &subs->event->name, shtable_size);
+		hash_code= core_case_hash(&subs->pres_uri, &subs->event->name, shtable_size);
 
 		/* if subscriptions are held also in memory, update the subscription hashtable */
 		if(subs_dbmode != DB_ONLY)
@@ -1888,7 +1889,7 @@ int watcher_found_in_list(watcher_t * watchers, str wuri)
 
 	while(w)
 	{
-		if(w->uri.len == wuri.len && strncmp(w->uri.s, wuri.s, wuri.len)== 0)
+		if(w->uri.len == wuri.len && presence_sip_uri_match(&w->uri, &wuri)== 0)
 			return 1;
 		w= w->next;
 	}
@@ -2265,7 +2266,7 @@ int set_wipeer_subs_updated(str *pres_uri, pres_ev_t *event, int full)
 		update_vals[n_update_cols].type = DB1_INT;
 		update_vals[n_update_cols].nul = 0;
 		update_vals[n_update_cols].val.int_val =
-			core_hash(&callid, &from_tag, 0) % (pres_waitn_time *
+			core_case_hash(&callid, &from_tag, 0) % (pres_waitn_time *
  			 pres_notifier_poll_rate * pres_notifier_processes);
 		n_update_cols++;
 
@@ -2326,7 +2327,7 @@ int set_updated(subs_t *sub)
 	update_vals[0].type = DB1_INT;
 	update_vals[0].nul = 0;
 	update_vals[0].val.int_val =
-		core_hash(&sub->callid, &sub->from_tag, 0) %
+		core_case_hash(&sub->callid, &sub->from_tag, 0) %
 			(pres_waitn_time * pres_notifier_poll_rate
 						* pres_notifier_processes);
 
@@ -2354,7 +2355,7 @@ static watcher_t *build_watchers_list(subs_t *sub)
 	db_key_t query_cols[3], result_cols[4];
 	db_val_t query_vals[3], *values;
 	db_row_t *rows;
-	db1_res_t *result;
+	db1_res_t *result = NULL;
 	int n_query_cols = 0, n_result_cols = 0;
 	int wuser_col, wdomain_col, callid_col, status_col;
 	int i;

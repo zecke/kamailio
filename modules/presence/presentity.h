@@ -17,9 +17,6 @@
  * along with this program; if not, write to the Free Software 
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2006-08-15  initial version (Anca Vamanu)
  */
 
 /*!
@@ -49,6 +46,7 @@ typedef struct presentity
 	str* sender;
 	time_t expires;
 	time_t received_time;
+	unsigned int priority;
 } presentity_t;
 
 /* create new presentity */

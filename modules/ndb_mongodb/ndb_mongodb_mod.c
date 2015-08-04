@@ -31,6 +31,7 @@
 #include "../../trim.h"
 
 #include "mongodb_client.h"
+#include "api.h"
 
 MODULE_VERSION
 
@@ -38,6 +39,8 @@ MODULE_VERSION
 
 int mongodb_srv_param(modparam_t type, void *val);
 static int w_mongodb_find(sip_msg_t* msg, char* ssrv, char *sdname, char *scname,
+		char* scmd, char* sres);
+static int w_mongodb_find_one(sip_msg_t* msg, char* ssrv, char *sdname, char *scname,
 		char* scmd, char* sres);
 static int w_mongodb_cmd_simple(sip_msg_t* msg, char* ssrv, char *sdname, char *scname,
 		char* scmd, char* sres);
@@ -64,6 +67,8 @@ static pv_export_t mod_pvs[] = {
 static cmd_export_t cmds[]={
 	{"mongodb_find", (cmd_function)w_mongodb_find, 5, fixup_mongodb_cmd,
 		0, ANY_ROUTE},
+	{"mongodb_find_one", (cmd_function)w_mongodb_find_one, 5, fixup_mongodb_cmd,
+		0, ANY_ROUTE},
 	{"mongodb_cmd_simple", (cmd_function)w_mongodb_cmd_simple, 5, fixup_mongodb_cmd,
 		0, ANY_ROUTE},
 	{"mongodb_cmd", (cmd_function)w_mongodb_cmd, 5, fixup_mongodb_cmd,
@@ -72,6 +77,8 @@ static cmd_export_t cmds[]={
 		0, ANY_ROUTE},
 	{"mongodb_next", (cmd_function)w_mongodb_next_reply, 1, fixup_spve_null,
 		0, ANY_ROUTE},
+	{"bind_ndb_mongodb",   (cmd_function)bind_ndb_mongodb,  0,
+		0, 0, 0},
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -155,12 +162,15 @@ static int w_mongodb_do_cmd(sip_msg_t* msg, char* ssrv, char *sdname, char *scna
 		LM_ERR("no mongodb reply name\n");
 		return -1;
 	}
+	ret = -1;
 	if(ctype==0) {
 		ret = mongodbc_exec_simple(&s[0], &s[1], &s[2], &s[3], &s[4]);
 	} else if(ctype==1) {
 		ret = mongodbc_exec(&s[0], &s[1], &s[2], &s[3], &s[4]);
-	} else {
+	} else if(ctype==2) {
 		ret = mongodbc_find(&s[0], &s[1], &s[2], &s[3], &s[4]);
+	} else if(ctype==3) {
+		ret = mongodbc_find_one(&s[0], &s[1], &s[2], &s[3], &s[4]);
 	}
 	if(ret<0)
 		return -1;
@@ -192,6 +202,15 @@ static int w_mongodb_find(sip_msg_t* msg, char* ssrv, char *sdname, char *scname
 		char* scmd, char* sres)
 {
 	return w_mongodb_do_cmd(msg, ssrv, sdname, scname, scmd, sres, 2);
+}
+
+/**
+ *
+ */
+static int w_mongodb_find_one(sip_msg_t* msg, char* ssrv, char *sdname, char *scname,
+		char* scmd, char* sres)
+{
+	return w_mongodb_do_cmd(msg, ssrv, sdname, scname, scmd, sres, 3);
 }
 
 /**

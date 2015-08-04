@@ -78,6 +78,10 @@ MODULE_VERSION
 #define INSTANCE_COL   "instance"
 #define REG_ID_COL     "reg_id"
 #define LAST_MOD_COL   "last_modified"
+#define SRV_ID_COL     "server_id"
+#define CON_ID_COL     "connection_id"
+#define KEEPALIVE_COL  "keepalive"
+#define PARTITION_COL  "partition"
 
 #define ULATTRS_USER_COL       "username"
 #define ULATTRS_DOMAIN_COL     "domain"
@@ -137,6 +141,10 @@ str methods_col     = str_init(METHODS_COL);	/*!< Name of column containing the 
 str instance_col    = str_init(INSTANCE_COL);	/*!< Name of column containing the SIP instance value */
 str reg_id_col      = str_init(REG_ID_COL);		/*!< Name of column containing the reg-id value */
 str last_mod_col    = str_init(LAST_MOD_COL);	/*!< Name of column containing the last modified date */
+str srv_id_col      = str_init(SRV_ID_COL);		/*!< Name of column containing the server id value */
+str con_id_col      = str_init(CON_ID_COL);		/*!< Name of column containing the connection id value */
+str keepalive_col   = str_init(KEEPALIVE_COL);	/*!< Name of column containing the keepalive value */
+str partition_col   = str_init(PARTITION_COL);	/*!< Name of column containing the partition value */
 
 str ulattrs_user_col   = str_init(ULATTRS_USER_COL);   /*!< Name of column containing username */
 str ulattrs_domain_col = str_init(ULATTRS_DOMAIN_COL); /*!< Name of column containing domain */
@@ -152,6 +160,7 @@ int db_mode         = 0;				/*!< Database sync scheme: 0-no db, 1-write through,
 int use_domain      = 0;				/*!< Whether usrloc should use domain part of aor */
 int desc_time_order = 0;				/*!< By default do not enable timestamp ordering */
 int handle_lost_tcp = 0;				/*!< By default do not remove contacts before expiration time */
+int close_expired_tcp = 0;				/*!< By default do not close TCP connections for expired contacts */
 
 int ul_fetch_rows = 2000;				/*!< number of rows to fetch from result */
 int ul_hash_size = 10;
@@ -164,7 +173,8 @@ unsigned int init_flag = 0;
 db1_con_t* ul_dbh = 0; /* Database connection handle */
 db_func_t ul_dbf;
 
-
+/* filter on load by server id */
+unsigned int ul_db_srvid = 0;
 
 /*! \brief
  * Exported functions
@@ -201,12 +211,16 @@ static param_export_t params[] = {
 	{"methods_column",      PARAM_STR, &methods_col   },
 	{"instance_column",     PARAM_STR, &instance_col  },
 	{"reg_id_column",       PARAM_STR, &reg_id_col    },
+	{"server_id_column",    PARAM_STR, &srv_id_col    },
+	{"connection_id_column",PARAM_STR, &con_id_col    },
+	{"keepalive_column",    PARAM_STR, &keepalive_col },
 	{"matching_mode",       INT_PARAM, &matching_mode   },
 	{"cseq_delay",          INT_PARAM, &cseq_delay      },
 	{"fetch_rows",          INT_PARAM, &ul_fetch_rows   },
 	{"hash_size",           INT_PARAM, &ul_hash_size    },
 	{"nat_bflag",           INT_PARAM, &nat_bflag       },
 	{"handle_lost_tcp",     INT_PARAM, &handle_lost_tcp },
+	{"close_expired_tcp",   INT_PARAM, &close_expired_tcp },
 	{"preload",             PARAM_STRING|USE_FUNC_PARAM, (void*)ul_preload_param},
 	{"db_update_as_insert", INT_PARAM, &ul_db_update_as_insert},
 	{"timer_procs",         INT_PARAM, &ul_timer_procs},
@@ -216,6 +230,7 @@ static param_export_t params[] = {
 	{"expires_type",        PARAM_INT, &ul_expires_type},
 	{"db_raw_fetch_type",   PARAM_INT, &ul_db_raw_fetch_type},
 	{"db_insert_null",      PARAM_INT, &ul_db_insert_null},
+	{"server_id_filter",    PARAM_INT, &ul_db_srvid},
 	{0, 0, 0}
 };
 

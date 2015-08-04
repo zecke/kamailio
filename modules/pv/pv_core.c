@@ -1254,6 +1254,18 @@ int pv_get_authattr(struct sip_msg *msg, pv_param_t *param,
 	}
 	switch(param->pvn.u.isname.name.n)
 	{
+		case 10:
+			return pv_get_strval(msg, param, res,
+					&((auth_body_t*)(hdr->parsed))->digest.opaque);
+		case 9:
+			return pv_get_strval(msg, param, res,
+					&((auth_body_t*)(hdr->parsed))->digest.response);
+		case 8:
+			return pv_get_strval(msg, param, res,
+					&((auth_body_t*)(hdr->parsed))->digest.cnonce);
+		case 7:
+			return pv_get_strval(msg, param, res,
+					&((auth_body_t*)(hdr->parsed))->digest.nonce);
 		case 6:
 			return pv_get_strval(msg, param, res,
 					&((auth_body_t*)(hdr->parsed))->digest.alg.alg_str);
@@ -1874,6 +1886,7 @@ int pv_get_tcpconn_id(struct sip_msg *msg, pv_param_t *param,
 		pv_value_t *res)
 {
 	struct tcp_connection *con;
+	int conid;
 
 	if (msg == NULL)
 		return -1;
@@ -1881,7 +1894,10 @@ int pv_get_tcpconn_id(struct sip_msg *msg, pv_param_t *param,
 	if ((con = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0, 0)) == NULL)
 		return pv_get_null(msg, param, res);
 
-	return pv_get_sintval(msg, param, res, con->id);
+	conid = con->id;
+	tcpconn_put(con);
+
+	return pv_get_sintval(msg, param, res, conid);
 }
 
 
@@ -1964,8 +1980,13 @@ int pv_set_scriptvar(struct sip_msg* msg, pv_param_t *param,
 	}
 	if((val==NULL) || (val->flags&PV_VAL_NULL))
 	{
-		avp_val.n = 0;
-		set_var_value((script_var_t*)param->pvn.u.dname, &avp_val, 0);
+		if(((script_var_t*)param->pvn.u.dname)->v.flags&VAR_TYPE_NULL)
+		{
+			set_var_value((script_var_t*)param->pvn.u.dname, NULL, 0);
+		} else {
+			avp_val.n = 0;
+			set_var_value((script_var_t*)param->pvn.u.dname, &avp_val, 0);
+		}
 		return 0;
 	}
 	flags = 0;
@@ -2071,7 +2092,8 @@ int pv_set_ruri_user(struct sip_msg* msg, pv_param_t *param,
 		return -1;
 	}
 					
-	if((val==NULL) || (val->flags&PV_VAL_NULL))
+	if((val==NULL) || (val->flags&PV_VAL_NULL)
+			|| ((val->flags&PV_VAL_STR) && val->rs.len<=0))
 	{
 		memset(&act, 0, sizeof(act));
 		act.type = SET_USER_T;

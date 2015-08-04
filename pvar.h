@@ -60,6 +60,7 @@
 #define PV_IDX_INT	0
 #define PV_IDX_PVAR	1
 #define PV_IDX_ALL	2
+#define PV_IDX_ITR	3
 
 /*! if PV name is dynamic, integer, or str */
 #define pv_has_dname(pv) ((pv)->pvp.pvn.type==PV_NAME_PVAR)
@@ -218,6 +219,8 @@ int pv_get_strval(struct sip_msg *msg, pv_param_t *param,
 		pv_value_t *res, str *sval);
 int pv_get_strzval(struct sip_msg *msg, pv_param_t *param,
 		pv_value_t *res, char *sval);
+int pv_get_strlval(struct sip_msg *msg, pv_param_t *param,
+		pv_value_t *res, char *sval, int slen);
 int pv_get_strintval(struct sip_msg *msg, pv_param_t *param,
 		pv_value_t *res, str *sval, int ival);
 int pv_get_intstrval(struct sip_msg *msg, pv_param_t *param,

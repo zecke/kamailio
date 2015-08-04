@@ -17,10 +17,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
- *
- * History:
- * ---------
- *  2006-10-09  first version (Anca Vamanu)
  */
 
 /*!
@@ -92,6 +88,8 @@ extern int pres_fetch_rows;
 extern int pres_waitn_time;
 extern int pres_notifier_poll_rate;
 extern int pres_notifier_processes;
+extern str pres_xavp_cfg;
+extern int pres_retrieve_order;
 
 extern int phtable_size;
 extern phtable_t* pres_htable;
@@ -100,5 +98,11 @@ extern db_locking_t db_table_lock;
 
 int update_watchers_status(str pres_uri, pres_ev_t* ev, str* rules_doc);
 int pres_auth_status(struct sip_msg* msg, str watcher_uri, str presentity_uri);
+
+typedef int (*sip_uri_match_f) (str* s1, str* s2);
+extern sip_uri_match_f presence_sip_uri_match;
+
+int pv_get_subscription(struct sip_msg *msg, pv_param_t *param,	pv_value_t *res);
+int pv_parse_subscription_name(pv_spec_p sp, str *in);
 
 #endif /* PA_MOD_H */

@@ -32,6 +32,7 @@
 #include "../../ut.h"
 
 #include "mongodb_client.h"
+#include "api.h"
 
 static mongodbc_server_t *_mongodbc_srv_list=NULL;
 
@@ -217,6 +218,7 @@ int mongodbc_exec_cmd(str *srv, str *dname, str *cname, str *cmd, str *res, int 
 	bson_t reply;
 	const bson_t *cdoc;
 	char c;
+	int nres;
 	int ret;
 
 	if(srv==NULL || cmd==NULL || res==NULL)
@@ -283,10 +285,12 @@ int mongodbc_exec_cmd(str *srv, str *dname, str *cname, str *cmd, str *res, int 
 					NULL,
 					0);
 		} else {
+			nres = 0;
+			if(emode==3) nres = 1; /* return one result */
 			rpl->cursor = mongoc_collection_find (rpl->collection,
 					MONGOC_QUERY_NONE,
 					0,
-					0,
+					nres,
 					0,
 					&command,
 					NULL,
@@ -338,6 +342,14 @@ int mongodbc_exec(str *srv, str *dname, str *cname, str *cmd, str *res)
 int mongodbc_find(str *srv, str *dname, str *cname, str *cmd, str *res)
 {
 	return mongodbc_exec_cmd(srv, dname, cname, cmd, res, 2);
+}
+
+/**
+ *
+ */
+int mongodbc_find_one(str *srv, str *dname, str *cname, str *cmd, str *res)
+{
+	return mongodbc_exec_cmd(srv, dname, cname, cmd, res, 3);
 }
 
 /**
@@ -478,3 +490,25 @@ int mongodbc_next_reply(str *name)
 	LM_DBG("next cursor result: [[%s]]\n", (rpl->jsonrpl.s)?rpl->jsonrpl.s:"<null>");
 	return 0;
 }
+
+/**
+ *
+ */
+int bind_ndb_mongodb(ndb_mongodb_api_t* api)
+{
+	if (!api) {
+		ERR("Invalid parameter value\n");
+		return -1;
+	}
+
+	memset(api, 0, sizeof(ndb_mongodb_api_t));
+	api->cmd		= mongodbc_exec;
+	api->cmd_simple	= mongodbc_exec_simple;
+	api->find		= mongodbc_find;
+	api->find_one	= mongodbc_find_one;
+	api->next_reply	= mongodbc_next_reply;
+	api->free_reply	= mongodbc_free_reply;
+
+	return 0;
+}
+

@@ -39,7 +39,7 @@
  */
 
 
-#define UL_TABLE_VERSION 6
+#define UL_TABLE_VERSION 8
 
 extern str ruid_col;
 extern str user_col;
@@ -58,6 +58,10 @@ extern str sock_col;
 extern str methods_col;
 extern str instance_col;
 extern str reg_id_col;
+extern str srv_id_col;
+extern str con_id_col;
+extern str keepalive_col;
+extern str partition_col;
 extern str last_mod_col;
 
 extern str ulattrs_user_col;
@@ -81,6 +85,8 @@ extern int ul_db_update_as_insert;
 extern int ul_db_check_update;
 extern int ul_keepalive_timeout;
 extern int handle_lost_tcp;
+extern int close_expired_tcp;
+
 
 /*! nat branch flag */
 extern unsigned int nat_bflag;
@@ -92,6 +98,8 @@ extern str ul_xavp_contact_name;
 extern db1_con_t* ul_dbh;   /* Database connection handle */
 extern db_func_t ul_dbf;
 
+/* filter on load by server id */
+extern unsigned int ul_db_srvid;
 
 /*
  * Matching algorithms

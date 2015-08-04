@@ -76,6 +76,8 @@ void ucontact_xavp_store(ucontact_t *_c)
 }
 #endif
 
+int uldb_delete_attrs_ruid(str* _dname, str *_ruid);
+
 /*!
  * \brief Create a new contact structure
  * \param _dom domain
@@ -131,6 +133,8 @@ ucontact_t* new_ucontact(str* _dom, str* _aor, str* _contact, ucontact_info_t* _
 	c->last_modified = _ci->last_modified;
 	c->last_keepalive = _ci->last_modified;
 	c->tcpconn_id = _ci->tcpconn_id;
+	c->server_id = _ci->server_id;
+	c->keepalive = (_ci->cflags & nat_bflag)?1:0;
 #ifdef WITH_XAVP
 	ucontact_xavp_store(c);
 #endif
@@ -454,6 +458,9 @@ int st_flush_ucontact(ucontact_t* _c)
 
 /* ============== Database related functions ================ */
 
+extern unsigned int _ul_max_partition;
+static unsigned int _ul_partition_counter = 0;
+
 /*!
  * \brief Insert contact into the database
  * \param _c inserted contact
@@ -462,8 +469,8 @@ int st_flush_ucontact(ucontact_t* _c)
 int db_insert_ucontact(ucontact_t* _c)
 {
 	char* dom;
-	db_key_t keys[18];
-	db_val_t vals[18];
+	db_key_t keys[22];
+	db_val_t vals[22];
 	int nr_cols;
 	
 	if (_c->flags & FL_MEM) {
@@ -620,6 +627,36 @@ int db_insert_ucontact(ucontact_t* _c)
 	vals[nr_cols].val.int_val = (int)_c->reg_id;
 	nr_cols++;
 
+	keys[nr_cols] = &srv_id_col;
+	vals[nr_cols].type = DB1_INT;
+	vals[nr_cols].nul = 0;
+	vals[nr_cols].val.int_val = (int)_c->server_id;
+	nr_cols++;
+
+	keys[nr_cols] = &con_id_col;
+	vals[nr_cols].type = DB1_INT;
+	vals[nr_cols].nul = 0;
+	vals[nr_cols].val.int_val = (int)_c->tcpconn_id;
+	nr_cols++;
+
+	keys[nr_cols] = &keepalive_col;
+	vals[nr_cols].type = DB1_INT;
+	vals[nr_cols].nul = 0;
+	vals[nr_cols].val.int_val = (int)_c->keepalive;
+	nr_cols++;
+
+	keys[nr_cols] = &partition_col;
+	vals[nr_cols].type = DB1_INT;
+	vals[nr_cols].nul = 0;
+	if(_ul_max_partition>0) {
+		vals[nr_cols].val.int_val = ((_ul_partition_counter++) + my_pid())
+										% _ul_max_partition;
+	} else {
+		vals[nr_cols].val.int_val = 0;
+	}
+	nr_cols++;
+
+
 	if (use_domain) {
 		keys[nr_cols] = &domain_col;
 		vals[nr_cols].type = DB1_STR;
@@ -669,8 +706,8 @@ int db_update_ucontact_addr(ucontact_t* _c)
 	db_val_t vals1[4];
 	int n1 = 0;
 
-	db_key_t keys2[16];
-	db_val_t vals2[16];
+	db_key_t keys2[19];
+	db_val_t vals2[19];
 	int nr_cols2 = 0;
 
 
@@ -851,6 +888,24 @@ int db_update_ucontact_addr(ucontact_t* _c)
 	vals2[nr_cols2].val.int_val = (int)_c->reg_id;
 	nr_cols2++;
 
+	keys2[nr_cols2] = &srv_id_col;
+	vals2[nr_cols2].type = DB1_INT;
+	vals2[nr_cols2].nul = 0;
+	vals2[nr_cols2].val.int_val = (int)_c->server_id;
+	nr_cols2++;
+
+	keys2[nr_cols2] = &con_id_col;
+	vals2[nr_cols2].type = DB1_INT;
+	vals2[nr_cols2].nul = 0;
+	vals2[nr_cols2].val.int_val = (int)_c->tcpconn_id;
+	nr_cols2++;
+
+	keys2[nr_cols2] = &keepalive_col;
+	vals2[nr_cols2].type = DB1_INT;
+	vals2[nr_cols2].nul = 0;
+	vals2[nr_cols2].val.int_val = (int)_c->keepalive;
+	nr_cols2++;
+
 	keys2[nr_cols2] = &contact_col;
 	vals2[nr_cols2].type = DB1_STR;
 	vals2[nr_cols2].nul = 0;
@@ -926,8 +981,8 @@ int db_update_ucontact_ruid(ucontact_t* _c)
 	db_val_t vals1[1];
 	int n1;
 
-	db_key_t keys2[15];
-	db_val_t vals2[15];
+	db_key_t keys2[18];
+	db_val_t vals2[18];
 	int n2;
 
 
@@ -1052,6 +1107,24 @@ int db_update_ucontact_ruid(ucontact_t* _c)
 	vals2[n2].val.int_val = (int)_c->reg_id;
 	n2++;
 
+	keys2[n2] = &srv_id_col;
+	vals2[n2].type = DB1_INT;
+	vals2[n2].nul = 0;
+	vals2[n2].val.int_val = (int)_c->server_id;
+	n2++;
+
+	keys2[n2] = &con_id_col;
+	vals2[n2].type = DB1_INT;
+	vals2[n2].nul = 0;
+	vals2[n2].val.int_val = (int)_c->tcpconn_id;
+	n2++;
+
+	keys2[n2] = &keepalive_col;
+	vals2[n2].type = DB1_INT;
+	vals2[n2].nul = 0;
+	vals2[n2].val.int_val = (int)_c->keepalive;
+	n2++;
+
 	keys2[n2] = &contact_col;
 	vals2[n2].type = DB1_STR;
 	vals2[n2].nul = 0;
@@ -1122,8 +1195,8 @@ int db_update_ucontact_instance(ucontact_t* _c)
 	db_val_t vals1[4];
 	int n1;
 
-	db_key_t keys2[13];
-	db_val_t vals2[13];
+	db_key_t keys2[16];
+	db_val_t vals2[16];
 	int n2;
 
 
@@ -1243,6 +1316,24 @@ int db_update_ucontact_instance(ucontact_t* _c)
 	vals2[n2].type = DB1_STR;
 	vals2[n2].nul = 0;
 	vals2[n2].val.str_val = _c->callid;
+	n2++;
+
+	keys2[n2] = &srv_id_col;
+	vals2[n2].type = DB1_INT;
+	vals2[n2].nul = 0;
+	vals2[n2].val.bitmap_val = _c->server_id;
+	n2++;
+
+	keys2[n2] = &con_id_col;
+	vals2[n2].type = DB1_INT;
+	vals2[n2].nul = 0;
+	vals2[n2].val.bitmap_val = _c->tcpconn_id;
+	n2++;
+
+	keys2[n2] = &keepalive_col;
+	vals2[n2].type = DB1_INT;
+	vals2[n2].nul = 0;
+	vals2[n2].val.bitmap_val = _c->keepalive;
 	n2++;
 
 	keys2[n2] = &contact_col;
@@ -1451,6 +1542,8 @@ int db_delete_ucontact_ruid(ucontact_t* _c)
 	vals[n].val.str_val = _c->ruid;
 	n++;
 
+	uldb_delete_attrs_ruid(_c->domain, &_c->ruid);
+
 	if (ul_dbf.use_table(ul_dbh, _c->domain) < 0) {
 		LM_ERR("sql use_table failed\n");
 		return -1;
@@ -1546,6 +1639,28 @@ static inline void update_contact_pos(struct urecord* _r, ucontact_t* _c)
 	}
 }
 
+/*!
+ * \brief helper function for update_ucontact
+ * \param _c contact
+ * \return 0 on success, -1 on failure
+ */
+static inline int update_contact_db(ucontact_t* _c)
+{
+	int res;
+
+	if (ul_db_update_as_insert)
+		res = db_insert_ucontact(_c);
+	else
+		res = db_update_ucontact(_c);
+
+	if (res < 0) {
+		LM_ERR("failed to update database\n");
+		return -1;
+	} else {
+		_c->state = CS_SYNC;
+	}
+	return 0;
+}
 
 /*!
  * \brief Update ucontact with new values
@@ -1556,13 +1671,15 @@ static inline void update_contact_pos(struct urecord* _r, ucontact_t* _c)
  */
 int update_ucontact(struct urecord* _r, ucontact_t* _c, ucontact_info_t* _ci)
 {
-	int res;
-
 	/* we have to update memory in any case, but database directly
 	 * only in db_mode 1 */
 	if (mem_update_ucontact( _c, _ci) < 0) {
 		LM_ERR("failed to update memory\n");
 		return -1;
+	}
+
+	if (db_mode==DB_ONLY) {
+		if (update_contact_db(_c) < 0) return -1;
 	}
 
 	/* run callbacks for UPDATE event */
@@ -1577,18 +1694,8 @@ int update_ucontact(struct urecord* _r, ucontact_t* _c, ucontact_info_t* _ci)
 
 	st_update_ucontact(_c);
 
-	if (db_mode == WRITE_THROUGH || db_mode==DB_ONLY) {
-		if (ul_db_update_as_insert)
-			res = db_insert_ucontact(_c);
-		else
-			res = db_update_ucontact(_c);
-
-		if (res < 0) {
-			LM_ERR("failed to update database\n");
-			return -1;
-		} else {
-			_c->state = CS_SYNC;
-		}
+	if (db_mode == WRITE_THROUGH) {
+		if (update_contact_db(_c) < 0) return -1;
 	}
 	return 0;
 }
@@ -1610,6 +1717,9 @@ int uldb_delete_attrs(str* _dname, str *_user, str *_domain, str *_ruid)
 	str tname;
 	db_key_t keys[3];
 	db_val_t vals[3];
+
+	if(ul_db_ops_ruid==1)
+		return uldb_delete_attrs_ruid(_dname, _ruid);
 
 	LM_DBG("trying to delete location attributes\n");
 
@@ -1652,6 +1762,56 @@ int uldb_delete_attrs(str* _dname, str *_user, str *_domain, str *_ruid)
 	}
 
 	if (ul_dbf.delete(ul_dbh, keys, 0, vals, (use_domain) ? (3) : (2)) < 0) {
+		LM_ERR("deleting from database failed\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+/*!
+ * \brief Delete all location attributes from a udomain by ruid
+ *
+ * \param _dname loaded domain name
+ * \param _ruid usrloc record unique id
+ * \return 0 on success, -1 on failure
+ */
+int uldb_delete_attrs_ruid(str* _dname, str *_ruid)
+{
+	char tname_buf[64];
+	str tname;
+	db_key_t keys[1];
+	db_val_t vals[1];
+
+	LM_DBG("trying to delete location attributes\n");
+
+	if(ul_xavp_contact_name.s==NULL) {
+		/* feature disabled by mod param */
+		return 0;
+	}
+
+	if(_dname->len+6>=64) {
+		LM_ERR("attributes table name is too big\n");
+		return -1;
+	}
+	strncpy(tname_buf, _dname->s, _dname->len);
+	tname_buf[_dname->len] = '\0';
+	strcat(tname_buf, "_attrs");
+	tname.s = tname_buf;
+	tname.len = _dname->len + 6;
+
+	keys[0] = &ulattrs_ruid_col;
+
+	vals[0].type = DB1_STR;
+	vals[0].nul = 0;
+	vals[0].val.str_val = *_ruid;
+
+	if (ul_dbf.use_table(ul_dbh, &tname) < 0) {
+		LM_ERR("sql use_table failed\n");
+		return -1;
+	}
+
+	if (ul_dbf.delete(ul_dbh, keys, 0, vals, 1) < 0) {
 		LM_ERR("deleting from database failed\n");
 		return -1;
 	}

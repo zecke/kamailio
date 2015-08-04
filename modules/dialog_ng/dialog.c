@@ -126,7 +126,7 @@ static cmd_export_t cmds[] = {
 
 static param_export_t mod_params[] = {
     { "hash_size", INT_PARAM, &dlg_hash_size},
-    { "rr_param", PARAM_STR, &rr_param},
+    { "rr_param", PARAM_STRING, &rr_param},
     { "dlg_flag", INT_PARAM, &dlg_flag},
     { "timeout_avp", PARAM_STR, &timeout_spec},
     { "default_timeout", INT_PARAM, &default_timeout},
@@ -140,8 +140,8 @@ static param_export_t mod_params[] = {
     { "db_fetch_rows",		INT_PARAM, &db_fetch_rows			}
     ,
     { "detect_spirals",		INT_PARAM, &detect_spirals			},
-    { "profiles_with_value",PARAM_STR, &profiles_wv_s			},
-    { "profiles_no_value",	PARAM_STR, &profiles_nv_s			},
+    { "profiles_with_value",PARAM_STRING, &profiles_wv_s			},
+    { "profiles_no_value",	PARAM_STRING, &profiles_nv_s			},
     { "bridge_controller",	PARAM_STR, &dlg_bridge_controller	},
     { "ruri_pvar",			PARAM_STR, &ruri_pvar_param		},
 
@@ -343,6 +343,7 @@ int load_dlg(struct dlg_binds *dlgb) {
     dlgb->lookup_terminate_dlg = w_api_lookup_terminate_dlg;
     dlgb->get_dlg_expires = api_get_dlg_expires;
     dlgb->get_dlg = dlg_get_msg_dialog;
+    dlgb->release_dlg = dlg_release;
 
     return 1;
 }
@@ -914,14 +915,53 @@ static void rpc_end_dlg_entry_id(rpc_t *rpc, void *c) {
     dlg = lookup_dlg(h_entry, h_id);
     if (dlg) {
         //dlg_bye_all(dlg, (rpc_extra_hdrs.len>0)?&rpc_extra_hdrs:NULL);
-        unref_dlg(dlg, 1);
-    }
+    unref_dlg(dlg, 1);
+}
 }*/
+
+static const char *rpc_end_dlg_entry_id_doc[2] = {
+    "End a given dialog based on [h_entry] [h_id]", 0
+};
+
+
+
+
+
+/* Wrapper for terminating dialog from API - from other modules */
+static void rpc_end_dlg_entry_id(rpc_t *rpc, void *c) {
+    unsigned int h_entry, h_id;
+    struct dlg_cell * dlg = NULL;
+    str rpc_extra_hdrs = {NULL,0};
+    int n;
+
+    n = rpc->scan(c, "dd", &h_entry, &h_id);
+    if (n < 2) {
+	    LM_ERR("unable to read the parameters (%d)\n", n);
+	    rpc->fault(c, 500, "Invalid parameters");
+	    return;
+    }
+    if(rpc->scan(c, "*S", &rpc_extra_hdrs)<1)
+    {
+	    rpc_extra_hdrs.s = NULL;
+	    rpc_extra_hdrs.len = 0;
+    }
+
+    dlg = lookup_dlg(h_entry, h_id);//increments ref count!
+    if(dlg==NULL) {
+	    rpc->fault(c, 404, "Dialog not found");
+	    return;
+    }
+
+    unref_dlg(dlg, 1);
+
+    dlg_terminate(dlg, NULL, NULL/*reason*/, 2, NULL);
+
+}
 
 
 static rpc_export_t rpc_methods[] = {
 	{"dlg2.list", rpc_print_dlgs, rpc_print_dlgs_doc, 0},
-    //{"dlg.end_dlg", rpc_end_dlg_entry_id, rpc_end_dlg_entry_id_doc, 0},
+        {"dlg2.end_dlg", rpc_end_dlg_entry_id, rpc_end_dlg_entry_id_doc, 0},
     {0, 0, 0, 0}
 };
 

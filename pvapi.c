@@ -539,6 +539,21 @@ int pv_get_strzval(struct sip_msg *msg, pv_param_t *param,
 }
 
 /**
+ * convert char* with len to pv_value_t
+ */
+int pv_get_strlval(struct sip_msg *msg, pv_param_t *param,
+		pv_value_t *res, char *sval, int slen)
+{
+	if(res==NULL)
+		return -1;
+
+	res->rs.s = sval;
+	res->rs.len = slen;
+	res->flags = PV_VAL_STR;
+	return 0;
+}
+
+/**
  * convert str-int to pv_value_t (type is str)
  */
 int pv_get_strintval(struct sip_msg *msg, pv_param_t *param,
@@ -576,6 +591,9 @@ static int pv_get_marker(struct sip_msg *msg, pv_param_t *param,
 	return pv_get_strintval(msg, param, res, &pv_str_marker,
 			(int)pv_str_marker.s[0]);
 }
+
+static char pv_str_empty_buf[2];
+static char pv_str_null_buf[8];
 
 static str pv_str_empty  = { "", 0 };
 static str pv_str_null   = { "<null>", 6 };
@@ -665,6 +683,11 @@ int pv_parse_index(pv_spec_p sp, str *in)
 	if(*p=='*' && in->len==1)
 	{
 		sp->pvp.pvi.type = PV_IDX_ALL;
+		return 0;
+	}
+	if(*p=='+' && in->len==1)
+	{
+		sp->pvp.pvi.type = PV_IDX_ITR;
 		return 0;
 	}
 	sign = 1;
@@ -1225,7 +1248,10 @@ int pv_get_spec_index(struct sip_msg* msg, pv_param_p ip, int *idx, int *flags)
 		*flags = PV_IDX_ALL;
 		return 0;
 	}
-	
+	if(ip->pvi.type == PV_IDX_ITR) {
+		*flags = PV_IDX_ITR;
+		return 0;
+	}
 	if(ip->pvi.type == PV_IDX_INT)
 	{
 		*idx = ip->pvi.u.ival;
@@ -1867,6 +1893,13 @@ int pv_init_api(void)
 	tr_init_table();
 	if(pv_init_buffer()<0)
 		return -1;
+
+	pv_str_empty_buf[0] = '\0';
+	pv_str_empty_buf[1] = '\0';
+	pv_str_empty.s = pv_str_empty_buf;
+	strcpy(pv_str_null_buf, "<null>");
+	pv_str_null.s = pv_str_null_buf;
+
 	if(register_pvars_mod("core", _core_pvs)<0)
 		return -1;
 	return 0;

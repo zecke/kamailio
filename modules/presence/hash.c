@@ -1,6 +1,4 @@
 /*
- * $Id: hash.c 2583 2007-08-08 11:33:25Z anca_vamanu $
- *
  * presence module - presence server implementation
  *
  * Copyright (C) 2007 Voice Sistem S.R.L.
@@ -21,9 +19,6 @@
  * along with this program; if not, write to the Free Software 
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2007-08-20  initial version (Anca Vamanu)
  */
 
 /*! \file
@@ -380,7 +375,7 @@ int update_shtable(shtable_t htable,unsigned int hash_code,
 		subs->version = ++s->version;
 	}
 	
-	if(strncmp(s->contact.s, subs->contact.s, subs->contact.len))
+	if(presence_sip_uri_match(&s->contact, &subs->contact))
 	{
 		shm_free(s->contact.s);
 		s->contact.s= (char*)shm_malloc(subs->contact.len* sizeof(char));
@@ -488,7 +483,7 @@ pres_entry_t* search_phtable(str* pres_uri,int event, unsigned int hash_code)
 	while(p)
 	{
 		if(p->event== event && p->pres_uri.len== pres_uri->len &&
-				strncmp(p->pres_uri.s, pres_uri->s, pres_uri->len)== 0 )
+				presence_sip_uri_match(&p->pres_uri, pres_uri)== 0 )
 			return p;
 		p= p->next;
 	}
@@ -501,7 +496,7 @@ int insert_phtable(str* pres_uri, int event, char* sphere)
 	pres_entry_t* p= NULL;
 	int size;
 
-	hash_code= core_hash(pres_uri, NULL, phtable_size);
+	hash_code= core_case_hash(pres_uri, NULL, phtable_size);
 
 	lock_get(&pres_htable[hash_code].lock);
 	
@@ -559,7 +554,7 @@ int delete_phtable(str* pres_uri, int event)
 	unsigned int hash_code;
 	pres_entry_t* p= NULL, *prev_p= NULL;
 
-	hash_code= core_hash(pres_uri, NULL, phtable_size);
+	hash_code= core_case_hash(pres_uri, NULL, phtable_size);
 
 	lock_get(&pres_htable[hash_code].lock);
 	
@@ -616,7 +611,7 @@ int update_phtable(presentity_t* presentity, str pres_uri, str body)
 	}
 
 	/* search for record in hash table */
-	hash_code= core_hash(&pres_uri, NULL, phtable_size);
+	hash_code= core_case_hash(&pres_uri, NULL, phtable_size);
 	
 	lock_get(&pres_htable[hash_code].lock);
 
