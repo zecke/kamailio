@@ -42,7 +42,7 @@ Carsten Bock
 
         4. Functions
 
-              4.1. http_query(url, [post-data], result)
+              4.1. curl_http_query(url, [post-data], result)
 
         5. Pseudovariables
 
@@ -64,7 +64,7 @@ Carsten Bock
    1.6. Set tlscacert parameter
    1.7. Set tlsverifyserver parameter
    1.8. Set curlcon parameter
-   1.9. http_query() usage
+   1.9. curl_http_query() usage
 
 Chapter 1. Admin Guide
 
@@ -89,7 +89,7 @@ Chapter 1. Admin Guide
 
    4. Functions
 
-        4.1. http_query(url, [post-data], result)
+        4.1. curl_http_query(url, [post-data], result)
 
    5. Pseudovariables
 
@@ -267,9 +267,9 @@ timeout=12")
 
 4. Functions
 
-   4.1. http_query(url, [post-data], result)
+   4.1. curl_http_query(url, [post-data], result)
 
-4.1. http_query(url, [post-data], result)
+4.1. curl_http_query(url, [post-data], result)
 
    Sends HTTP GET or POST request according to URL given in "url"
    parameter, which is a string that may contain pseudo variables.
@@ -287,11 +287,15 @@ timeout=12")
    This function can be used from REQUEST_ROUTE, ONREPLY_ROUTE,
    FAILURE_ROUTE, and BRANCH_ROUTE.
 
-   Example 1.9. http_query() usage
+   Note that this function is based on the http_query function in the
+   utils module. It is changed to use the same base library and settings
+   as the rest of the functions in this module.
+
+   Example 1.9. curl_http_query() usage
 ...
 # GET-Request
-http_query("http://tutpro.com/index.php?r_uri=$(ru{s.escape.param})&f_uri=$(fu{s
-.escape.param})",
+curl_http_query("http://tutpro.com/index.php?r_uri=$(ru{s.escape.param})&f_uri=$
+(fu{s.escape.param})",
            "$var(result)")
 switch ($retcode) {
        ...
@@ -299,8 +303,8 @@ switch ($retcode) {
 ...
 ...
 # POST-Request
-http_query("http://tutpro.com/index.php", "r_uri=$(ru{s.escape.param})&f_uri=$(f
-u{s.escape.param})",
+curl_http_query("http://tutpro.com/index.php", "r_uri=$(ru{s.escape.param})&f_ur
+i=$(fu{s.escape.param})",
            "$var(result)")
 switch ($retcode) {
        ...

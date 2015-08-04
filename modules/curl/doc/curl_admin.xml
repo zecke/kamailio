@@ -264,9 +264,9 @@ modparam("curl", "curlcon", "apifour=>http://stockholm.example.com/api/getstuff;
 
 	<section>
 	<title>Functions</title>
-		<section id="curl.f.http_query">
+		<section id="curl.f.curl_http_query">
 			<title>
-				<function moreinfo="none">http_query(url, [post-data], result)</function>
+				<function moreinfo="none">curl_http_query(url, [post-data], result)</function>
 			</title>
 			<para>
 			Sends HTTP GET or POST request according to URL given in
@@ -292,12 +292,16 @@ modparam("curl", "curlcon", "apifour=>http://stockholm.example.com/api/getstuff;
 			This function can be used from REQUEST_ROUTE,
 			ONREPLY_ROUTE, FAILURE_ROUTE, and BRANCH_ROUTE.
 			</para>
+			<para>
+			Note that this function is based on the http_query function in the utils module.
+			It is changed to use the same base library and settings as the rest of the functions in this module.
+			</para>
 			<example>
-				<title><function>http_query()</function> usage</title>
+				<title><function>curl_http_query()</function> usage</title>
 				<programlisting format="linespecific">
 ...
 # GET-Request
-http_query("http://tutpro.com/index.php?r_uri=$(ru{s.escape.param})&amp;f_uri=$(fu{s.escape.param})",
+curl_http_query("http://tutpro.com/index.php?r_uri=$(ru{s.escape.param})&amp;f_uri=$(fu{s.escape.param})",
            "$var(result)")
 switch ($retcode) {
        ...
@@ -307,7 +311,7 @@ switch ($retcode) {
 				<programlisting format="linespecific">
 ...
 # POST-Request
-http_query("http://tutpro.com/index.php", "r_uri=$(ru{s.escape.param})&amp;f_uri=$(fu{s.escape.param})",
+curl_http_query("http://tutpro.com/index.php", "r_uri=$(ru{s.escape.param})&amp;f_uri=$(fu{s.escape.param})",
            "$var(result)")
 switch ($retcode) {
        ...
