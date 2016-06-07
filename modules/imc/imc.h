@@ -34,5 +34,7 @@ extern struct tm_binds tmb;
 extern str outbound_proxy;
 extern str all_hdrs;
 extern str extra_hdrs;
+extern int json_announce;
+extern int text_announce;
 
 #endif

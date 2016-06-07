@@ -49,8 +49,11 @@ typedef struct _imc_member
 	struct _imc_member * prev;
 } imc_member_t, *imc_member_p;
 
-#define IMC_ROOM_PRIV		(1<<0)
-#define IMC_ROOM_DELETED	(1<<1)
+#define IMC_ROOM_PRIV		(1<<0)	/* Private conference room */
+#define IMC_ROOM_DELETED	(1<<1)	/* Delete conference */
+#define IMC_ROOM_JSONUPDATE	(1<<2)	/* Send announcements as JSON attachments */
+#define IMC_ROOM_MUTEANN	(1<<3)	/* Mute non-JSON announcements (in English only) */
+
 typedef struct del_member
 {
 	str room_name;
@@ -58,7 +61,7 @@ typedef struct del_member
 	str inv_uri;
 	str member_name;
 	str member_domain;
-}del_member_t;
+} del_member_t;
 
 
 typedef struct _imc_room
@@ -91,8 +94,6 @@ int imc_release_room(imc_room_p room);
 
 int imc_htable_init(void);
 int imc_htable_destroy(void);
-
-
 
 #endif
 

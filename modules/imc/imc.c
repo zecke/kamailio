@@ -50,6 +50,7 @@
 
 #include "imc_mng.h"
 #include "imc_cmd.h"
+#include "imc_rpc.h"
 
 MODULE_VERSION
 
@@ -76,6 +77,10 @@ static str imc_col_name     = str_init("name");
 
 imc_hentry_p _imc_htable = NULL;
 int imc_hash_size = 4;
+
+int text_announce = 1;	/* Make announcements in English messages to the conference. Default on */
+int json_announce = 0;	/* Send announcements as json data. Default off */
+
 str imc_cmd_start_str = str_init(IMC_CMD_START_STR);
 char imc_cmd_start_char;
 str extra_hdrs = {NULL, 0};
@@ -104,13 +109,15 @@ static cmd_export_t cmds[]={
 
 
 static param_export_t params[]={
-	{"db_url",				PARAM_STR, &db_url},
+	{"db_url",			PARAM_STR, &db_url},
 	{"hash_size",			INT_PARAM, &imc_hash_size},
-	{"imc_cmd_start_char",	PARAM_STR, &imc_cmd_start_str},
+	{"imc_cmd_start_char",		PARAM_STR, &imc_cmd_start_str},
 	{"rooms_table",			PARAM_STR, &rooms_table},
 	{"members_table",		PARAM_STR, &members_table},
 	{"outbound_proxy",		PARAM_STR, &outbound_proxy},
-	{"extra_hdrs",        PARAM_STR, &extra_hdrs},
+	{"extra_hdrs",			PARAM_STR, &extra_hdrs},
+	{"text_announce",		INT_PARAM, &test_announce},
+	{"json_announce",		INT_PARAM, &json_announce},
 	{0,0,0}
 };
 
@@ -345,6 +352,11 @@ static int mod_init(void)
 		return -1;
 	}
 #endif
+	if(imc_init_rpc() < 0)
+        {
+                LM_ERR("failed to register RPC commands\n");
+                return -1;
+        }
 	
 	if(register_mi_mod(exports.name, mi_cmds)!=0)
 	{
