@@ -73,38 +73,59 @@ static void imc_rpc_listall(rpc_t* rpc, void* ctx)
 }
 
 static const char* imc_rpc_create_doc[2] = {
-	"Create IMC conference. Arg: <conf>",
+	"Create IMC conference. Arg: <conf> <domain> [<option>] where option can be 'private'",
 	0
 };
 
 /*
  * RPC command to create conferences :
- * 	imc.create <conf> <flag>
+ * 	imc.create <conf> <domain> [<flag>]
  *		flag: "private"
  */
 static void imc_rpc_create(rpc_t* rpc, void* ctx)
 {
 	void* th;
 	void* rh;
-	str confname;
+	str confname = STR_NULL;
+	str options = STR_NULL;
+	str domain;
 	imc_room_p room = 0;
 	int flag_room = 0;
 	int flag_member = 0;
+	int no_args;
 
-	/* Get the name */
-	if (rpc->scan(ctx, "S", &confname) != 1) {
-		rpc->fault(c, 500, "Missing parameter confname (Parameters: confname [option])");
+	/* First check if there are two arguments */
+	no_args = rpc->scan(ctx, "SS", &confname, &domain, &options);
+
+	LM_DBG("Number of arguments: %d\n", no_args);
+
+	/* Accept 2 or 3 arguments */
+	if (no_args != 3 && no_args != 2) {
+		rpc->fault(ctx, 500, "Missing parameter roomname, domain (Parameters: room, domain [option])");
 		return;
 	}
+	LM_DBG("Check if room exists: %.*s@%.*s\n", confname.len, confname.s, domain.len, domain.s);
 
 	/* Check if room exists first */
-		/* Destination host */
-	room = imc_get_room(&confname, &dst->host);
+	room = imc_get_room(&confname, &domain);
 	if(room != NULL) {
 		/* Error */
-		rpc->fault(c, 500, "Conference already exists");
+		rpc->fault(ctx, 500, "Conference room already exists");
+                imc_release_room(room);
 		return;
 	}
+	if (options.len > 0 && options.s[0] == 'p') {
+		flag_room |= IMC_ROOM_PRIV;
+	}
+	LM_DBG("Creating room: %.*s@%.*s\n", confname.len, confname.s, domain.len, domain.s);
+	room = imc_add_room(&confname, &domain, flag_room);
+	if(room == NULL)
+	{
+		LM_ERR("Failed to add new room (RPC imc.create)\n");
+		return;
+	}	
+	LM_DBG("Added room uri= %.*s\n", room->uri.len, room->uri.s);
+	imc_release_room(room);
 
 	return;
 }
