@@ -116,7 +116,7 @@ static param_export_t params[]={
 	{"members_table",		PARAM_STR, &members_table},
 	{"outbound_proxy",		PARAM_STR, &outbound_proxy},
 	{"extra_hdrs",			PARAM_STR, &extra_hdrs},
-	{"text_announce",		INT_PARAM, &test_announce},
+	{"text_announce",		INT_PARAM, &text_announce},
 	{"json_announce",		INT_PARAM, &json_announce},
 	{0,0,0}
 };
