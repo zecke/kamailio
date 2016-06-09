@@ -45,18 +45,82 @@ static const char* imc_rpc_list_doc[2] = {
 
 /*
  * RPC command to list conference members:
- * 	imc.list <conf>
+ * 	imc.list <conf> <domain>
  */
 static void imc_rpc_list(rpc_t* rpc, void* ctx)
 {
-	void* th;
-	void* rh;
+	void* th;	/* Main structure */
+	void* sh;	/* User data */
+	str confname = STR_NULL;
+	str domain;
+	str options = STR_NULL;
+	imc_room_p room = 0;
+	int flag_room = 0;
+	int flag_member = 0;
+	int no_args;
+	imc_member_p imp = NULL;
+	int count = 0;
+
+	/* First check if there are two arguments */
+	no_args = rpc->scan(ctx, "SS", &confname, &domain);
+	LM_DBG("Number of arguments: %d\n", no_args);
+
+	/* Accept 2 arguments */
+	if (no_args != 2) {
+		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain)");
+		return;
+	}
+
+	LM_DBG("Looking for room %.*s@%.*s!\n", confname.len, confname.s, domain.len, domain.s);
+	room = imc_get_room(&confname, &domain);
+	if(room == NULL) {
+		/* Error */
+		LM_ERR("room [%.*s] does not exist!\n", confname.len, confname.s);
+		rpc->fault(ctx, 500, "Conference room does not exist");
+		return;
+	}
+	LM_DBG("Found room: [%.*s] \n", confname.len, confname.s);
+
+	/* add entry node */
+        if (rpc->add(ctx, "{", &th) < 0)
+        {
+                rpc->fault(ctx, 500, "Internal error creating root reply");
+                return;
+        }
+
+	/* We can state number here    room->nr_of_members */
+	LM_DBG("Number of members: %d\n", room->nr_of_members);
+
+	imp = room->members;
+	if(rpc->struct_add(th, "d{",
+		"NO_USERS", room->nr_of_members,
+		"USERS", &sh) < 0)
+	{
+		rpc->fault(ctx, 500, "Internal error creating dest");
+		return;
+	}
+
+        while(imp) {
+		count++;
+		LM_DBG("Member %d : [%.*s] \n", count, imp->user.len, imp->user.s);
+
+		if(rpc->struct_add(sh, "SS",
+			"USER", &imp->user,
+			"DOMAIN", &imp->domain) < 0) {
+				rpc->fault(ctx, 500, "Internal error creating dest struct");
+				return;
+		}
+
+		imp = imp->next;
+	}
+
+	imc_release_room(room);
 
 	return;
 }
 
 static const char* imc_rpc_listall_doc[2] = {
-	"List all IMC conference members. Arg: <conf>",
+	"List all IMC conference members. Arg: <conf> <domain>",
 	0
 };
 
@@ -87,8 +151,8 @@ static void imc_rpc_create(rpc_t* rpc, void* ctx)
 	void* th;
 	void* rh;
 	str confname = STR_NULL;
-	str options = STR_NULL;
 	str domain;
+	str options = STR_NULL;
 	imc_room_p room = 0;
 	int flag_room = 0;
 	int flag_member = 0;
@@ -126,6 +190,7 @@ static void imc_rpc_create(rpc_t* rpc, void* ctx)
 	}	
 	LM_DBG("Added room uri= %.*s\n", room->uri.len, room->uri.s);
 	imc_release_room(room);
+	rpc->rpl_printf(ctx, "OK. Room successfully created");
 
 	return;
 }
@@ -144,25 +209,94 @@ static void imc_rpc_destroy(rpc_t* rpc, void* ctx)
 	void* th;
 	void* rh;
 
+	str confname = STR_NULL;
+	str domain;
+	int no_args;
+	imc_room_p room = 0;
+	int res;
+
+	/* First check if there are two arguments */
+	no_args = rpc->scan(ctx, "SS", &confname, &domain);
+
+	LM_DBG("Number of arguments: %d\n", no_args);
+
+	/* Accept 2 or 3 arguments */
+	if (no_args != 2) {
+		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain)");
+		return;
+	}
+
+	room = imc_get_room(&confname, &domain);
+	if(room == NULL) {
+		/* Error */
+		LM_ERR("room [%.*s] does not exist!\n", confname.len, confname.s);
+		rpc->fault(ctx, 500, "Conference room does not exist");
+		return;
+	}
+	room->flags |= IMC_ROOM_DELETED;
+
+	/* We could check if there are any members around and kick them */
+	imc_release_room(room);
+
+        LM_DBG("deleting room\n");
+        res = imc_del_room(&confname, &domain);
+	if (res < 0) {
+		rpc->fault(ctx, 500, "Deletion failed");
+	} else {
+		rpc->rpl_printf(ctx, "OK. Room deleted");
+	}
 	return;
 }
 
 static const char* imc_rpc_addmember_doc[2] = {
-	"Add member to IMC conference. Arg: <conf> <SIP uri> [<option>]",
+	"Add member to IMC conference. Arg: <conf> <domain> <SIP uri> [<option>]",
 	0
 };
 
 /*
- * RPC command to destroy conferences :
- * 	imc.addmember <conf> <uri> [<option>]
- *		Option can be "admin"
- *		Option can be "muted"
+ * RPC command to add member to conference :
+ * 	imc.addmember <conf> <uri> <user-uri>
  */
 static void imc_rpc_addmember(rpc_t* rpc, void* ctx)
 {
-	void* th;
-	void* rh;
+	str confname = STR_NULL;
+	str domain;
+	str useruri;
+	int no_args;
+	imc_room_p room = 0;
+	int res;
+	imc_member_p imp = NULL;
 
+	/* First check if there are two arguments */
+	no_args = rpc->scan(ctx, "SSS", &confname, &domain, &useruri);
+
+	LM_DBG("Number of arguments: %d\n", no_args);
+
+	/* Accept only 3 arguments */
+	if (no_args != 3) {
+		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain, user-uri)");
+		return;
+	}
+
+	room = imc_get_room(&confname, &domain);
+	if(room == NULL) {
+		/* Error */
+		LM_ERR("room [%.*s] does not exist!\n", confname.len, confname.s);
+		rpc->fault(ctx, 500, "Conference room does not exist");
+		return;
+	}
+	/* OEJ: useruri needs to be divided into two. Or we need to create
+	   imc_add_uri(room, uri, option)
+	 */
+	imp = imc_add_member(room, &useruri, &domain, 0);
+	if (imp == NULL) {
+		rpc->fault(ctx, 500, "Failure adding member");
+		imc_release_room(room);
+		return;
+	}
+
+	rpc->rpl_printf(ctx, "OK. Member added");
+	imc_release_room(room);
 	return;
 }
 
