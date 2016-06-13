@@ -36,6 +36,11 @@
 
 #include "imc.h"
 #include "imc_cmd.h"
+#include "imc_mng.h"
+
+/* imc hash table */
+extern imc_hentry_p _imc_htable;
+extern int imc_hash_size;
 
 
 static const char* imc_rpc_list_doc[2] = {
@@ -124,6 +129,7 @@ static const char* imc_rpc_listall_doc[2] = {
 	0
 };
 
+
 /*
  * RPC command to list conferences :
  * 	imc.listall <conf>
@@ -131,8 +137,59 @@ static const char* imc_rpc_listall_doc[2] = {
 static void imc_rpc_listall(rpc_t* rpc, void* ctx)
 {
 	void* th;
+	void* sh;
 	void* rh;
+	imc_room_p room = 0;
+	int i;
+	int activeconferences = 0;
+	imc_room_p irp = NULL;
 
+	if(_imc_htable==NULL) {
+		rpc->fault(ctx, 400, "No active conferences");
+		return;
+	}
+	/* add entry node */
+        if (rpc->add(ctx, "{", &th) < 0)
+        {
+                rpc->fault(ctx, 500, "Internal error creating root reply");
+                return;
+        }
+	if(rpc->struct_add(th, "{", "ROOMS", &sh) < 0)
+	{
+		rpc->fault(ctx, 500, "Internal error creating room list");
+		return;
+	}
+	/* Loop through all hash entries to find rooms */
+	for(i=0; i<imc_hash_size; i++)
+	{
+		lock_destroy(&_imc_htable[i].lock);
+		if(_imc_htable[i].rooms==NULL) {
+			continue;
+		}
+		irp = _imc_htable[i].rooms;
+		while(irp) {
+			if(rpc->struct_add(sh, "{", "ROOM", &rh) < 0)
+			{
+				rpc->fault(ctx, 500, "Internal error creating room list");
+				return;
+			}
+			activeconferences++;
+			/* Make sure to add data on number of users
+			 * as well as last time for action 
+			 */
+			if(rpc->struct_add(rh, "SSd",
+				"ROOM", &irp->name,
+				"DOMAIN", &irp->domain,
+				"MEMBERS", irp->nr_of_members) < 0) {
+					rpc->fault(ctx, 500, "Internal error creating dest struct");
+					return;
+			}
+			irp = irp->next;
+		}
+	}
+	LM_DBG("*** Number of rooms: %d \n", activeconferences);
+	shm_free(_imc_htable);
+	_imc_htable = NULL;
 	return;
 }
 
