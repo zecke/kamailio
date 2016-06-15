@@ -162,8 +162,11 @@ static void imc_rpc_listall(rpc_t* rpc, void* ctx)
 	/* Loop through all hash entries to find rooms */
 	for(i=0; i<imc_hash_size; i++)
 	{
-		lock_destroy(&_imc_htable[i].lock);
+		LM_DBG("      ---- Locking hash entry %d \n", i);
+		lock_get(&_imc_htable[i].lock);
 		if(_imc_htable[i].rooms==NULL) {
+			LM_DBG("      ---- No rooms in hash entry %d \n", i);
+			lock_release(&_imc_htable[i].lock);
 			continue;
 		}
 		irp = _imc_htable[i].rooms;
@@ -171,6 +174,7 @@ static void imc_rpc_listall(rpc_t* rpc, void* ctx)
 			if(rpc->struct_add(sh, "{", "ROOM", &rh) < 0)
 			{
 				rpc->fault(ctx, 500, "Internal error creating room list");
+				lock_release(&_imc_htable[i].lock);
 				return;
 			}
 			activeconferences++;
@@ -178,18 +182,19 @@ static void imc_rpc_listall(rpc_t* rpc, void* ctx)
 			 * as well as last time for action 
 			 */
 			if(rpc->struct_add(rh, "SSd",
-				"ROOM", &irp->name,
+				"NAME", &irp->name,
 				"DOMAIN", &irp->domain,
 				"MEMBERS", irp->nr_of_members) < 0) {
 					rpc->fault(ctx, 500, "Internal error creating dest struct");
+					lock_release(&_imc_htable[i].lock);
 					return;
 			}
 			irp = irp->next;
 		}
+		LM_DBG("      ---- Unlocking hash entry %d \n", i);
+		lock_release(&_imc_htable[i].lock);
 	}
 	LM_DBG("*** Number of rooms: %d \n", activeconferences);
-	shm_free(_imc_htable);
-	_imc_htable = NULL;
 	return;
 }
 
@@ -266,7 +271,7 @@ static void imc_rpc_destroy(rpc_t* rpc, void* ctx)
 	void* th;
 	void* rh;
 
-	str confname = STR_NULL;
+	str confname;
 	str domain;
 	int no_args;
 	imc_room_p room = 0;
