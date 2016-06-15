@@ -131,8 +131,8 @@ static const char* imc_rpc_listall_doc[2] = {
 
 
 /*
- * RPC command to list conferences :
- * 	imc.listall <conf>
+ * RPC command to list all conferences :
+ * 	imc.listall 
  */
 static void imc_rpc_listall(rpc_t* rpc, void* ctx)
 {
@@ -277,25 +277,31 @@ static void imc_rpc_destroy(rpc_t* rpc, void* ctx)
 
 	LM_DBG("Number of arguments: %d\n", no_args);
 
-	/* Accept 2 or 3 arguments */
+	/* Accept only 2 arguments */
 	if (no_args != 2) {
 		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain)");
 		return;
 	}
 
+        LM_DBG("Before imc_get_room. Searching for: %.*s@%.*s\n", confname.len, confname.s, domain.len, domain.s);
 	room = imc_get_room(&confname, &domain);
+        LM_DBG("After imc_get_room \n");
+
 	if(room == NULL) {
 		/* Error */
 		LM_ERR("room [%.*s] does not exist!\n", confname.len, confname.s);
 		rpc->fault(ctx, 500, "Conference room does not exist");
 		return;
 	}
+
+        LM_DBG("Found room to delete, about to set flag\n");
 	room->flags |= IMC_ROOM_DELETED;
+        LM_DBG("Found room to delete\n");
 
 	/* We could check if there are any members around and kick them */
 	imc_release_room(room);
 
-        LM_DBG("deleting room\n");
+        LM_DBG("deleting room...\n");
         res = imc_del_room(&confname, &domain);
 	if (res < 0) {
 		rpc->fault(ctx, 500, "Deletion failed");
