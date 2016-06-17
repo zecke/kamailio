@@ -317,7 +317,7 @@ static void imc_rpc_destroy(rpc_t* rpc, void* ctx)
 }
 
 static const char* imc_rpc_addmember_doc[2] = {
-	"Add member to IMC conference. Arg: <conf> <domain> <SIP uri> [<option>]",
+	"Add member to IMC conference. Arg: <conf> <domain> <usernamei> <user-domain> [<option>]",
 	0
 };
 
@@ -329,20 +329,21 @@ static void imc_rpc_addmember(rpc_t* rpc, void* ctx)
 {
 	str confname = STR_NULL;
 	str domain;
-	str useruri;
+	str username;
+	str userdomain;
 	int no_args;
 	imc_room_p room = 0;
 	int res;
 	imc_member_p imp = NULL;
 
 	/* First check if there are two arguments */
-	no_args = rpc->scan(ctx, "SSS", &confname, &domain, &useruri);
+	no_args = rpc->scan(ctx, "SSSS", &confname, &domain, &username, &userdomain);
 
 	LM_DBG("Number of arguments: %d\n", no_args);
 
-	/* Accept only 3 arguments */
-	if (no_args != 3) {
-		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain, user-uri)");
+	/* Accept only 4 arguments */
+	if (no_args != 4) {
+		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain, username, domain)");
 		return;
 	}
 
@@ -356,7 +357,7 @@ static void imc_rpc_addmember(rpc_t* rpc, void* ctx)
 	/* OEJ: useruri needs to be divided into two. Or we need to create
 	   imc_add_uri(room, uri, option)
 	 */
-	imp = imc_add_member(room, &useruri, &domain, 0);
+	imp = imc_add_member(room, &username, &userdomain, 0);
 	if (imp == NULL) {
 		rpc->fault(ctx, 500, "Failure adding member");
 		imc_release_room(room);
@@ -369,7 +370,7 @@ static void imc_rpc_addmember(rpc_t* rpc, void* ctx)
 }
 
 static const char* imc_rpc_kickmember_doc[2] = {
-	"Kick member from IMC conference. Arg: <conf> <member>",
+	"Kick member from IMC conference. Arg: <conf> <conf-domain> <username> <user-domain>",
 	0
 };
 
@@ -381,20 +382,20 @@ static void imc_rpc_kickmember(rpc_t* rpc, void* ctx)
 {
 	str confname = STR_NULL;
 	str domain;
-	str useruri;
+	str username;
+	str userdomain;
 	int no_args;
 	imc_room_p room = 0;
 	int res;
-	imc_member_p imp = NULL;
 
 	/* First check if there are three arguments */
-	no_args = rpc->scan(ctx, "SSS", &confname, &domain, &useruri);
+	no_args = rpc->scan(ctx, "SSSS", &confname, &domain, &username, &userdomain);
 
 	LM_DBG("Number of arguments: %d\n", no_args);
 
-	/* Accept only 3 arguments */
-	if (no_args != 3) {
-		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain, user-uri)");
+	/* Accept only 4 arguments */
+	if (no_args != 4) {
+		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain, username, domain)");
 		return;
 	}
 
@@ -405,11 +406,8 @@ static void imc_rpc_kickmember(rpc_t* rpc, void* ctx)
 		rpc->fault(ctx, 500, "Conference room does not exist");
 		return;
 	}
-	/* OEJ: useruri needs to be divided into two. Or we need to create
-	   imc_add_uri(room, uri, option)
-	 */
-	imp = imc_del_member(room, &useruri, &domain, 0);
-	if (imp == NULL) {
+	res = imc_del_member(room, &username, &userdomain);
+	if (!res) {
 		rpc->fault(ctx, 500, "Failure kicking member");
 		imc_release_room(room);
 		return;
