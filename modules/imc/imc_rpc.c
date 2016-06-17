@@ -379,9 +379,44 @@ static const char* imc_rpc_kickmember_doc[2] = {
  */
 static void imc_rpc_kickmember(rpc_t* rpc, void* ctx)
 {
-	void* th;
-	void* rh;
+	str confname = STR_NULL;
+	str domain;
+	str useruri;
+	int no_args;
+	imc_room_p room = 0;
+	int res;
+	imc_member_p imp = NULL;
 
+	/* First check if there are three arguments */
+	no_args = rpc->scan(ctx, "SSS", &confname, &domain, &useruri);
+
+	LM_DBG("Number of arguments: %d\n", no_args);
+
+	/* Accept only 3 arguments */
+	if (no_args != 3) {
+		rpc->fault(ctx, 500, "Missing parameters (Parameters: room, domain, user-uri)");
+		return;
+	}
+
+	room = imc_get_room(&confname, &domain);
+	if(room == NULL) {
+		/* Error */
+		LM_ERR("room [%.*s] does not exist!\n", confname.len, confname.s);
+		rpc->fault(ctx, 500, "Conference room does not exist");
+		return;
+	}
+	/* OEJ: useruri needs to be divided into two. Or we need to create
+	   imc_add_uri(room, uri, option)
+	 */
+	imp = imc_del_member(room, &useruri, &domain, 0);
+	if (imp == NULL) {
+		rpc->fault(ctx, 500, "Failure kicking member");
+		imc_release_room(room);
+		return;
+	}
+
+	rpc->rpl_printf(ctx, "OK. Member kicked");
+	imc_release_room(room);
 	return;
 }
 
