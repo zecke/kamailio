@@ -198,17 +198,12 @@ imc_room_p imc_get_room(str* name, str* domain)
 		LM_ERR("invalid parameters\n");
 		return NULL;
 	}
-	LM_ERR("Creating hash\n");
-	
 	hashid = core_case_hash(name, domain, 0);
 	
-	LM_ERR("Getting entry\n");
 	hidx = imc_get_hentry(hashid, imc_hash_size);
 
-	LM_ERR("Getting lock\n");
 	lock_get(&_imc_htable[hidx].lock);
 
-	LM_ERR("Searching hash table\n");
 
 	irp = _imc_htable[hidx].rooms;
 
