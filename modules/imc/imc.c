@@ -44,6 +44,7 @@
 #include "../../resolve.h"
 #include "../../hashes.h"
 #include "../../lib/kmi/mi.h"
+#include "../../mod_fix.h"
 
 #include "../../modules/tm/tm_load.h"
 
@@ -96,6 +97,10 @@ static struct mi_root* imc_mi_list_members(struct mi_root* cmd, void* param);
 
 static void destroy(void);
 
+static int imc_isroom(struct sip_msg* _m, char* _url, char* _result);
+static int fixup_imc_isroom(void** param, int param_no);
+static int fixup_free_imc_isroom(void** param, int param_no);
+
 /** TM bind */
 struct tm_binds tmb;
 
@@ -104,6 +109,9 @@ void inv_callback( struct cell *t, int type, struct tmcb_params *ps);
 
 static cmd_export_t cmds[]={
 	{"imc_manager",  (cmd_function)imc_manager, 0, 0, 0, REQUEST_ROUTE},
+	{"imc_isroom",  (cmd_function)imc_isroom, 
+		2, fixup_imc_isroom, fixup_free_imc_isroom,
+                REQUEST_ROUTE|ONREPLY_ROUTE|FAILURE_ROUTE|BRANCH_ROUTE},
 	{0,0,0,0,0,0}
 };
 
@@ -870,4 +878,61 @@ error:
 	imc_release_room(room);
 	free_mi_tree(rpl_tree);
 	return 0;
+}
+
+
+
+/*!
+ * Wrapper for imc_isroom
+ */
+static int imc_isroom(struct sip_msg* _m, char* _user, char* _userdomain) {
+	str username = {NULL, 0};
+	str userdomain = {NULL, 0};
+	imc_room_p irp = NULL;
+
+	if (get_str_fparam(&username, _m, (gparam_p)_user) != 0) {
+		LM_ERR("username undefined\n");
+		return -1;
+	}
+	if (get_str_fparam(&userdomain, _m, (gparam_p)_userdomain) != 0) {
+		LM_ERR("domain undefined\n");
+		return -1;
+	}
+
+	irp = imc_get_room(&username, &userdomain);
+
+	if (irp) {
+		imc_release_room(irp);
+		return 1;
+	}
+
+	return -1;
+}
+
+/*
+ * Fix imc_isroom params: 
+ *	username (string that may contain pvars) 
+ *	domain (string that may contain pvars) 
+ */
+static int fixup_imc_isroom(void** param, int param_no)
+{
+	if (param_no == 1 || param_no == 2) {
+		return fixup_spve_null(param, 1);
+	}
+
+	LM_ERR("imc_isroom: parameter number <%d>\n", param_no);
+	return -1;
+}
+
+/*
+ * Free http_query params.
+ */
+static int fixup_free_imc_isroom(void** param, int param_no)
+{
+	if (param_no == 1 || param_no == 2) {
+		return fixup_free_spve_null(param, 1);
+	}
+
+	LM_ERR("imc_isroom: invalid parameter number <%d>\n", param_no);
+	return -1;
 }
