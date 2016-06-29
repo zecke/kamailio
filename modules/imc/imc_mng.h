@@ -53,6 +53,7 @@ typedef struct _imc_member
 #define IMC_ROOM_DELETED	(1<<1)	/* Delete conference */
 #define IMC_ROOM_JSONUPDATE	(1<<2)	/* Send announcements as JSON attachments */
 #define IMC_ROOM_MUTEANN	(1<<3)	/* Mute non-JSON announcements (in English only) */
+#define IMC_ROOM_USE_REPLYTO	(1<<4)  /* User reply to instead of rewriting message */
 
 typedef struct del_member
 {

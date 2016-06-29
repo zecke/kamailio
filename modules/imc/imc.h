@@ -36,5 +36,6 @@ extern str all_hdrs;
 extern str extra_hdrs;
 extern int json_announce;
 extern int text_announce;
+extern int use_replyto;
 
 #endif

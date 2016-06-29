@@ -66,6 +66,9 @@ db1_con_t *imc_db = NULL;
 db_func_t imc_dbf;
 static str db_url  = str_init(DEFAULT_DB_URL);
 str outbound_proxy = {NULL, 0};
+int use_replyto = 0;	/* User reply to instead of rewriting message */
+int text_announce = 1;	/* Make announcements in English messages to the conference. Default on */
+int json_announce = 0;	/* Send announcements as json data. Default off */
 
 static str rooms_table   = str_init("imc_rooms");
 static str members_table = str_init("imc_members");
@@ -79,8 +82,6 @@ static str imc_col_name     = str_init("name");
 imc_hentry_p _imc_htable = NULL;
 int imc_hash_size = 4;
 
-int text_announce = 1;	/* Make announcements in English messages to the conference. Default on */
-int json_announce = 0;	/* Send announcements as json data. Default off */
 
 str imc_cmd_start_str = str_init(IMC_CMD_START_STR);
 char imc_cmd_start_char;
@@ -119,13 +120,14 @@ static cmd_export_t cmds[]={
 static param_export_t params[]={
 	{"db_url",			PARAM_STR, &db_url},
 	{"hash_size",			INT_PARAM, &imc_hash_size},
+	{"use_replyto",			INT_PARAM, &use_replyto},
+	{"json_announce",		INT_PARAM, &json_announce},
+	{"text_announce",		INT_PARAM, &text_announce},
 	{"imc_cmd_start_char",		PARAM_STR, &imc_cmd_start_str},
 	{"rooms_table",			PARAM_STR, &rooms_table},
 	{"members_table",		PARAM_STR, &members_table},
 	{"outbound_proxy",		PARAM_STR, &outbound_proxy},
 	{"extra_hdrs",			PARAM_STR, &extra_hdrs},
-	{"text_announce",		INT_PARAM, &text_announce},
-	{"json_announce",		INT_PARAM, &json_announce},
 	{0,0,0}
 };
 
@@ -387,21 +389,26 @@ static int mod_init(void)
 	}
 
 	if (extra_hdrs.s) {
-    if (extra_hdrs.len + imc_hdr_ctype.len > 1024) {
-      LM_ERR("extra_hdrs too long\n");
-      return -1;
-    }
-    all_hdrs.s = &(hdr_buf[0]);
-    memcpy(all_hdrs.s, imc_hdr_ctype.s, imc_hdr_ctype.len);
-    memcpy(all_hdrs.s + imc_hdr_ctype.len, extra_hdrs.s,
-        extra_hdrs.len);
-    all_hdrs.len = extra_hdrs.len + imc_hdr_ctype.len;
+		if (extra_hdrs.len + imc_hdr_ctype.len > 1024) {
+			LM_ERR("extra_hdrs too long\n");
+			return -1;
+		}
+		all_hdrs.s = &(hdr_buf[0]);
+		memcpy(all_hdrs.s, imc_hdr_ctype.s, imc_hdr_ctype.len);
+		memcpy(all_hdrs.s + imc_hdr_ctype.len, extra_hdrs.s, extra_hdrs.len);
+		all_hdrs.len = extra_hdrs.len + imc_hdr_ctype.len;
 	} else {
-	    all_hdrs = imc_hdr_ctype;
+		all_hdrs = imc_hdr_ctype;
 	}
 
-	/*  binding to mysql module */
+	/*  binding to database module */
 	LM_DBG("db_url=%s/%d/%p\n", ZSW(db_url.s), db_url.len, db_url.s);
+
+	if (use_replyto) {
+		LM_DBG(" *** Going to use reply-to in messages \n");
+	} else {
+		LM_DBG(" *** Going to use strange forwarding in messages (not reply-to)\n");
+	}
 	
 	if (db_bind_mod(&db_url, &imc_dbf))
 	{

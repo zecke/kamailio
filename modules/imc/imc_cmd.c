@@ -1039,6 +1039,9 @@ int imc_handle_message(struct sip_msg* msg, str *msgbody,
 	imc_room_p room = 0;
 	imc_member_p member = 0;
 	str body;
+	str *headers;	
+	str lheaders;	/* Local headers */
+	char lhdr_buf[1024];
 
 	room = imc_get_room(&dst->user, &dst->host);		
 	if(room==NULL || (room->flags&IMC_ROOM_DELETED))
@@ -1051,27 +1054,49 @@ int imc_handle_message(struct sip_msg* msg, str *msgbody,
 	if(member== NULL || (member->flags & IMC_MEMBER_INVITED))
 	{
 		LM_ERR("user [%.*s] has no rights to send messages in room [%.*s]!\n",
-				src->user.len, src->user.s,	dst->user.len, dst->user.s);
+				src->user.len, src->user.s, dst->user.len, dst->user.s);
 		goto error;
 	}
 	
 	LM_DBG("broadcast to room [%.*s]\n", room->uri.len, room->uri.s);
 
-	body.s = imc_body_buf;
-	body.len = msgbody->len + member->uri.len /* -4 (sip:) +4 (<>: ) */;
-	if(body.len>=IMC_BUF_SIZE)
-	{
-		LM_ERR("buffer overflow [%.*s]\n", msgbody->len, msgbody->s);
-		goto error;
-	}
-	body.s[0] = '<';
-	memcpy(body.s + 1, member->uri.s + 4, member->uri.len - 4);
-	memcpy(body.s + 1 + member->uri.len - 4, ">: ", 3);		
-	memcpy(body.s + 1 + member->uri.len - 4 +3, msgbody->s, msgbody->len);
-	body.s[body.len] = '\0';
+	if (!use_replyto) {
+		body.s = imc_body_buf;
+		body.len = msgbody->len + member->uri.len /* -4 (sip:) +4 (<>: ) */;
+		if(body.len>=IMC_BUF_SIZE)
+		{
+			LM_ERR("buffer overflow [%.*s]\n", msgbody->len, msgbody->s);
+			goto error;
+		}
+		body.s[0] = '<';
+		memcpy(body.s + 1, member->uri.s + 4, member->uri.len - 4);
+		memcpy(body.s + 1 + member->uri.len - 4, ">: ", 3);		
+		memcpy(body.s + 1 + member->uri.len - 4 +3, msgbody->s, msgbody->len);
+		body.s[body.len] = '\0';
+		headers = &all_hdrs;
 
+	} else {
+		/* TODO: Add reply-to header */
+		/* Remember to check buffer overflow on the buffer lhdr_buf */
+		body.s = imc_body_buf;
+		body.len = msgbody->len;
+		memcpy(body.s, msgbody->s, msgbody->len);
+		/* We need to copy the content-type from the incoming message */
+
+		// if (extra_hdrs.len + imc_hdr_ctype.len > 1024) {
+                        // LM_ERR("extra_hdrs too long\n");
+                        // // return -1;
+                // }
+		snprintf(lhdr_buf, sizeof(lhdr_buf), "Reply-To: sip:%s@%s\r\nContent-type: %s\r\n",
+			room->name.s, room->domain.s, "text/plain");
+                lheaders.s = &(lhdr_buf[0]);
+		lheaders.len = strlen(lhdr_buf);
+                memcpy(lheaders.s + lheaders.len, extra_hdrs.s, extra_hdrs.len);
+                lheaders.len += extra_hdrs.len;
+		LM_DBG("Local headers: --- %s --- END --- \n", lheaders.s);
+	}
 	member->flags |= IMC_MEMBER_SKIP;
-	imc_room_broadcast(room, &all_hdrs, &body);
+	imc_room_broadcast(room, headers, &body);
 	member->flags &= ~IMC_MEMBER_SKIP;
 
 	imc_release_room(room);
@@ -1086,7 +1111,7 @@ error:
 /*
  *
  */
-int imc_room_broadcast(imc_room_p room, str *ctype, str *body)
+int imc_room_broadcast(imc_room_p room, str *headers, str *body)
 {
 	imc_member_p imp;
 
@@ -1100,15 +1125,17 @@ int imc_room_broadcast(imc_room_p room, str *ctype, str *body)
 	while(imp)
 	{
 		LM_DBG("to uri = %.*s\n", imp->uri.len, imp->uri.s);
-		if((imp->flags&IMC_MEMBER_INVITED)||(imp->flags&IMC_MEMBER_DELETED)
-				|| (imp->flags&IMC_MEMBER_SKIP))
+
+		if((imp->flags & IMC_MEMBER_INVITED)
+				|| (imp->flags & IMC_MEMBER_DELETED)
+				|| (imp->flags & IMC_MEMBER_SKIP))
 		{
 			imp = imp->next;
 			continue;
 		}
 		
-		/* to-do: callbac to remove user fi delivery fails */
-		imc_send_message(&room->uri, &imp->uri, ctype, body);
+		/* to-do: callback to remove user if delivery fails */
+		imc_send_message(&room->uri, &imp->uri, headers, body);
 		
 		imp = imp->next;
 	}
@@ -1123,12 +1150,12 @@ int imc_send_message(str *src, str *dst, str *headers, str *body)
 	uac_req_t uac_r;
 	if(src==NULL || dst==NULL || body==NULL)
 		return -1;
-	/* to-do: callbac to remove user fi delivery fails */
+	/* to-do: callback to remove user if delivery fails */
 	set_uac_req(&uac_r, &imc_msg_type, headers, body, 0, 0, 0, 0);
 	tmb.t_request(&uac_r,
-			NULL,										/* Request-URI */
-			dst,										/* To */
-			src,										/* From */
+			NULL,						/* Request-URI */
+			dst,						/* To */
+			src,						/* From */
 			(outbound_proxy.s)?&outbound_proxy:NULL  	/* outbound proxy */
 		);
 	return 0;
@@ -1166,7 +1193,7 @@ void imc_inv_callback( struct cell *t, int type, struct tmcb_params *ps)
 	else
 	{
 		room= imc_get_room(&((del_member_t *)(*ps->param))->room_name,
-						&((del_member_t *)(*ps->param))->room_domain );
+				&((del_member_t *)(*ps->param))->room_domain );
 		if(room==NULL)
 		{
 			LM_ERR("the room does not exist!\n");
