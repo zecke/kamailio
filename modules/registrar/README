@@ -926,7 +926,9 @@ lookup_branches("location");
      * match_action (optional) - actions to perform when match is
        positive.
        flag values is as follows:
-          + 1 - set xavp_rcd with value from matched contact
+          + 1 - restore the xavps associated with the matched contact
+          + 2 - skip adding the matched location record attributes to
+            xavp_rcd (e.g., the ruid, contact, received, ...)
 
    This function can be used from ANY_ROUTE.
 
@@ -1149,8 +1151,8 @@ if(reg_fetch_contacts("location", "$fu", "caller"))
 
 Chapter 2. Frequently Asked Questions
 
-   2.1. What happend with the old “nat_flag” module parameter?
-   2.2. What happend with the old “use_domain” module parameter?
+   2.1. What happened with the old “nat_flag” module parameter?
+   2.2. What happened with the old “use_domain” module parameter?
    2.3. What happened with the old “save_noreply” and “save_memory”
           functions?
 
@@ -1161,14 +1163,14 @@ Chapter 2. Frequently Asked Questions
 
    2.1.
 
-   What happend with the old “nat_flag” module parameter?
+   What happened with the old “nat_flag” module parameter?
 
    In was removed, as the module internally loads this value from the
    “USRLOC” module (see the “nat_bflag” USRLOC parameter).
 
    2.2.
 
-   What happend with the old “use_domain” module parameter?
+   What happened with the old “use_domain” module parameter?
 
    In was removed, as the module internally loads this option from the
    “USRLOC” module. This was done in order to simplify the configuration.
