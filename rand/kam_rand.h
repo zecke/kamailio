@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Daniel-Constantin Mierla (asipto.com)
+ * Copyright (C) 2016 Spencer Thomason
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -16,24 +16,20 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifndef __SRAPI_H__
-#define __SRAPI_H__
+#ifndef __KAM_RAND_H__
+#define __KAM_RAND_H__
 
-#include "str.h"
-#include "parser/msg_parser.h"
+#include <limits.h>
+#include <stdlib.h>
 
-typedef void (*sr_generate_callid_f)(str*);
-
-int sr_register_callid_func(sr_generate_callid_f f);
-
-sr_generate_callid_f sr_get_callid_func(void);
-
-typedef int (*sr_cseq_update_f)(sip_msg_t*);
-typedef struct sr_cfgenv {
-	sr_cseq_update_f cb_cseq_update;
-} sr_cfgenv_t;
-
-void sr_cfgenv_init(void);
-sr_cfgenv_t* sr_cfgenv_get(void);
+#if RAND_MAX < INT_MAX
+#define KAM_RAND_MAX ((int) (0x7FFFFFFF)) /* (1<<31) - 1 */
+#define kam_rand(x) ((int)random(x))
+#define kam_srand(x) srandom(x)
+#else
+#define KAM_RAND_MAX RAND_MAX
+#define kam_rand(x) rand(x)
+#define kam_srand(x) srand(x)
+#endif
 
 #endif
