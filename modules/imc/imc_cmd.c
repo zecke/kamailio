@@ -1042,6 +1042,7 @@ int imc_handle_message(struct sip_msg* msg, str *msgbody,
 	str *headers;	
 	str lheaders;	/* Local headers */
 	char lhdr_buf[1024];
+	int hdrpos = 0;
 
 	room = imc_get_room(&dst->user, &dst->host);		
 	if(room==NULL || (room->flags&IMC_ROOM_DELETED))
@@ -1058,7 +1059,7 @@ int imc_handle_message(struct sip_msg* msg, str *msgbody,
 		goto error;
 	}
 	
-	LM_DBG("broadcast to room [%.*s]\n", room->uri.len, room->uri.s);
+	LM_DBG("IMC broadcast to room [%.*s]\n", room->uri.len, room->uri.s);
 
 	if (!use_replyto) {
 		body.s = imc_body_buf;
@@ -1091,9 +1092,11 @@ int imc_handle_message(struct sip_msg* msg, str *msgbody,
 			room->name.s, room->domain.s, "text/plain");
                 lheaders.s = &(lhdr_buf[0]);
 		lheaders.len = strlen(lhdr_buf);
+		LM_ERR("Local headers: Length %d \n", lheaders.len);
+	
                 memcpy(lheaders.s + lheaders.len, extra_hdrs.s, extra_hdrs.len);
                 lheaders.len += extra_hdrs.len;
-		LM_DBG("Local headers: --- %s --- END --- \n", lheaders.s);
+		LM_ERR("Local headers: --- %s --- END --- \n", lheaders.s);
 	}
 	member->flags |= IMC_MEMBER_SKIP;
 	imc_room_broadcast(room, headers, &body);
