@@ -363,7 +363,7 @@ int jsonrpc_send(str conn, jsonrpc_request_t* req, bool notify_only)
 	bool sent = false;
 	jsonrpc_server_group_t* c_grp = NULL;
 	if(global_server_group != NULL) {
-		LERR("jsonrpc_send -1");
+		ERR("jsonrpc_send -1");
 		c_grp = *global_server_group;
 	}
 	jsonrpc_server_group_t* p_grp = NULL;
@@ -371,106 +371,106 @@ int jsonrpc_send(str conn, jsonrpc_request_t* req, bool notify_only)
 	jsonrpc_server_t* s = NULL;
 	server_list_t* tried_servers = NULL;
 	DEBUG("SENDING DATA\n");
-	LERR("jsonrpc_send 00");
+	ERR("jsonrpc_send 00");
 	for(; c_grp != NULL; c_grp = c_grp->next) {
-		LERR("jsonrpc_send 01");
+		ERR("jsonrpc_send 01");
 		if(strncmp(conn.s, c_grp->conn.s, c_grp->conn.len) != 0) {
-			LERR("jsonrpc_send 02");
+			ERR("jsonrpc_send 02");
 			continue;
 		}
-		LERR("jsonrpc_send 03");
+		ERR("jsonrpc_send 03");
 		for(p_grp = c_grp->sub_group; p_grp != NULL; p_grp = p_grp->next)
 		{
-			LERR("jsonrpc_send 04");
+			ERR("jsonrpc_send 04");
 			w_grp = p_grp->sub_group;
 			while(!sent) {
-				LERR("jsonrpc_send 05");
+				ERR("jsonrpc_send 05");
 				loadbalance_by_weight(&s, w_grp, tried_servers);
 				if (s == NULL || s->status != JSONRPC_SERVER_CONNECTED) {
-					LERR("jsonrpc_send 06");
+					ERR("jsonrpc_send 06");
 					break;
 				}
 
 				if(bufferevent_write(s->bev, ns, bytes) == 0) {
-					LERR("jsonrpc_send 07");
+					ERR("jsonrpc_send 07");
 					sent = true;
 					if(!notify_only) {
-						LERR("jsonrpc_send 08");
+						ERR("jsonrpc_send 08");
 						s->req_count++;
 						if (s->hwm > 0 && s->req_count >= s->hwm) {
-							LERR("jsonrpc_send 09");
+							ERR("jsonrpc_send 09");
 							WARN("%.*s:%d in connection group %.*s has exceeded its high water mark (%d)\n",
 									STR(s->addr), s->port,
 									STR(s->conn), s->hwm);
 						}
 					}
-					LERR("jsonrpc_send 10");
+					ERR("jsonrpc_send 10");
 					req->server = s;
 					break;
 				} else {
-					LERR("jsonrpc_send 11");
+					ERR("jsonrpc_send 11");
 					addto_server_list(s, &tried_servers);
 				}
-				LERR("jsonrpc_send 12");
+				ERR("jsonrpc_send 12");
 			}
-			LERR("jsonrpc_send 13");
+			ERR("jsonrpc_send 13");
 
 			if (sent) {
-				LERR("jsonrpc_send 14");
+				ERR("jsonrpc_send 14");
 				break;
 			}
-			LERR("jsonrpc_send 15");
+			ERR("jsonrpc_send 15");
 			WARN("Failed to send to priority group, %d\n", p_grp->priority);
 			if(p_grp->next != NULL) {
-				LERR("jsonrpc_send 16");
+				ERR("jsonrpc_send 16");
 				INFO("Proceeding to next priority group, %d\n",
 						p_grp->next->priority);
 			}
-			LERR("jsonrpc_send 17");
+			ERR("jsonrpc_send 17");
 		}
-		LERR("jsonrpc_send 18");
+		ERR("jsonrpc_send 18");
 		if (sent) {
-			LERR("jsonrpc_send 19");
+			ERR("jsonrpc_send 19");
 			break;
 		}
 
 	}
-	LERR("jsonrpc_send 20");
+	ERR("jsonrpc_send 20");
 	if(!sent) {
-		LERR("jsonrpc_send 21");
+		ERR("jsonrpc_send 21");
 		WARN("Failed to send to connection group, \"%.*s\"\n",
 				STR(conn));
 		if(schedule_retry(req)<0) {
-			LERR("jsonrpc_send 22");
+			ERR("jsonrpc_send 22");
 			fail_request(JRPC_ERR_RETRY, req, "Failed to schedule retry");
 		}
 	}
-	LERR("jsonrpc_send 23");
+	ERR("jsonrpc_send 23");
 
 	free_server_list(tried_servers);
-	LERR("jsonrpc_send 24");
+	ERR("jsonrpc_send 24");
 	if(ns) pkg_free(ns);
 	if(json) free(json);
 
 	if (sent) {
-		LERR("jsonrpc_send 25");
+		ERR("jsonrpc_send 25");
 		if (notify_only == true) { // free the request if using janssonrpc_notification function
-			LERR("jsonrpc_send 26");
+			ERR("jsonrpc_send 26");
 			free_request(req);
 		} else {
-			LERR("jsonrpc_send 27");
+			ERR("jsonrpc_send 27");
 			const struct timeval tv = ms_to_tv(req->timeout);
 
 			req->timeout_ev = evtimer_new(global_ev_base, timeout_cb, (void*)req);
 			if(event_add(req->timeout_ev, &tv)<0) {
-				LERR("jsonrpc_send 28");
+				ERR("jsonrpc_send 28");
 				ERR("event_add failed while setting request timer (%s).",
 						strerror(errno));
 				return -1;
 			}
 		}
 	}
-	LERR("jsonrpc_send 29");
+	ERR("jsonrpc_send 29");
 	return sent;
 }
 
